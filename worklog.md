@@ -334,3 +334,53 @@ Stage Summary:
 - App: Progress Companion v0.2.0 - AI-powered fitness tracking app
 - Stack: Next.js 16 + React 19 + Supabase + Capacitor (mobile) + Tailwind CSS 4
 - 72 API routes, 30+ database tables, 43 shadcn/ui components, 4 themes, 3 languages
+
+---
+Task ID: 1
+Agent: Main Architect
+Task: Fix splash screen flash + stuck loading on Settings → Profile back navigation
+
+Work Log:
+- Diagnosed root cause: router.push('/') from /settings causes full page navigation
+  - Next.js App Router treats cross-route navigation as full page load
+  - Entire app re-initializes: auth, context, 11 data sources, realtime subscriptions
+  - SSR renders splashVisible=true (server has no sessionStorage)
+  - CSS guard .no-splash [data-splash-overlay] wasn't sufficient alone
+  - App got stuck waiting for isAppReady (auth + all data re-fetch)
+  - 15s safety timeout was the only thing that eventually hid the splash
+
+- Implemented three-layer defense:
+
+FIX 1: layout.tsx — Inline <style> tag injection
+  - Before: only added CSS class 'no-splash' to <html>
+  - Now: also injects <style id='splash-skip-guard'> with display:none!important
+  - This works even if globals.css hasn't loaded yet
+  - Runs synchronously BEFORE React hydrates
+
+FIX 2: page.tsx — splashSkippedRef guard
+  - Added useRef that permanently locks splash skip once set
+  - All 3 splash effects (dismiss, min-time timer, 15s safety) check this ref
+  - Early return in useEffect ensures performance.getEntriesByType('navigate')
+    check NEVER runs when return-to-profile flag exists
+  - Module-level __splashHasBeenShown now also checks skip-splash flag
+  - Prevents double-effect (Strict Mode) from re-enabling splash
+
+FIX 3: SettingsPage.tsx — router.back() instead of router.push('/')
+  - router.push('/') triggers 'navigate' type (full page load)
+  - router.back() triggers 'back_forward' type (already handled to skip splash)
+  - Avoids full app re-initialization entirely
+
+FIX 4: profile-page.tsx — Pre-set return flags when navigating TO settings
+  - Sets return-to-profile + skip-splash sessionStorage flags before router.push('/settings')
+  - Ensures CSS guard is already in place for the return journey
+
+Stage Summary:
+- 4 files changed: layout.tsx, page.tsx, SettingsPage.tsx, profile-page.tsx
+- 0 lint errors (22 pre-existing warnings unchanged)
+- Zero UI/UX visual changes
+- Zero breaking changes
+- Three-layer defense ensures splash never shows on internal navigation:
+  Layer 1: Inline <style> tag (CSS level, before React)
+  Layer 2: splashSkippedRef (React state level, survives double effects)
+  Layer 3: router.back() instead of router.push() (navigation level)
+- Deployed to Vercel: https://my-project-seven-ivory.vercel.app
