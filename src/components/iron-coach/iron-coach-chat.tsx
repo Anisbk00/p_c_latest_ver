@@ -16,7 +16,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { motion, AnimatePresence, PanInfo } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Send, X, Flame, Zap, Dumbbell, Target, Utensils, Cpu, Crown, Loader2, Trash2, MoreVertical, CalendarDays, MessageSquare, RefreshCw, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sanitizeAIContent } from '@/lib/security-utils';
@@ -913,13 +913,74 @@ export function IronCoach({ className }: IronCoachProps) {
     setIsLoading(false);
   }, [abortController]);
 
-  const handleDragEnd = useCallback((_: never, info: PanInfo) => {
-    if (info.offset.y > 100 || info.velocity.y > 400) {
-      setIsOpen(false);
-      // Reset historyLoaded so next open will fetch fresh history
-      setHistoryLoaded(false);
+  // Swipe-to-dismiss via custom touch handler (avoids passive listener warning)
+  const panelRef = useRef<HTMLDivElement>(null);
+  const dragState = useRef({ startY: 0, currentY: 0, isDragging: false });
+
+  const handleTouchStart = useCallback((e: TouchEvent) => {
+    // Only capture if touch starts near the top 60px (pull indicator area) or at very top of scroll
+    const target = e.target as HTMLElement;
+    const scrollableParent = target.closest('.overflow-y-auto');
+    if (scrollableParent && scrollableParent.scrollTop > 5) return;
+    dragState.current.startY = e.touches[0].clientY;
+    dragState.current.currentY = e.touches[0].clientY;
+    dragState.current.isDragging = true;
+  }, []);
+
+  const handleTouchMove = useCallback((e: TouchEvent) => {
+    if (!dragState.current.isDragging) return;
+    dragState.current.currentY = e.touches[0].clientY;
+    const deltaY = dragState.current.currentY - dragState.current.startY;
+    if (deltaY > 0) {
+      e.preventDefault(); // Only prevent default when dragging down — now safe (non-passive)
+      const panel = panelRef.current;
+      if (panel) {
+        const clampedY = Math.min(deltaY * 0.5, window.innerHeight * 0.4);
+        panel.style.transform = `translateY(${clampedY}px)`;
+        panel.style.transition = 'none';
+      }
     }
   }, []);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!dragState.current.isDragging) return;
+    dragState.current.isDragging = false;
+    const deltaY = dragState.current.currentY - dragState.current.startY;
+    const velocity = deltaY > 0 ? deltaY : 0; // simplified velocity from distance
+    const panel = panelRef.current;
+    if (panel) {
+      panel.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)';
+      if (deltaY > 100) {
+        panel.style.transform = 'translateY(100%)';
+        setTimeout(() => {
+          panel.style.transform = '';
+          panel.style.transition = '';
+          setIsOpen(false);
+          setHistoryLoaded(false);
+        }, 300);
+      } else {
+        panel.style.transform = 'translateY(0)';
+        setTimeout(() => {
+          panel.style.transform = '';
+          panel.style.transition = '';
+        }, 300);
+      }
+    }
+  }, []);
+
+  // Register non-passive touch listeners on the panel to allow preventDefault
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    panel.addEventListener('touchstart', handleTouchStart, { passive: true });
+    panel.addEventListener('touchmove', handleTouchMove, { passive: false });
+    panel.addEventListener('touchend', handleTouchEnd, { passive: true });
+    return () => {
+      panel.removeEventListener('touchstart', handleTouchStart);
+      panel.removeEventListener('touchmove', handleTouchMove);
+      panel.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [handleTouchStart, handleTouchMove, handleTouchEnd]);
 
   return (
     <>
@@ -948,10 +1009,7 @@ export function IronCoach({ className }: IronCoachProps) {
               animate={{ y: 0, opacity: 1 }}
               exit={{ y: '100%', opacity: 1 }}
               transition={{ type: 'spring', damping: 30, stiffness: 400 }}
-              drag="y"
-              dragConstraints={{ top: 0, bottom: 0 }}
-              dragElastic={{ top: 0.3, bottom: 1 }}
-              onDragEnd={handleDragEnd}
+              ref={panelRef}
               className={cn("fixed inset-0 z-[100] flex flex-col touch-pan-x overflow-hidden", styles.container)}
             >
               <FlameParticles theme={theme} />

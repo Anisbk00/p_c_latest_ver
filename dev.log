@@ -10,14 +10,8 @@ This information is used to shape Next.js' roadmap and prioritize features.
 You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
 https://nextjs.org/telemetry
 
-✓ Ready in 1248ms
+✓ Ready in 1301ms
 ○ Compiling / ...
 [AuthScreen] Rendering, mode: welcome
-[AuthScreen] Rendering, mode: welcome
- GET / 200 in 7.6s (compile: 7.1s, proxy.ts: 200ms, render: 253ms)
- GET / 200 in 7.1s (compile: 7.0s, proxy.ts: 7ms, render: 56ms)
- GET /api/ai/home-insights 200 in 601ms (compile: 572ms, proxy.ts: 8ms, render: 20ms)
-[AuthScreen] Rendering, mode: welcome
- GET / 200 in 73ms (compile: 6ms, proxy.ts: 12ms, render: 55ms)
-[AuthScreen] Rendering, mode: welcome
- GET / 200 in 98ms (compile: 5ms, proxy.ts: 7ms, render: 86ms)
+ GET / 200 in 7.7s (compile: 7.1s, proxy.ts: 206ms, render: 339ms)
+ GET /api/ai/home-insights 200 in 495ms (compile: 472ms, proxy.ts: 5ms, render: 17ms)
