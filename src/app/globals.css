@@ -1195,6 +1195,12 @@ html, body {
   margin: 8px auto;
 }
 
+/* Splash screen suppression — set by inline script in layout.tsx BEFORE React hydrates.
+   Prevents flash of splash on back-navigation (settings → home). */
+.no-splash [data-splash-overlay] {
+  display: none !important;
+}
+
 .dark .drag-indicator {
   background: oklch(0.4 0.01 240);
 }

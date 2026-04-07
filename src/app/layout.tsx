@@ -70,6 +70,15 @@ export default function RootLayout({
                   var t = localStorage.getItem('theme');
                   if (t) document.documentElement.className = t;
                 } catch(e){}
+                // Splash screen skip: check sessionStorage BEFORE React hydrates.
+                // Prevents splash flash on back-navigation from settings/profile/foods routes.
+                try {
+                  var skipSplash = sessionStorage.getItem('return-to-profile') === 'true'
+                    || sessionStorage.getItem('skip-splash') === 'true';
+                  if (skipSplash) {
+                    document.documentElement.classList.add('no-splash');
+                  }
+                } catch(e){}
               })();
             `,
           }}

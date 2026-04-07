@@ -322,6 +322,8 @@ function ProgressCompanionHome() {
     const returnToProfile = sessionStorage.getItem('return-to-profile');
     if (returnToProfile === 'true') {
       sessionStorage.removeItem('return-to-profile');
+      sessionStorage.removeItem('skip-splash');
+      document.documentElement.classList.remove('no-splash');
       setActiveTab('profile');
       // Skip splash for internal navigation
       setSkipSplash(true);
@@ -329,6 +331,9 @@ function ProgressCompanionHome() {
       __splashHasBeenShown = true;
       return;
     }
+    
+    // Clean up no-splash class if present (CSS guard handled initial paint, React takes over)
+    document.documentElement.classList.remove('no-splash');
     
     // Check navigation type
     try {
@@ -1310,7 +1315,7 @@ function ProgressCompanionHome() {
       
       {/* ═══ SPLASH SCREEN OVERLAY - Waits until app ready, skips on back nav ═══ */}
       {splashVisible && (
-        <div className="fixed inset-0 z-50 transition-opacity duration-500 ease-out">
+        <div data-splash-overlay className="fixed inset-0 z-50 transition-opacity duration-500 ease-out">
           <SplashScreen isLoading={!isAppReady} />
         </div>
       )}

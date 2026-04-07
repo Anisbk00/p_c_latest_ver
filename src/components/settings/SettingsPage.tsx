@@ -142,8 +142,9 @@ function SettingsPage() {
     <div className="container max-w-4xl mx-auto py-8 px-4 pb-24">
       <div className="flex items-center gap-4 mb-8">
         <Button variant="ghost" size="icon" onClick={() => {
-          // Set flag to return to profile tab
+          // Set flags to skip splash and return to profile tab
           sessionStorage.setItem('return-to-profile', 'true');
+          sessionStorage.setItem('skip-splash', 'true');
           router.push('/');
         }}>
           <ArrowLeft className="h-4 w-4" />
