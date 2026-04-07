@@ -1,13 +1,23 @@
 $ next dev -p 3000
 ▲ Next.js 16.1.3 (Turbopack)
 - Local:         http://localhost:3000
-- Network:       http://21.0.17.92:3000
+- Network:       http://21.0.2.140:3000
 - Environments: .env
 
 ✓ Starting...
-✓ Ready in 731ms
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+This information is used to shape Next.js' roadmap and prioritize features.
+You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
+https://nextjs.org/telemetry
+
+✓ Ready in 1248ms
+○ Compiling / ...
 [AuthScreen] Rendering, mode: welcome
- GET / 200 in 3.3s (compile: 2.9s, proxy.ts: 152ms, render: 273ms)
- GET /api/ai/home-insights 200 in 112ms (compile: 89ms, proxy.ts: 6ms, render: 18ms)
 [AuthScreen] Rendering, mode: welcome
- GET / 200 in 45ms (compile: 4ms, proxy.ts: 4ms, render: 37ms)
+ GET / 200 in 7.6s (compile: 7.1s, proxy.ts: 200ms, render: 253ms)
+ GET / 200 in 7.1s (compile: 7.0s, proxy.ts: 7ms, render: 56ms)
+ GET /api/ai/home-insights 200 in 601ms (compile: 572ms, proxy.ts: 8ms, render: 20ms)
+[AuthScreen] Rendering, mode: welcome
+ GET / 200 in 73ms (compile: 6ms, proxy.ts: 12ms, render: 55ms)
+[AuthScreen] Rendering, mode: welcome
+ GET / 200 in 98ms (compile: 5ms, proxy.ts: 7ms, render: 86ms)
