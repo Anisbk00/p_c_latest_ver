@@ -1,0 +1,5 @@
+# Supabase Project Configuration
+project_id = "ygzxxmyrybtvszjlilxg"
+
+[functions.send-push]
+verify_jwt = false

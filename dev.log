@@ -1,0 +1,13 @@
+$ next dev -p 3000
+▲ Next.js 16.1.3 (Turbopack)
+- Local:         http://localhost:3000
+- Network:       http://21.0.17.92:3000
+- Environments: .env
+
+✓ Starting...
+✓ Ready in 731ms
+[AuthScreen] Rendering, mode: welcome
+ GET / 200 in 3.3s (compile: 2.9s, proxy.ts: 152ms, render: 273ms)
+ GET /api/ai/home-insights 200 in 112ms (compile: 89ms, proxy.ts: 6ms, render: 18ms)
+[AuthScreen] Rendering, mode: welcome
+ GET / 200 in 45ms (compile: 4ms, proxy.ts: 4ms, render: 37ms)

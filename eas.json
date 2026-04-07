@@ -1,0 +1,38 @@
+{
+  "cli": {
+    "version": ">= 13.2.0"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "NEXT_PUBLIC_API_URL": "https://p-c-five.vercel.app",
+        "NEXT_PUBLIC_SUPABASE_URL": "https://ygzxxmyrybtvszjlilxg.supabase.co",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlnenh4bXlyeWJ0dnN6amxpbHhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0OTAzOTMsImV4cCI6MjA4ODA2NjM5M30.STMLbhAL2Jn9ecVuKVgAu9JTxvhQrbuAOqIbtRqYxcM"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "NEXT_PUBLIC_API_URL": "https://p-c-five.vercel.app",
+        "NEXT_PUBLIC_SUPABASE_URL": "https://ygzxxmyrybtvszjlilxg.supabase.co",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlnenh4bXlyeWJ0dnN6amxpbHhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0OTAzOTMsImV4cCI6MjA4ODA2NjM5M30.STMLbhAL2Jn9ecVuKVgAu9JTxvhQrbuAOqIbtRqYxcM"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "NEXT_PUBLIC_API_URL": "https://p-c-five.vercel.app",
+        "NEXT_PUBLIC_SUPABASE_URL": "https://ygzxxmyrybtvszjlilxg.supabase.co",
+        "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlnenh4bXlyeWJ0dnN6amxpbHhnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzI0OTAzOTMsImV4cCI6MjA4ODA2NjM5M30.STMLbhAL2Jn9ecVuKVgAu9JTxvhQrbuAOqIbtRqYxcM"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

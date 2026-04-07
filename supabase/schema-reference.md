@@ -1,0 +1,144 @@
+-- ═══════════════════════════════════════════════════════════════
+-- PROGRESS COMPANION — SUPABASE SCHEMA (CANONICAL REFERENCE)
+-- ═══════════════════════════════════════════════════════════════
+-- Project: ygzxxmyrybtvszjlilxg
+-- This is the single source of truth for all schema decisions.
+-- Before ANY schema change, reference this file.
+-- ═══════════════════════════════════════════════════════════════
+
+-- TABLE INVENTORY (80+ tables)
+
+-- ── CORE AUTH & USER ──────────────────────────────────────────
+-- profiles (PK: id → auth.users.id)
+-- user_profiles (PK: id, UNIQUE user_id → profiles.id)
+-- user_settings (PK: id, UNIQUE user_id → profiles.id)
+-- user_behavior_profile (PK: id, UNIQUE user_id → profiles.id)
+-- user_devices (PK: id, UNIQUE device_token)
+-- user_files (PK: id)
+-- user_events (PK: id)
+-- user_habits (PK: id)
+-- setup_tracking (PK: id)
+
+-- ── FITNESS DATA ──────────────────────────────────────────────
+-- workouts (PK: id, FK: user_id→profiles, route_id→routes)
+-- workout_exercises (PK: id, FK: workout_id→workouts)
+-- workout_laps (PK: id, FK: workout_id→workouts)
+-- routes (PK: id, FK: user_id→profiles)
+-- body_metrics (PK: id, FK: user_id→profiles)
+-- body_composition (PK: id, FK: user_id→profiles)
+-- measurements (PK: id, FK: user_id→profiles)
+-- food_logs (PK: id, FK: user_id→profiles, food_id→foods)
+-- foods (PK: id, FK: user_id→profiles)
+-- global_foods (PK: id, no user FK)
+-- food_translations (PK: id, FK: food_id→foods, global_food_id→global_foods)
+-- food_disputes (PK: id, FK: user_id→profiles, resolved_by→profiles)
+-- sleep_logs (PK: id, FK: user_id→profiles)
+-- supplements (PK: id, no user FK)
+-- supplement_logs (PK: id, FK: user_id→profiles, supplement_id→supplements)
+-- goals (PK: id, FK: user_id→profiles)
+-- wearable_devices (PK: id, FK: user_id→profiles)
+
+-- ── AI / INTELLIGENCE ─────────────────────────────────────────
+-- ai_agents (PK: id)
+-- ai_agent_tasks (PK: id, FK: user_id→profiles, agent_id→ai_agents)
+-- ai_agent_outputs (PK: id, FK: user_id→profiles, agent_id→ai_agents, etc.)
+-- ai_actions (PK: id, FK: user_id→profiles)
+-- ai_action_outcomes (PK: id, FK: user_id→profiles, action_id→ai_actions)
+-- ai_body_predictions (PK: id, FK: user_id→profiles)
+-- ai_prediction_accuracy (PK: id, FK: prediction_id→ai_body_predictions)
+-- ai_prediction_models (PK: id)
+-- ai_coaching_state (PK: user_id→profiles)
+-- ai_coaching_summaries (PK: id, FK: user_id→profiles)
+-- ai_cohort_metrics (PK: id)
+-- ai_conversations (PK: id, FK: user_id→profiles)
+-- ai_messages (PK: id, FK: conversation_id→ai_conversations, user_id→profiles)
+-- ai_decision_rules (PK: id)
+-- ai_embeddings (PK: id, FK: user_id→profiles, vector column)
+-- ai_energy_balance (PK: id, FK: user_id→profiles)
+-- ai_experiments (PK: id, FK: user_id→profiles)
+-- ai_feature_store (PK: id, FK: user_id→profiles)
+-- ai_feedback (PK: id, FK: user_id→profiles, message_id→ai_messages, recommendation_id→ai_recommendations)
+-- ai_generated_workouts (PK: id, FK: user_id→profiles, template_id→ai_workout_templates)
+-- ai_insights (PK: id, FK: user_id→profiles)
+-- ai_memory (PK: id, FK: user_id→profiles)
+-- ai_metabolic_profile (PK: user_id→profiles)
+-- ai_models (PK: id)
+-- ai_plans (PK: id, FK: user_id→profiles)
+-- ai_planning_queue (PK: id, FK: user_id→profiles)
+-- ai_prompt_templates (PK: id)
+-- ai_recommendations (PK: id, FK: user_id→profiles)
+-- ai_training_signals (PK: id, FK: user_id→profiles)
+-- ai_translation_jobs (PK: id)
+-- ai_usage (PK: id, FK: user_id→profiles)
+-- ai_user_state (PK: user_id→profiles)
+-- ai_worker_logs (PK: id)
+-- ai_workout_templates (PK: id)
+
+-- ── CHAT (LEGACY / SEPARATE) ─────────────────────────────────
+-- chat_sessions (PK: id, FK: user_id→profiles)
+-- chat_messages (PK: id, FK: session_id→chat_sessions)
+
+-- ── NOTIFICATIONS ─────────────────────────────────────────────
+-- notifications (PK: id, FK: user_id→profiles, notification_id→notifications)
+-- notification_analytics (PK: id)
+-- notification_preferences (PK: id, UNIQUE user_id→profiles)
+-- notification_templates (PK: id)
+
+-- ── WEEKLY PLANS ──────────────────────────────────────────────
+-- weekly_plans (PK: id, FK: user_id→profiles)
+-- daily_plan_completions (PK: id, FK: user_id→profiles, plan_id→weekly_plans)
+
+-- ── I18N / TRANSLATIONS ───────────────────────────────────────
+-- supported_locales (PK: code)
+-- translations (PK: id)
+-- translation_cache (PK: locale)
+
+-- ── OFFLINE / SYNC ────────────────────────────────────────────
+-- offline_map_regions (PK: id, FK: user_id→profiles)
+-- sync_metadata (PK: id, FK: user_id→profiles)
+-- sync_queue (PK: id, FK: user_id→profiles)
+
+-- ── GAMIFICATION ──────────────────────────────────────────────
+-- xp_transactions (PK: id, FK: user_id→auth.users)
+
+-- ── SYSTEM / AUDIT ────────────────────────────────────────────
+-- _rate_limits (PK: identifier)
+-- audit_logs (PK: id, FK: user_id→profiles)
+-- settings_audit (PK: id, FK: user_id→profiles)
+-- settings_exports (PK: id, FK: user_id→profiles)
+
+-- ═══════════════════════════════════════════════════════════════
+-- CRITICAL CONSTRAINTS & ENUMS
+-- ═══════════════════════════════════════════════════════════════
+
+-- body_metrics.metric_type CHECK: weight, body_fat, muscle_mass, bmi, waist, chest, hips, biceps, thigh, neck, resting_heart_rate, blood_pressure_systolic, blood_pressure_diastolic, water, steps
+-- ai_messages.role CHECK: user, assistant, system
+-- user_settings.theme CHECK: light, dark, system, black, white, gymbro, her
+-- user_settings.language CHECK: en, fr
+-- user_settings.units CHECK: metric, imperial
+-- user_settings.preferred_language CHECK: en, fr
+-- foods.status CHECK: active, under_review, rejected, archived
+-- global_foods.status CHECK: active, under_review, rejected, archived
+-- food_translations.locale CHECK: en, fr
+-- translations.locale CHECK: en, fr
+-- user_devices.device_type CHECK: ios, android, web
+-- weekly_plans.status CHECK: active, completed, archived
+-- sync_queue.operation CHECK: INSERT, UPDATE, DELETE
+-- sync_queue.status CHECK: pending, syncing, synced, failed, conflict
+-- sync_queue.resolution_strategy CHECK: client_wins, server_wins, merge, manual
+-- notification status TYPE: custom enum
+-- notification type TYPE: custom enum
+
+-- ═══════════════════════════════════════════════════════════════
+-- KEY RELATIONSHIPS
+-- ═══════════════════════════════════════════════════════════════
+-- profiles.id → auth.users.id (1:1, cascade on auth delete)
+-- user_profiles.user_id → profiles.id (1:1)
+-- user_settings.user_id → profiles.id (1:1)
+-- ai_user_state.user_id → profiles.id (1:1)
+-- ai_coaching_state.user_id → profiles.id (1:1)
+-- ai_metabolic_profile.user_id → profiles.id (1:1)
+-- user_behavior_profile.user_id → profiles.id (1:1)
+-- notification_preferences.user_id → profiles.id (1:1)
+-- notification_preferences.user_id UNIQUE (1:1)
+-- All data tables have user_id → profiles.id

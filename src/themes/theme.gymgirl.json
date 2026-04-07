@@ -1,0 +1,34 @@
+{
+  "key": "gymgirl",
+  "display_name": "Gymsis",
+  "description": "Soft strength. Cute, pink, and empowering.",
+  "tokens": {
+    "bg": "#FFF0F5",
+    "surface": "#FFF5F8",
+    "surfaceSoft": "#FFE4EE",
+    "textPrimary": "#4A1A2C",
+    "textMuted": "#9D4E6A",
+    "accentPrimary": "#FF6B9D",
+    "accent2": "#FF8FAB",
+    "accent3": "#FFB6C1",
+    "accentSoft": "#FFE4EE",
+    "pearl": "#FFF5F8",
+    "roseGlow": "#FFD6E8",
+    "glass": "rgba(255, 245, 248, 0.85)",
+    "shadowSoft": "0 8px 24px rgba(255, 107, 157, 0.12)",
+    "shadowGlow": "0 0 30px rgba(255, 107, 157, 0.15)",
+    "focusRing": "rgba(255, 107, 157, 0.25)",
+    "success": "#4CAF50",
+    "gradientPink": "linear-gradient(135deg, #FF6B9D 0%, #FF8FAB 50%, #FFB6C1 100%)",
+    "gradientSoft": "linear-gradient(180deg, #FFF5F8 0%, #FFE4EE 100%)"
+  },
+  "typography": {
+    "ui": "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial",
+    "display": "Inter Rounded, 'SF Pro Rounded'"
+  },
+  "assets": {
+    "emblem": "/assets/themes/gymgirl/emblem-48.png",
+    "preview_thumbnail": "/assets/themes/gymgirl/preview.png",
+    "micro_lottie": "/assets/themes/gymgirl/micro.json"
+  }
+}

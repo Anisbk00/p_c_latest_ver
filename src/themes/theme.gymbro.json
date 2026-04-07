@@ -1,0 +1,30 @@
+{
+  "key": "gymbro",
+  "display_name": "GYMBRO",
+  "description": "BEAST MODE. Unleash the alpha. Pure testosterone energy.",
+  "tokens": {
+    "bg": "#050607",
+    "surface": "#0A0C0E",
+    "surfaceSoft": "#121517",
+    "textPrimary": "#FAFAFA",
+    "textMuted": "#9CA3AF",
+    "accentPrimary": "#EF4444",
+    "accent2": "#DC2626",
+    "accentGold": "#F59E0B",
+    "accentAmber": "#D97706",
+    "muted": "#0F1114",
+    "focusRing": "rgba(239, 68, 68, 0.32)",
+    "glass": "rgba(255, 255, 255, 0.02)",
+    "shadowHeavy": "0 16px 40px rgba(0, 0, 0, 0.5)",
+    "bloodGlow": "rgba(220, 38, 38, 0.3)",
+    "powerGlow": "rgba(245, 158, 11, 0.25)"
+  },
+  "typography": {
+    "ui": "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial",
+    "display": "Inter Tight, system-ui"
+  },
+  "assets": {
+    "preview_thumbnail": "/assets/themes/gymbro/preview.png",
+    "micro_lottie": "/assets/themes/gymbro/micro.json"
+  }
+}

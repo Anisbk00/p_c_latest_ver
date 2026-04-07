@@ -1,0 +1,26 @@
+{
+  "key": "white",
+  "display_name": "White",
+  "tokens": {
+    "bg": "#FFFFFF",
+    "bgWarm": "#FBFBFB",
+    "surface": "#FFFFFF",
+    "mutedSurface": "#F7F7F9",
+    "textPrimary": "#0F1724",
+    "textSecondary": "#6B7280",
+    "accent": "#2563EB",
+    "accent2": "#10B981",
+    "muted": "#E6E7EB",
+    "focusRing": "rgba(37,99,235,0.14)",
+    "glass": "rgba(255,255,255,0.7)",
+    "shadow1": "0 6px 20px rgba(15,23,36,0.06)"
+  },
+  "typography": {
+    "ui": "Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial",
+    "display": "Inter, system-ui"
+  },
+  "assets": {
+    "preview_thumbnail": "/assets/themes/white/preview.png",
+    "micro_lottie": "/assets/themes/white/micro.json"
+  }
+}
