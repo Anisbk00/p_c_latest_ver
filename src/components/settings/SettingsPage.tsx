@@ -142,10 +142,14 @@ function SettingsPage() {
     <div className="container max-w-4xl mx-auto py-8 px-4 pb-24">
       <div className="flex items-center gap-4 mb-8">
         <Button variant="ghost" size="icon" onClick={() => {
-          // Set flags to skip splash and return to profile tab
+          // Set flag to go to profile tab on return — router.back() triggers 'back_forward'
+          // navigation type which is already handled in page.tsx to skip splash.
+          // We keep the sessionStorage flag as a secondary guard for edge cases.
           sessionStorage.setItem('return-to-profile', 'true');
           sessionStorage.setItem('skip-splash', 'true');
-          router.push('/');
+          // Use router.back() instead of router.push('/') to avoid a full page
+          // navigation that re-initializes auth, context and all data sources.
+          router.back();
         }}>
           <ArrowLeft className="h-4 w-4" />
         </Button>

@@ -72,11 +72,18 @@ export default function RootLayout({
                 } catch(e){}
                 // Splash screen skip: check sessionStorage BEFORE React hydrates.
                 // Prevents splash flash on back-navigation from settings/profile/foods routes.
+                // Uses BOTH a CSS class AND an injected <style> tag for maximum reliability.
                 try {
                   var skipSplash = sessionStorage.getItem('return-to-profile') === 'true'
                     || sessionStorage.getItem('skip-splash') === 'true';
                   if (skipSplash) {
                     document.documentElement.classList.add('no-splash');
+                    // Inject an inline <style> tag as the strongest possible CSS guard.
+                    // This works even if globals.css hasn't loaded yet or is overridden.
+                    var s = document.createElement('style');
+                    s.id = 'splash-skip-guard';
+                    s.textContent = '[data-splash-overlay]{display:none!important;visibility:hidden!important;opacity:0!important;pointer-events:none!important;}';
+                    document.head.appendChild(s);
                   }
                 } catch(e){}
               })();

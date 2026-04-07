@@ -553,6 +553,10 @@ function ProfileHeader({
   const xpProgress = (profile.xp / profile.xpToNextLevel) * 100;
   
   const handleGoToSettings = () => {
+    // Pre-set the return flag so that when the user comes back,
+    // the CSS guard in layout.tsx can hide the splash immediately.
+    sessionStorage.setItem('return-to-profile', 'true');
+    sessionStorage.setItem('skip-splash', 'true');
     router.push('/settings');
   };
   const trajectoryIcon = profile.trajectory === "improving" 
@@ -829,7 +833,11 @@ function ProfileHeader({
             <DropdownMenuContent align="end" className="w-56">
               <DropdownMenuLabel>{t('profile.myAccount')}</DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push('/settings')}>
+              <DropdownMenuItem onClick={() => {
+                sessionStorage.setItem('return-to-profile', 'true');
+                sessionStorage.setItem('skip-splash', 'true');
+                router.push('/settings');
+              }}>
                 <Settings className="mr-2 h-4 w-4" />
                 <span>{t('settings.title')}</span>
               </DropdownMenuItem>

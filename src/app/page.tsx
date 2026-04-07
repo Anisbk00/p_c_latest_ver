@@ -287,9 +287,13 @@ const OfflineIndicator = React.memo(function OfflineIndicator({
 let __splashHasBeenShown = false;
 // Pre-check sessionStorage synchronously at module load to prevent splash flash on back-nav.
 // This runs before React hydration, preventing even a single frame of splash.
+// Checks both return-to-profile (from settings back button) and skip-splash (general flag).
 try {
-  if (typeof window !== 'undefined' && sessionStorage.getItem('return-to-profile') === 'true') {
-    __splashHasBeenShown = true;
+  if (typeof window !== 'undefined') {
+    if (sessionStorage.getItem('return-to-profile') === 'true' ||
+        sessionStorage.getItem('skip-splash') === 'true') {
+      __splashHasBeenShown = true;
+    }
   }
 } catch {}
 
@@ -310,6 +314,10 @@ function ProgressCompanionHome() {
   const [splashVisible, setSplashVisible] = useState(!__splashHasBeenShown);
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
   
+  // Ref-based splash skip guard — survives re-renders, double effects, and state reset.
+  // Once set to true, NOTHING can re-enable the splash for this component lifecycle.
+  const splashSkippedRef = useRef(__splashHasBeenShown);
+  
   // Check if returning from settings - go to profile tab
   const [activeTab, setActiveTab] = useState('home');
   const [coachOpen, setCoachOpen] = useState(false);
@@ -318,30 +326,52 @@ function ProgressCompanionHome() {
   
   // Initialize splash state on client mount ONLY
   useEffect(() => {
-    // Check if this is internal navigation from settings
+    // ═══ CRITICAL: Check if this is internal navigation from settings ═══
+    // This must run BEFORE any other splash logic to prevent flash.
+    // The ref guard ensures that even if this effect runs multiple times
+    // (React Strict Mode), the splash can never be re-enabled.
     const returnToProfile = sessionStorage.getItem('return-to-profile');
-    if (returnToProfile === 'true') {
+    const skipSplashFlag = sessionStorage.getItem('skip-splash');
+    
+    if (returnToProfile === 'true' || skipSplashFlag === 'true') {
+      // Immediately lock splash skip — no future effect can undo this
+      splashSkippedRef.current = true;
+      __splashHasBeenShown = true;
+      // Clear all splash-related sessionStorage flags
       sessionStorage.removeItem('return-to-profile');
       sessionStorage.removeItem('skip-splash');
       document.documentElement.classList.remove('no-splash');
-      setActiveTab('profile');
-      // Skip splash for internal navigation
+      // Remove the inline <style> guard injected by layout.tsx — React now controls visibility
+      try { document.getElementById('splash-skip-guard')?.remove(); } catch {}
+      // Switch to profile tab if returning from settings
+      if (returnToProfile === 'true') {
+        setActiveTab('profile');
+      }
+      // Force splash off — use flushSync-like batching by setting state directly
       setSkipSplash(true);
       setSplashVisible(false);
-      __splashHasBeenShown = true;
+      // Do NOT check navigation type — splash is permanently disabled for this mount
+      return;
+    }
+    
+    // If the ref guard is already set (from module-level check), skip everything
+    if (splashSkippedRef.current) {
+      setSkipSplash(true);
+      setSplashVisible(false);
       return;
     }
     
     // Clean up no-splash class if present (CSS guard handled initial paint, React takes over)
     document.documentElement.classList.remove('no-splash');
     
-    // Check navigation type
+    // Check navigation type — ONLY for non-skip scenarios
     try {
       const navEntries = performance.getEntriesByType('navigation');
       const navEntry = navEntries[0] as PerformanceNavigationTiming | undefined;
       const navigationType = navEntry?.type;
       
       // 'reload' = page refresh, 'navigate' = fresh navigation
+      // 'back_forward' = browser back/forward — skip splash
       const isFreshLoad = navigationType === 'reload' || navigationType === 'navigate';
       
       if (isFreshLoad) {
@@ -351,15 +381,16 @@ function ProgressCompanionHome() {
         setSkipSplash(false);
         setSplashVisible(true);
       } else {
-        // Back/forward or other - check module flag
-        if (__splashHasBeenShown) {
-          setSkipSplash(true);
-          setSplashVisible(false);
-        }
+        // Back/forward or other - always skip
+        splashSkippedRef.current = true;
+        __splashHasBeenShown = true;
+        setSkipSplash(true);
+        setSplashVisible(false);
       }
     } catch {
       // Fallback: check module flag
       if (__splashHasBeenShown) {
+        splashSkippedRef.current = true;
         setSkipSplash(true);
         setSplashVisible(false);
       }
@@ -368,7 +399,7 @@ function ProgressCompanionHome() {
   
   // Start minimum time timer (2 seconds — reduced for faster perceived load)
   useEffect(() => {
-    if (skipSplash) return;
+    if (skipSplash || splashSkippedRef.current) return;
     
     const timer = setTimeout(() => {
       setMinTimeElapsed(true);
@@ -994,8 +1025,8 @@ function ProgressCompanionHome() {
   
   // Hide splash when BOTH: app is ready AND minimum time (4s) has elapsed
   useEffect(() => {
-    // If already shown splash this session, don't show again
-    if (skipSplash) return;
+    // If splash was skipped (back nav, return from settings), never show it
+    if (skipSplash || splashSkippedRef.current) return;
     
     // Wait until BOTH conditions are met
     if (isAppReady && minTimeElapsed && splashVisible) {
@@ -1012,12 +1043,13 @@ function ProgressCompanionHome() {
   
   // Safety timeout - max 15 seconds to prevent infinite splash
   useEffect(() => {
-    if (skipSplash || !splashVisible) return;
+    if (skipSplash || splashSkippedRef.current || !splashVisible) return;
     
     const timer = setTimeout(() => {
       if (splashVisible) {
         setSplashVisible(false);
         __splashHasBeenShown = true;
+        splashSkippedRef.current = true;
         sessionStorage.setItem('splash-shown', 'true');
       }
     }, 15000);
