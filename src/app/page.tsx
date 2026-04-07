@@ -285,6 +285,13 @@ const OfflineIndicator = React.memo(function OfflineIndicator({
 // This survives component remounts and prevents splash on back navigation
 // ═══════════════════════════════════════════════════════════════
 let __splashHasBeenShown = false;
+// Pre-check sessionStorage synchronously at module load to prevent splash flash on back-nav.
+// This runs before React hydration, preventing even a single frame of splash.
+try {
+  if (typeof window !== 'undefined' && sessionStorage.getItem('return-to-profile') === 'true') {
+    __splashHasBeenShown = true;
+  }
+} catch {}
 
 // ═══════════════════════════════════════════════════════════════
 // PREMIUM HOME SCREEN - Apple-Level Design
@@ -298,8 +305,9 @@ function ProgressCompanionHome() {
   // SPLASH STATE - Initialize properly on client only
   // On server: always show splash (splashVisible=true, skipSplash=false)
   // On client: check if we should skip based on navigation type
-  const [skipSplash, setSkipSplash] = useState(false);
-  const [splashVisible, setSplashVisible] = useState(true);
+  // Use module-level flag as initial state to prevent flash of splash on back-nav
+  const [skipSplash, setSkipSplash] = useState(__splashHasBeenShown);
+  const [splashVisible, setSplashVisible] = useState(!__splashHasBeenShown);
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
   
   // Check if returning from settings - go to profile tab
@@ -353,13 +361,13 @@ function ProgressCompanionHome() {
     }
   }, []); // Run once on mount
   
-  // Start minimum time timer (4 seconds)
+  // Start minimum time timer (2 seconds — reduced for faster perceived load)
   useEffect(() => {
     if (skipSplash) return;
     
     const timer = setTimeout(() => {
       setMinTimeElapsed(true);
-    }, 4000); // 4 seconds minimum display
+    }, 2000); // 2 seconds minimum display (reduced from 4s)
     
     return () => clearTimeout(timer);
   }, [skipSplash]);
@@ -970,8 +978,10 @@ function ProgressCompanionHome() {
     analyticsLoading
   );
   
-  // App is fully ready when: authenticated + all data loaded OR not authenticated (show auth screen)
-  const isAppReady = !isAuthenticated || (!authLoading && !isDataLoading);
+  // Core data ready — enough to show the app without splash (profile, settings, targets)
+  // Full data (workouts, nutrition, analytics) loads progressively in tabs
+  const isCoreDataReady = isAuthenticated && user?.id && userSettings && targets;
+  const isAppReady = !isAuthenticated || (!authLoading && (isCoreDataReady || !isDataLoading));
   
   // ═══════════════════════════════════════════════════════════════
   // SPLASH SCREEN LOGIC - Wait for app ready + minimum 4 seconds
