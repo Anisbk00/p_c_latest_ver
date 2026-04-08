@@ -553,3 +553,37 @@ Stage Summary:
 - Auto-calculation uses Mifflin-St Jeor equation with goal-specific partitioning
 - Full propagation: Edit Profile → API → goals table → app-context → Home/Foods/Analytics
 - 3 files changed, 273 insertions, 10 deletions
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Clone repo p_c_latest_ver, verify credentials, mobile build, codebase scan, run preview
+
+Work Log:
+- Fetched latest from https://github.com/Anisbk00/p_c_latest_ver.git (commit 2ccbfd4)
+- Verified .env already contains all correct credentials:
+  - NEXT_PUBLIC_SUPABASE_URL=https://ygzxxmyrybtvszjlilxg.supabase.co
+  - NEXT_PUBLIC_SUPABASE_ANON_KEY (anon JWT - matches user-provided)
+  - SUPABASE_SERVICE_ROLE_KEY (service role JWT - matches user-provided)
+  - DATABASE_URL with password 43YqynD2D50sG9pq
+  - SUPABASE_ACCESS_TOKEN=sbp_9fe3b7586cd18254384de2425a34763a9f13d700
+  - EXPO_ACCESS_TOKEN=poDj477qmYh4IT9TberDdWXrEJZu9HVoPIKZ3d9G
+- Verified eas.json has correct Supabase URL + anon key in all 3 build profiles
+- Verified app.json has correct EAS projectId: 4c225a1f-48a4-4cb3-bd3d-58f1b0a18057
+- Ran bun install (1427 packages, no changes needed)
+- Tested Supabase connection: auth health endpoint returned v2.188.1 (GoTrue)
+- Ran mobile build (NEXT_PUBLIC_MOBILE_BUILD=true): SUCCESS
+  - API routes backed up before build, restored after
+  - 7 static pages generated: /, /_not-found, /auth/callback, /foods, /profile, /settings
+- Started dev server on port 3000 (Next.js 16.1.3 + Turbopack)
+- Performed comprehensive codebase scan via Explore agent
+
+Stage Summary:
+- ✅ Repo synced to latest commit (2ccbfd4)
+- ✅ All Supabase credentials correctly configured in .env, eas.json
+- ✅ Expo/EAS project linked (ID: 4c225a1f-48a4-4cb3-bd3d-58f1b0a18057)
+- ✅ Supabase connection verified (auth health: GoTrue v2.188.1)
+- ✅ Mobile build succeeds — 7 static pages generated
+- ✅ Dev server running on port 3000
+- ✅ Full codebase scan completed
+- Note: sb_publishable_HE41cloB31RR4brmJZg42A_dXdD7wV2 not used in codebase (anon JWT key is used instead)
