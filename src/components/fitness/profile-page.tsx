@@ -3597,6 +3597,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
         open={uploadSheetOpen}
         onClose={() => setUploadSheetOpen(false)}
         onUploadComplete={handleUploadComplete}
+        heightCm={data?.userProfile?.heightCm}
       />
 
       {/* Goal Adjustment Sheet */}
