@@ -1355,7 +1355,9 @@ function ProgressCompanionHome() {
             <SheetHeader className="sr-only">
               <SheetTitle>{t('settings.title')}</SheetTitle>
             </SheetHeader>
-            <SettingsSheet />
+            <ErrorBoundary>
+              <SettingsSheet />
+            </ErrorBoundary>
           </SheetContent>
         </Sheet>
       </Suspense>

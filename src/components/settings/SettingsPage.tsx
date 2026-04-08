@@ -34,7 +34,7 @@ import { useBiometricAuth } from "@/hooks/use-biometric-auth";
 // Sub-components
 import { AppearanceSettings } from "./AppearanceSettings";
 
-function SettingsPage() {
+export function SettingsPage() {
   const { settings, updateSettings } = useSettings();
   const { setTheme } = useTheme();
   const [activeTab, setActiveTab] = useState("appearance");
@@ -66,15 +66,19 @@ function SettingsPage() {
     setBiometricLoading(true);
     try {
       if (enabled) {
-        const result = await enableBiometric();
-        if (result.success) {
+        const success = await enableBiometric();
+        if (success) {
           toast.success(t('settings.security.biometricEnabled'));
         } else {
-          toast.error(result.error || t('settings.security.biometricFailed'));
+          toast.error(t('settings.security.biometricFailed'));
         }
       } else {
-        await disableBiometric();
-        toast.success(t('settings.security.biometricDisabled'));
+        const success = await disableBiometric();
+        if (success) {
+          toast.success(t('settings.security.biometricDisabled'));
+        } else {
+          toast.error(t('settings.security.biometricFailed'));
+        }
       }
     } catch (error: any) {
       toast.error(error?.message || t('settings.security.biometricFailed'));
