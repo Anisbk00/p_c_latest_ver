@@ -59,6 +59,7 @@ import {
   Fingerprint,
   Shield,
   ShieldOff,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,6 +67,7 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -145,6 +147,9 @@ export interface ProfileData {
   };
   settings?: {
     customCalorieTarget?: number | null;
+    customProteinTarget?: number | null;
+    customCarbsTarget?: number | null;
+    customFatTarget?: number | null;
   };
   bodyComposition?: {
     id: string;
@@ -361,6 +366,15 @@ function useProfileData() {
         settings: {
           customCalorieTarget: Number(result.settings?.customCalorieTarget ?? NaN) > 0
             ? Math.round(Number(result.settings?.customCalorieTarget))
+            : null,
+          customProteinTarget: Number(result.settings?.customProteinTarget ?? NaN) > 0
+            ? Math.round(Number(result.settings?.customProteinTarget))
+            : null,
+          customCarbsTarget: Number(result.settings?.customCarbsTarget ?? NaN) > 0
+            ? Math.round(Number(result.settings?.customCarbsTarget))
+            : null,
+          customFatTarget: Number(result.settings?.customFatTarget ?? NaN) > 0
+            ? Math.round(Number(result.settings?.customFatTarget))
             : null,
         },
         bodyComposition: null,
@@ -2210,6 +2224,9 @@ interface EditableProfileData {
   currentWeight: number | null;
   weightUnit: string;
   customCalorieTarget: number | null;
+  customProteinTarget: number | null;
+  customCarbsTarget: number | null;
+  customFatTarget: number | null;
 }
 
 // Edit Profile Form
@@ -2217,6 +2234,7 @@ function EditProfileForm({
   profile,
   userProfile,
   stats,
+  settings,
   onSave,
   onCancel,
   onAvatarChange,
@@ -2224,6 +2242,7 @@ function EditProfileForm({
   profile: ProfileData["profile"];
   userProfile?: EditableProfileData;
   stats?: ProfileData["stats"];
+  settings?: ProfileData["settings"];
   onSave: (updates: EditableProfileData) => Promise<void>;
   onCancel: () => void;
   onAvatarChange?: () => void;
@@ -2244,6 +2263,18 @@ function EditProfileForm({
   const [targetWeightKg, setTargetWeightKg] = useState(userProfile?.targetWeightKg?.toString() ?? '');
   const [customCalorieTarget, setCustomCalorieTarget] = useState(
     userProfile?.customCalorieTarget ? String(userProfile.customCalorieTarget) : ''
+  );
+  const [customProteinTarget, setCustomProteinTarget] = useState(
+    settings?.customProteinTarget ? String(settings.customProteinTarget) : ''
+  );
+  const [customCarbsTarget, setCustomCarbsTarget] = useState(
+    settings?.customCarbsTarget ? String(settings.customCarbsTarget) : ''
+  );
+  const [customFatTarget, setCustomFatTarget] = useState(
+    settings?.customFatTarget ? String(settings.customFatTarget) : ''
+  );
+  const [macrosExpanded, setMacrosExpanded] = useState(
+    !!(settings?.customProteinTarget || settings?.customCarbsTarget || settings?.customFatTarget)
   );
   const [isSaving, setIsSaving] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -2388,6 +2419,9 @@ function EditProfileForm({
         currentWeight: currentWeightNumber,
         weightUnit,
         customCalorieTarget: customCalorieTarget ? parseFloat(customCalorieTarget) : null,
+        customProteinTarget: customProteinTarget ? parseFloat(customProteinTarget) : null,
+        customCarbsTarget: customCarbsTarget ? parseFloat(customCarbsTarget) : null,
+        customFatTarget: customFatTarget ? parseFloat(customFatTarget) : null,
       });
     } finally {
       setIsSaving(false);
@@ -2585,9 +2619,16 @@ function EditProfileForm({
         )}
       </div>
 
-      {/* Custom Daily Calories */}
-      <div className="space-y-2">
-        <Label htmlFor="customCalories">Custom Daily Calories (optional)</Label>
+      {/* ═══ CUSTOM CALORIES & MACROS ═══ */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <Label htmlFor="customCalories" className="text-sm font-semibold">
+            Daily Calories
+          </Label>
+          <Badge variant="outline" className="text-[10px] font-normal px-2 py-0">
+            {customCalorieTarget ? 'Custom' : 'Auto-calc'}
+          </Badge>
+        </div>
         <Input
           id="customCalories"
           type="number"
@@ -2596,9 +2637,176 @@ function EditProfileForm({
           placeholder="Leave empty for smart auto-calculation"
           className="h-12"
         />
-        <p className="text-xs text-muted-foreground">
-          If set, this overrides automatic calorie calculation.
+        <p className="text-[11px] text-muted-foreground leading-relaxed">
+          Leave empty for AI-calculated calories based on your profile, activity & goal.
         </p>
+      </div>
+
+      {/* ═══ MACRO TARGETS — Expandable Premium Section ═══ */}
+      <div className="rounded-2xl border border-border/60 bg-muted/30 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setMacrosExpanded(!macrosExpanded)}
+          className="w-full flex items-center justify-between p-4 text-left hover:bg-muted/50 transition-colors"
+        >
+          <div className="flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-linear-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center">
+              <Target className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            </div>
+            <div>
+              <span className="text-sm font-semibold">Custom Macro Targets</span>
+              <p className="text-[10px] text-muted-foreground mt-0.5">
+                Override auto-calculated protein, carbs & fat
+              </p>
+            </div>
+          </div>
+          <motion.div
+            animate={{ rotate: macrosExpanded ? 180 : 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          </motion.div>
+        </button>
+
+        <AnimatePresence>
+          {macrosExpanded && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: 'auto', opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="overflow-hidden"
+            >
+              <div className="px-4 pb-4 space-y-3">
+                <Separator />
+                
+                {/* Info banner */}
+                <div className="flex items-start gap-2 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/10">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                  <p className="text-[11px] text-muted-foreground leading-relaxed">
+                    Leave any field empty for doctor-level auto-calculation based on your body metrics, activity level & goal. Our algorithm uses the Mifflin-St Jeor equation with goal-specific macronutrient partitioning.
+                  </p>
+                </div>
+
+                {/* Protein */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="customProtein" className="text-xs font-medium flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-rose-500" />
+                      Protein (g)
+                    </Label>
+                    <span className="text-[10px] text-muted-foreground">
+                      {primaryGoal === 'fat_loss' ? 'High protein preserves muscle' : 
+                       primaryGoal === 'muscle_gain' ? 'Critical for muscle synthesis' :
+                       primaryGoal === 'recomposition' ? 'High for simultaneous goals' :
+                       'Supports lean body mass'}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      id="customProtein"
+                      type="number"
+                      value={customProteinTarget}
+                      onChange={(e) => setCustomProteinTarget(e.target.value)}
+                      placeholder="Auto-calc (e.g. 150g)"
+                      className="h-11 pr-16 text-sm"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">g/day</span>
+                  </div>
+                </div>
+
+                {/* Carbs */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="customCarbs" className="text-xs font-medium flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-blue-500" />
+                      Carbs (g)
+                    </Label>
+                    <span className="text-[10px] text-muted-foreground">
+                      {primaryGoal === 'fat_loss' ? 'Lower carbs accelerate fat loss' :
+                       primaryGoal === 'muscle_gain' ? 'Fuels intense training sessions' :
+                       'Primary energy source'}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      id="customCarbs"
+                      type="number"
+                      value={customCarbsTarget}
+                      onChange={(e) => setCustomCarbsTarget(e.target.value)}
+                      placeholder="Auto-calc (e.g. 250g)"
+                      className="h-11 pr-16 text-sm"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">g/day</span>
+                  </div>
+                </div>
+
+                {/* Fat */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="customFat" className="text-xs font-medium flex items-center gap-1.5">
+                      <div className="w-2 h-2 rounded-full bg-amber-500" />
+                      Fat (g)
+                    </Label>
+                    <span className="text-[10px] text-muted-foreground">
+                      {primaryGoal === 'fat_loss' ? 'Essential for hormone health' :
+                       primaryGoal === 'muscle_gain' ? 'Supports testosterone & recovery' :
+                       'Essential fatty acids & vitamins'}
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      id="customFat"
+                      type="number"
+                      value={customFatTarget}
+                      onChange={(e) => setCustomFatTarget(e.target.value)}
+                      placeholder="Auto-calc (e.g. 65g)"
+                      className="h-11 pr-16 text-sm"
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground">g/day</span>
+                  </div>
+                </div>
+
+                {/* Macro ratio preview when calories set */}
+                {(customCalorieTarget || customProteinTarget || customCarbsTarget || customFatTarget) && (
+                  <div className="p-3 rounded-xl bg-muted/50 space-y-2">
+                    <p className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">Estimated Macro Split</p>
+                    <div className="flex gap-1.5 h-2 rounded-full overflow-hidden">
+                      {(() => {
+                        const cals = Number(customCalorieTarget) || 2000;
+                        const p = Number(customProteinTarget) || 150;
+                        const c = Number(customCarbsTarget) || 250;
+                        const f = Number(customFatTarget) || 65;
+                        const pCal = p * 4;
+                        const cCal = c * 4;
+                        const fCal = f * 9;
+                        const total = pCal + cCal + fCal || 1;
+                        return (
+                          <>
+                            <div className="bg-rose-500 rounded-l-full" style={{ width: `${(pCal/total)*100}%` }} />
+                            <div className="bg-blue-500" style={{ width: `${(cCal/total)*100}%` }} />
+                            <div className="bg-amber-500 rounded-r-full" style={{ width: `${(fCal/total)*100}%` }} />
+                          </>
+                        );
+                      })()}
+                    </div>
+                    <div className="flex justify-between text-[10px]">
+                      <span className="text-rose-500 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500" /> P
+                      </span>
+                      <span className="text-blue-500 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500" /> C
+                      </span>
+                      <span className="text-amber-500 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" /> F
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Actions */}
@@ -3023,6 +3231,9 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
           primaryGoal: mappedPrimaryGoal,
           targetWeightKg: updates.targetWeightKg,
           customCalorieTarget: updates.customCalorieTarget,
+          customProteinTarget: updates.customProteinTarget,
+          customCarbsTarget: updates.customCarbsTarget,
+          customFatTarget: updates.customFatTarget,
           currentWeight: updates.currentWeight,
           weightUnit: updates.weightUnit,
         }),
@@ -3457,6 +3668,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
             profile={data.profile ?? DEFAULT_PROFILE} 
             userProfile={data.userProfile}
             stats={data.stats}
+            settings={data.settings}
             onSave={handleSaveProfile}
             onCancel={() => setEditProfileOpen(false)}
             onAvatarChange={() => {

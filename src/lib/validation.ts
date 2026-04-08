@@ -260,6 +260,9 @@ export const UserProfileUpdateSchema = z.object({
   primaryGoal: z.enum(['maintenance', 'weight_loss', 'muscle_gain', 'recomposition']).optional(),
   targetWeightKg: z.number().min(20).max(500).optional(),
   customCalorieTarget: z.number().int().min(900).max(10000).nullable().optional(),
+  customProteinTarget: z.number().min(10).max(500).nullable().optional(),
+  customCarbsTarget: z.number().min(10).max(1000).nullable().optional(),
+  customFatTarget: z.number().min(5).max(500).nullable().optional(),
   currentWeight: z.number().min(20).max(500).optional(),
   weightUnit: z.enum(['kg', 'lb', 'lbs']).optional(),
 }).strict();

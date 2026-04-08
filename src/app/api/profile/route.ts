@@ -341,6 +341,7 @@ export async function PUT(request: NextRequest) {
       name, avatarUrl, coachingTone, privacyMode, timezone, locale,
       heightCm, biologicalSex, birthDate, activityLevel, fitnessLevel,
       primaryGoal, targetWeightKg, customCalorieTarget,
+      customProteinTarget, customCarbsTarget, customFatTarget,
       currentWeight, weightUnit,
     } = body
 
@@ -421,14 +422,35 @@ export async function PUT(request: NextRequest) {
     }
 
     const settingsData: Record<string, unknown> = {}
-    if (customCalorieTarget !== undefined) {
+    if (customCalorieTarget !== undefined || customProteinTarget !== undefined || customCarbsTarget !== undefined || customFatTarget !== undefined) {
       const parsedCustomCalories = customCalorieTarget === null || customCalorieTarget === ''
         ? null
         : Number(customCalorieTarget)
 
+      const parsedCustomProtein = customProteinTarget === null || customProteinTarget === undefined
+        ? null
+        : Number(customProteinTarget)
+
+      const parsedCustomCarbs = customCarbsTarget === null || customCarbsTarget === undefined
+        ? null
+        : Number(customCarbsTarget)
+
+      const parsedCustomFat = customFatTarget === null || customFatTarget === undefined
+        ? null
+        : Number(customFatTarget)
+
       settingsData.map_storage = {
         custom_calorie_target: Number.isFinite(parsedCustomCalories) && parsedCustomCalories > 900
           ? Math.round(parsedCustomCalories)
+          : null,
+        custom_protein_target_g: Number.isFinite(parsedCustomProtein) && parsedCustomProtein > 0
+          ? Math.round(parsedCustomProtein)
+          : null,
+        custom_carbs_target_g: Number.isFinite(parsedCustomCarbs) && parsedCustomCarbs > 0
+          ? Math.round(parsedCustomCarbs)
+          : null,
+        custom_fat_target_g: Number.isFinite(parsedCustomFat) && parsedCustomFat > 0
+          ? Math.round(parsedCustomFat)
           : null,
       }
     }
@@ -566,6 +588,23 @@ export async function PUT(request: NextRequest) {
               ? Math.round(storedCustomCalories)
               : null
 
+          // Resolve custom macros from request or stored settings
+          const storedCustomProtein = Number((latestSettings?.map_storage as any)?.custom_protein_target_g ?? NaN)
+          const storedCustomCarbs = Number((latestSettings?.map_storage as any)?.custom_carbs_target_g ?? NaN)
+          const storedCustomFat = Number((latestSettings?.map_storage as any)?.custom_fat_target_g ?? NaN)
+          const requestProtein = customProteinTarget === undefined ? NaN : Number(customProteinTarget)
+          const requestCarbs = customCarbsTarget === undefined ? NaN : Number(customCarbsTarget)
+          const requestFat = customFatTarget === undefined ? NaN : Number(customFatTarget)
+          const resolvedCustomProtein = Number.isFinite(requestProtein) && requestProtein > 0
+            ? Math.round(requestProtein)
+            : Number.isFinite(storedCustomProtein) && storedCustomProtein > 0 ? Math.round(storedCustomProtein) : null
+          const resolvedCustomCarbs = Number.isFinite(requestCarbs) && requestCarbs > 0
+            ? Math.round(requestCarbs)
+            : Number.isFinite(storedCustomCarbs) && storedCustomCarbs > 0 ? Math.round(storedCustomCarbs) : null
+          const resolvedCustomFat = Number.isFinite(requestFat) && requestFat > 0
+            ? Math.round(requestFat)
+            : Number.isFinite(storedCustomFat) && storedCustomFat > 0 ? Math.round(storedCustomFat) : null
+
           const input: UserProfileInput = {
             weightKg: currentWeight,
             heightCm: freshUserProfile.height_cm,
@@ -584,16 +623,16 @@ export async function PUT(request: NextRequest) {
             ? Math.round(Number(resolvedCustomCalories))
             : null
 
-          // Update goal with calculated targets
+          // Update goal with calculated targets (custom macros override auto-calculated)
           const goalData = {
             user_id: user.id,
             status: 'active',
             goal_type: input.primaryGoal,
             target_value: input.targetWeightKg || currentWeight,
             calories_target: explicitCustomCalories ?? targets.dailyCalories,
-            protein_target_g: targets.protein,
-            carbs_target_g: targets.carbs,
-            fat_target_g: targets.fat,
+            protein_target_g: resolvedCustomProtein ?? targets.protein,
+            carbs_target_g: resolvedCustomCarbs ?? targets.carbs,
+            fat_target_g: resolvedCustomFat ?? targets.fat,
             water_target_ml: targets.waterMl,
             steps_target: targets.steps,
             updated_at: new Date().toISOString()
@@ -721,6 +760,15 @@ function buildResponse(
       units: settings?.units ?? 'metric',
       customCalorieTarget: Number((settings as any)?.map_storage?.custom_calorie_target ?? NaN) > 0
         ? Math.round(Number((settings as any)?.map_storage?.custom_calorie_target))
+        : null,
+      customProteinTarget: Number((settings as any)?.map_storage?.custom_protein_target_g ?? NaN) > 0
+        ? Math.round(Number((settings as any)?.map_storage?.custom_protein_target_g))
+        : null,
+      customCarbsTarget: Number((settings as any)?.map_storage?.custom_carbs_target_g ?? NaN) > 0
+        ? Math.round(Number((settings as any)?.map_storage?.custom_carbs_target_g))
+        : null,
+      customFatTarget: Number((settings as any)?.map_storage?.custom_fat_target_g ?? NaN) > 0
+        ? Math.round(Number((settings as any)?.map_storage?.custom_fat_target_g))
         : null,
     },
     goals: goals.map(g => ({
