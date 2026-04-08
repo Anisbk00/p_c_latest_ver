@@ -519,3 +519,37 @@ Stage Summary:
 - ✅ /settings route preserved for deep-link support
 - ✅ Vercel: https://my-project-nu-three-55.vercel.app
 - ✅ GitHub: pushed to p_c_latest_ver (f7de016)
+
+---
+Task ID: 1
+Agent: main-agent
+Task: Add custom macro targets (protein, carbs, fat) to Edit Profile with premium UI and full propagation
+
+Work Log:
+- Analyzed existing nutrition system: personalized-targets.ts (Mifflin-St Jeor), goals table, app-context targets, nutrition state
+- Updated validation schema (lib/validation.ts) to accept customProteinTarget, customCarbsTarget, customFatTarget
+- Updated profile API (app/api/profile/route.ts):
+  - PUT handler now accepts and persists custom macros to user_settings.map_storage
+  - Target recalculation uses custom macros when set, falls back to auto-calculated values
+  - GET response includes custom macros from settings
+- Updated profile-page.tsx:
+  - Extended ProfileData interface with custom macros in settings
+  - Extended EditableProfileData interface with custom macro fields
+  - Added settings prop to EditProfileForm component
+  - Initialized custom macro state from settings
+  - Premium expandable macro section with:
+    - Animated disclosure (AnimatePresence)
+    - Goal-specific nutrition tips per macro
+    - Color-coded macro dots (rose=protein, blue=carbs, amber=fat)
+    - g/day unit labels
+    - Live macro ratio visualization bar
+  - handleSave and handleSaveProfile send custom macros to API
+- Verified propagation chain: settings → goals table → app-context → Home/Foods pages
+- Lint passed (0 errors, 22 pre-existing warnings)
+- Pushed to GitHub (Vercel auto-deploys via Git integration)
+
+Stage Summary:
+- Custom macro targets fully implemented with premium UI
+- Auto-calculation uses Mifflin-St Jeor equation with goal-specific partitioning
+- Full propagation: Edit Profile → API → goals table → app-context → Home/Foods/Analytics
+- 3 files changed, 273 insertions, 10 deletions
