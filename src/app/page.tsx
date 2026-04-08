@@ -400,13 +400,13 @@ function ProgressCompanionHome() {
     }
   }, []); // Run once on mount
   
-  // Start minimum time timer (2 seconds — reduced for faster perceived load)
+  // Start minimum time timer (5 seconds — allows full data gathering before revealing app)
   useEffect(() => {
     if (skipSplash || splashSkippedRef.current) return;
     
     const timer = setTimeout(() => {
       setMinTimeElapsed(true);
-    }, 2000); // 2 seconds minimum display (reduced from 4s)
+    }, 5000); // 5 seconds minimum display
     
     return () => clearTimeout(timer);
   }, [skipSplash]);
@@ -1023,10 +1023,10 @@ function ProgressCompanionHome() {
   const isAppReady = !isAuthenticated || (!authLoading && (isCoreDataReady || !isDataLoading));
   
   // ═══════════════════════════════════════════════════════════════
-  // SPLASH SCREEN LOGIC - Wait for app ready + minimum 4 seconds
+  // SPLASH SCREEN LOGIC - Wait for app ready + minimum 5 seconds
   // ═══════════════════════════════════════════════════════════════
   
-  // Hide splash when BOTH: app is ready AND minimum time (4s) has elapsed
+  // Hide splash when BOTH: app is ready AND minimum time (5s) has elapsed
   useEffect(() => {
     // If splash was skipped (back nav, return from settings), never show it
     if (skipSplash || splashSkippedRef.current) return;
