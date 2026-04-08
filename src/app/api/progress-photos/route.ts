@@ -148,7 +148,7 @@ export async function POST(request: NextRequest) {
     let filename = 'photo.jpg';
     let mimeType = 'image/jpeg';
     let sizeBytes = 0;
-    // Track metadata for response only (NOT stored in DB — no metadata column)
+    // Collect user-provided metadata (weight, notes, bodyFat, muscleMass)
     let responseData: Record<string, any> = {};
 
     if (contentType.includes('multipart/form-data')) {
@@ -193,7 +193,7 @@ export async function POST(request: NextRequest) {
         filePath = `data:${mimeType};base64,${buffer.toString('base64')}`;
       }
 
-      // Extract response-only metadata (NOT stored in DB)
+      // Extract metadata fields to store in user_files.metadata
       const weight = formData.get('weight');
       const notes = formData.get('notes');
       const bodyFat = formData.get('bodyFat');
@@ -222,8 +222,13 @@ export async function POST(request: NextRequest) {
     // ─── Insert into user_files table ───────────────────────────
     let insertResult: { data: any; error: any };
 
-    // NOTE: metadata column may not exist in production DB.
-    // Build payload without metadata first; try with metadata only if column exists.
+    // Build metadata payload — stored in user_files.metadata JSONB column
+    const fileMetadata: Record<string, any> = {};
+    if (responseData.weight) fileMetadata.weight = responseData.weight;
+    if (responseData.notes) fileMetadata.notes = responseData.notes;
+    if (responseData.bodyFat) fileMetadata.bodyFat = responseData.bodyFat;
+    if (responseData.muscleMass) fileMetadata.muscleMass = responseData.muscleMass;
+
     const insertPayloadBase: Record<string, any> = {
       user_id: user.id,
       bucket: isStorageConfigured() ? BUCKET : 'local',
@@ -234,38 +239,22 @@ export async function POST(request: NextRequest) {
       category: CATEGORY,
       entity_type: 'progress_photo',
     };
+    const withMeta = { ...insertPayloadBase, metadata: fileMetadata };
 
-    // Try insert with metadata — fall back to without if column missing
+    // Insert with metadata — NEVER silently strip metadata (weight, notes, bodyFat, muscleMass)
+    // Previous fallback stripped metadata on column errors, causing permanent data loss.
     try {
-      const fileMetadata: Record<string, any> = {};
-      if (responseData.weight) fileMetadata.weight = responseData.weight;
-      if (responseData.notes) fileMetadata.notes = responseData.notes;
-      if (responseData.bodyFat) fileMetadata.bodyFat = responseData.bodyFat;
-      if (responseData.muscleMass) fileMetadata.muscleMass = responseData.muscleMass;
-
-      const withMeta = { ...insertPayloadBase, metadata: fileMetadata };
       insertResult = await (supabase.from('user_files') as any).insert(withMeta).select().single();
-
-      // If metadata column doesn't exist, retry without it
-      if (insertResult.error?.message?.includes("metadata")) {
-        console.log('[progress-photos] metadata column missing, inserting without it');
-        insertResult = await (supabase.from('user_files') as any).insert(insertPayloadBase).select().single();
-      }
     } catch (insertErr) {
-      // Column error on catch path — retry without metadata
-      try {
-        insertResult = await (supabase.from('user_files') as any).insert(insertPayloadBase).select().single();
-      } catch (retryErr) {
-        insertResult = { data: null, error: retryErr instanceof Error ? retryErr : new Error(String(retryErr)) };
-      }
+      insertResult = { data: null, error: insertErr instanceof Error ? insertErr : new Error(String(insertErr)) };
     }
 
-    // If insert failed, try admin client fallback
+    // If insert failed, try admin client fallback (WITH metadata)
     if (insertResult.error) {
       const errMsg = insertResult.error.message || String(insertResult.error);
 
       if (errMsg.includes('row-level security') || errMsg.includes('policy') || errMsg.includes('permission')) {
-        console.warn('[progress-photos] RLS denied insert, trying admin client fallback...')
+        console.warn('[progress-photos] RLS denied insert, trying admin client fallback (with metadata)...')
         const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
         const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 
@@ -275,7 +264,8 @@ export async function POST(request: NextRequest) {
             const adminClient = createClient(supabaseUrl, serviceRoleKey, {
               auth: { autoRefreshToken: false, persistSession: false },
             });
-            const adminResult = await (adminClient.from('user_files') as any).insert(insertPayloadBase).select().single();
+            // Admin bypasses RLS — insert WITH metadata preserved
+            const adminResult = await (adminClient.from('user_files') as any).insert(withMeta).select().single();
             if (!adminResult.error) {
               insertResult = adminResult;
             } else {

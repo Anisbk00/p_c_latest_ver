@@ -587,3 +587,35 @@ Stage Summary:
 - ✅ Dev server running on port 3000
 - ✅ Full codebase scan completed
 - Note: sb_publishable_HE41cloB31RR4brmJZg42A_dXdD7wV2 not used in codebase (anon JWT key is used instead)
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix progress photo weight not saved + BMI not showing in transformation archive
+
+Work Log:
+- Traced complete data flow: upload → POST handler → DB insert → GET handler → display
+- Verified DB state: 5 photos total, 4 have empty metadata {}, 1 has {weight: 90, notes: "lknlknk"}
+- Root cause: POST handler had "graceful fallback" that silently stripped ALL metadata when insert failed
+  - Line 249: if error.message.includes("metadata") → retry WITHOUT metadata (weight/notes/bodyFat lost)
+  - Line 253-259: catch path also stripped metadata
+  - Line 283-285: admin fallback path also stripped metadata
+  - These fallbacks were added when metadata column was missing, but they caused permanent data loss
+  - The 4 old photos were uploaded during that period — weight data is irrecoverable
+- The metadata column now EXISTS and works (latest photo has weight: 90 in DB)
+
+Fix Applied (1 file: src/app/api/progress-photos/route.ts):
+- REMOVED: Silent metadata-stripping fallback on initial insert (lines 246-259)
+- REMOVED: Silent metadata-stripping fallback on admin insert (lines 278-285)
+- INSERT now ALWAYS includes metadata — if it fails, request fails with clear error (no silent data loss)
+- Admin RLS fallback preserved but WITHOUT metadata-stripping sub-fallback
+- Lint: 0 errors, 22 pre-existing warnings unchanged
+- Deployed to Vercel production
+
+Stage Summary:
+- Root cause: Silent fallback stripped metadata (weight, notes, bodyFat, muscleMass) on insert failure
+- 4 old photos have irrecoverable empty metadata (data loss from previous sessions)
+- New uploads will NEVER silently lose metadata — insert either succeeds with data or fails visibly
+- BMI requires both photo.weight AND user height (heightCm >= 100) to display
+- Zero UI/UX changes — purely backend data integrity fix
+- Mobile (Capacitor): Same apiFetch path → same fix applies

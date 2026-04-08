@@ -786,21 +786,19 @@ function buildResponse(
     })),
     badges: [],
     progressPhotos: progressPhotos.map(p => {
-      // NOTE: Production user_files table has NO metadata column.
-      // Weight/bodyFat/notes come from body_metrics table via AI analysis.
-      // Use pre-resolved signed URL (_resolvedImageUrl) if available.
+      const meta = p.metadata && typeof p.metadata === 'object' ? p.metadata : {};
       return {
         id: p.id,
         capturedAt: p.created_at,
         imageUrl: (p as any)._resolvedImageUrl ?? (p.path ? getPublicUrl(p.path as string, 'progress-photos') : null),
         thumbnailUrl: null,
-        weight: null,
-        notes: null,
-        bodyFat: null,
-        muscleMass: null,
-        analysisSource: null,
-        analysisConfidence: null,
-        changeZones: null,
+        weight: meta.weight ?? null,
+        notes: meta.notes ?? null,
+        bodyFat: meta.bodyFat ?? null,
+        muscleMass: meta.muscleMass ?? null,
+        analysisSource: meta.analysisSource ?? null,
+        analysisConfidence: meta.analysisConfidence ?? null,
+        changeZones: meta.changeZones ?? null,
       };
     }),
     experiments: experiments.map(e => {
