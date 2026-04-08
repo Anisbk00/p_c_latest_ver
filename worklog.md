@@ -485,3 +485,37 @@ Stage Summary:
   3. Fallback: Supabase auto-refresh on TOKEN_REFRESHED event
   4. Failure: Clean sign-out with offline cache clearing
 - Mobile (Capacitor): All changes apply to WebView context
+
+---
+Task ID: 4
+Agent: Main Architect
+Task: Fix profile ↔ settings full page reload — premium in-app navigation
+
+Work Log:
+- Root cause: Settings was a separate Next.js route (/settings). router.push() caused full page navigation — unmounting entire React tree, triggering splash screen, re-fetching all data.
+- Solution: Embedded SettingsPage as a slide-in Sheet within the main SPA. No route change. No unmount.
+
+Changes (4 files):
+1. src/app/page.tsx
+   - Added settingsOpen state + SettingsSheet lazy import
+   - Added Sheet component wrapping SettingsPage (right-side, full-height mobile, max-w-lg desktop)
+   - Passed onOpenSettings prop to ProfilePage
+
+2. src/components/fitness/profile-page.tsx
+   - Added onOpenSettings prop to ProfilePage + ProfileHeader
+   - Replaced router.push('/settings') with onOpenSettings?.() (2 locations)
+   - Removed sessionStorage flags (no longer needed)
+
+3. src/components/settings/SettingsPage.tsx
+   - Removed back arrow button (Sheet close handles it)
+   - Removed header h1/subtitle (SheetHeader handles it)
+   - Removed router.push('/') from signOut and deleteAccount
+   - Cleaned up unused imports (useRouter, Link, ArrowLeft)
+
+Stage Summary:
+- ✅ Settings opens as smooth slide-in Sheet — zero page reload
+- ✅ State preserved — no data re-fetch, no splash screen
+- ✅ Mobile (Capacitor): Sheet works natively in WebView
+- ✅ /settings route preserved for deep-link support
+- ✅ Vercel: https://my-project-nu-three-55.vercel.app
+- ✅ GitHub: pushed to p_c_latest_ver (f7de016)
