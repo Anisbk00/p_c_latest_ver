@@ -1471,7 +1471,6 @@ function TransformationArchive({
                       <img
                         src={photo.imageUrl}
                         alt="Progress photo"
-                        loading="lazy"
                         className={cn(
                           "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
                           isLoaded ? "opacity-100" : "opacity-0"
@@ -2054,11 +2053,13 @@ function PhotoDetailSheet({
   onClose,
   photo,
   onDelete,
+  heightCm,
 }: {
   open: boolean;
   onClose: () => void;
   photo: ProfileData["progressPhotos"][0] | null;
   onDelete?: (photoId: string) => void;
+  heightCm?: number | null;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
 
@@ -2134,6 +2135,82 @@ function PhotoDetailSheet({
               <p className="font-semibold">{photo.weight ? `${photo.weight} kg` : "-- kg"}</p>
             </div>
           </div>
+
+          {/* BMI Indicator */}
+          {photo.weight && heightCm && heightCm >= 100 && (() => {
+            const bmi = photo.weight! / ((heightCm / 100) ** 2);
+            const bmiRounded = Math.round(bmi * 10) / 10;
+            let category: string, colorClass: string, bgClass: string, dotClass: string;
+            if (bmi < 16) {
+              category = 'Severely Underweight';
+              colorClass = 'text-blue-600 dark:text-blue-400';
+              bgClass = 'bg-blue-500/10 border-blue-500/20';
+              dotClass = 'bg-blue-500';
+            } else if (bmi < 18.5) {
+              category = 'Underweight';
+              colorClass = 'text-sky-600 dark:text-sky-400';
+              bgClass = 'bg-sky-500/10 border-sky-500/20';
+              dotClass = 'bg-sky-500';
+            } else if (bmi < 25) {
+              category = 'Normal Weight';
+              colorClass = 'text-emerald-600 dark:text-emerald-400';
+              bgClass = 'bg-emerald-500/10 border-emerald-500/20';
+              dotClass = 'bg-emerald-500';
+            } else if (bmi < 30) {
+              category = 'Overweight';
+              colorClass = 'text-amber-600 dark:text-amber-400';
+              bgClass = 'bg-amber-500/10 border-amber-500/20';
+              dotClass = 'bg-amber-500';
+            } else if (bmi < 35) {
+              category = 'Obese (Class I)';
+              colorClass = 'text-orange-600 dark:text-orange-400';
+              bgClass = 'bg-orange-500/10 border-orange-500/20';
+              dotClass = 'bg-orange-500';
+            } else if (bmi < 40) {
+              category = 'Obese (Class II)';
+              colorClass = 'text-red-500 dark:text-red-400';
+              bgClass = 'bg-red-500/10 border-red-500/20';
+              dotClass = 'bg-red-500';
+            } else {
+              category = 'Obese (Class III)';
+              colorClass = 'text-red-700 dark:text-red-500';
+              bgClass = 'bg-red-600/10 border-red-500/30';
+              dotClass = 'bg-red-600';
+            }
+            const barPos = Math.min(100, Math.max(0, ((bmi - 10) / 40) * 100));
+            return (
+              <div className={cn("p-4 rounded-xl border", bgClass)}>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className={cn("w-2 h-2 rounded-full", dotClass)} />
+                    <span className={cn("text-sm font-bold", colorClass)}>BMI {bmiRounded}</span>
+                  </div>
+                  <span className={cn("text-xs font-medium", colorClass)}>{category}</span>
+                </div>
+                <div className="relative h-2 rounded-full overflow-hidden bg-white/30 dark:bg-black/20">
+                  <div className="absolute inset-0 flex">
+                    <div className="flex-1 bg-blue-400" />
+                    <div className="flex-1 bg-sky-400" />
+                    <div className="flex-[2] bg-emerald-400" />
+                    <div className="flex-1 bg-amber-400" />
+                    <div className="flex-1 bg-orange-400" />
+                    <div className="flex-1 bg-red-500" />
+                    <div className="flex-1 bg-red-700" />
+                  </div>
+                  <div
+                    className="absolute top-1/2 -translate-y-1/2 w-4 h-4 rounded-full border-2 border-white dark:border-gray-900 shadow-sm"
+                    style={{ left: `calc(${barPos}% - 8px)` }}
+                  />
+                </div>
+                <div className="flex justify-between mt-1">
+                  <span className="text-[9px] text-muted-foreground/50">10</span>
+                  <span className="text-[9px] text-muted-foreground/50">25</span>
+                  <span className="text-[9px] text-muted-foreground/50">40</span>
+                  <span className="text-[9px] text-muted-foreground/50">50</span>
+                </div>
+              </div>
+            );
+          })()}
 
           {/* AI Body Composition Insights */}
           {photo.bodyFat && (
@@ -3590,6 +3667,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
         onClose={() => setPhotoSheetOpen(false)}
         photo={selectedPhoto}
         onDelete={handleDeletePhoto}
+        heightCm={data?.userProfile?.heightCm}
       />
 
       {/* Progress Photo Upload Sheet */}

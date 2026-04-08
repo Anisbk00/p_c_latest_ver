@@ -7,11 +7,11 @@
  * Uses user_files table with category = 'progress_photo'
  * Storage bucket: 'progress-photos'
  *
- * PRODUCTION SCHEMA (user_files) — NO metadata column:
+ * PRODUCTION SCHEMA (user_files):
  *   id, user_id, bucket, path, filename, mime_type, size_bytes,
- *   category, entity_type, entity_id, created_at, updated_at
+ *   category, entity_type, entity_id, metadata (JSONB), created_at, updated_at
  *
- * Weight/bodyFat/notes are stored via body_metrics table, NOT user_files.
+ * Weight/bodyFat/notes/muscleMass are stored in metadata JSONB column.
  *
  * Falls back to base64 storage when Supabase storage is not configured
  */
@@ -67,22 +67,25 @@ export async function GET(_request: NextRequest) {
     }
 
     // Generate image URLs — use signed URLs for private buckets, public URL for data: prefix
-    const photos = await Promise.all((data ?? []).map(async (p) => ({
-      id: p.id,
-      capturedAt: p.created_at,
-      imageUrl: await resolveImageUrl(supabase, p.path),
-      thumbnailUrl: null,
-      filename: p.filename,
-      mimeType: p.mime_type,
-      sizeBytes: p.size_bytes,
-      weight: null,
-      notes: null,
-      bodyFat: null,
-      muscleMass: null,
-      analysisSource: null,
-      analysisConfidence: null,
-      changeZones: null,
-    })));
+    const photos = await Promise.all((data ?? []).map(async (p) => {
+      const meta = p.metadata && typeof p.metadata === 'object' ? p.metadata : {};
+      return {
+        id: p.id,
+        capturedAt: p.created_at,
+        imageUrl: await resolveImageUrl(supabase, p.path),
+        thumbnailUrl: null,
+        filename: p.filename,
+        mimeType: p.mime_type,
+        sizeBytes: p.size_bytes,
+        weight: meta.weight ?? null,
+        notes: meta.notes ?? null,
+        bodyFat: meta.bodyFat ?? null,
+        muscleMass: meta.muscleMass ?? null,
+        analysisSource: meta.analysisSource ?? null,
+        analysisConfidence: meta.analysisConfidence ?? null,
+        changeZones: meta.changeZones ?? null,
+      };
+    }));
 
     return NextResponse.json({ photos })
   } catch (err) {
@@ -217,8 +220,14 @@ export async function POST(request: NextRequest) {
     }
 
     // ─── Insert into user_files table ───────────────────────────
-    // PRODUCTION SCHEMA: NO metadata column
     let insertResult: { data: any; error: any };
+
+    // Build metadata payload from form fields
+    const fileMetadata: Record<string, any> = {};
+    if (responseData.weight) fileMetadata.weight = responseData.weight;
+    if (responseData.notes) fileMetadata.notes = responseData.notes;
+    if (responseData.bodyFat) fileMetadata.bodyFat = responseData.bodyFat;
+    if (responseData.muscleMass) fileMetadata.muscleMass = responseData.muscleMass;
 
     const insertPayload: Record<string, any> = {
       user_id: user.id,
@@ -229,6 +238,7 @@ export async function POST(request: NextRequest) {
       size_bytes: sizeBytes,
       category: CATEGORY,
       entity_type: 'progress_photo',
+      metadata: Object.keys(fileMetadata).length > 0 ? fileMetadata : {},
     };
 
     try {
