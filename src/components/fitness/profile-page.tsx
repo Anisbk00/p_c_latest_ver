@@ -540,11 +540,13 @@ function ProfileHeader({
   profile,
   stats,
   onEditProfile,
+  onOpenSettings,
   t,
 }: {
   profile: ProfileData["profile"];
   stats: ProfileData["stats"];
   onEditProfile: () => void;
+  onOpenSettings?: () => void;
   t: (key: string) => string;
 }) {
   const { signOut } = useSupabaseAuth();
@@ -553,11 +555,7 @@ function ProfileHeader({
   const xpProgress = (profile.xp / profile.xpToNextLevel) * 100;
   
   const handleGoToSettings = () => {
-    // Pre-set the return flag so that when the user comes back,
-    // the CSS guard in layout.tsx can hide the splash immediately.
-    sessionStorage.setItem('return-to-profile', 'true');
-    sessionStorage.setItem('skip-splash', 'true');
-    router.push('/settings');
+    onOpenSettings?.();
   };
   const trajectoryIcon = profile.trajectory === "improving" 
     ? <TrendingUp className="w-3 h-3" />
@@ -834,9 +832,7 @@ function ProfileHeader({
               <DropdownMenuLabel>{t('profile.myAccount')}</DropdownMenuLabel>
               <DropdownMenuSeparator />
               <DropdownMenuItem onClick={() => {
-                sessionStorage.setItem('return-to-profile', 'true');
-                sessionStorage.setItem('skip-splash', 'true');
-                router.push('/settings');
+                onOpenSettings?.();
               }}>
                 <Settings className="mr-2 h-4 w-4" />
                 <span>{t('settings.title')}</span>
@@ -2700,10 +2696,9 @@ function TrainingStatsSection({
   );
 }
 
-export function ProfilePage() {
+export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void }) {
   const { signOut } = useSupabaseAuth();
   const { t } = useLocale();
-  const router = useRouter();
   const { data, isLoading, error, refetch } = useProfileData();
   
   // Get AppContext for cross-component data sync
@@ -3251,6 +3246,7 @@ export function ProfilePage() {
         profile={data.profile ?? DEFAULT_PROFILE}
         stats={data.stats ?? DEFAULT_STATS}
         onEditProfile={() => setEditProfileOpen(true)}
+        onOpenSettings={onOpenSettings}
         t={t}
       />
 

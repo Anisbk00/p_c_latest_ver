@@ -50,6 +50,7 @@ const FoodsPage = lazy(() => import('@/components/fitness/foods-page').then(m =>
 const WorkoutsPage = lazy(() => import('@/components/fitness/workouts-page-v2').then(m => ({ default: m.WorkoutsPage })));
 const ProfilePage = lazy(() => import('@/components/fitness/profile-page').then(m => ({ default: m.ProfilePage })));
 const IronCoach = lazy(() => import('@/components/iron-coach/iron-coach-chat').then(m => ({ default: m.IronCoach })));
+const SettingsSheet = lazy(() => import('@/components/settings/SettingsPage').then(m => ({ default: m.SettingsPage })));
 
 // Preload lazy components immediately for faster navigation
 if (typeof window !== 'undefined') {
@@ -59,6 +60,7 @@ if (typeof window !== 'undefined') {
     import('@/components/fitness/foods-page');
     import('@/components/fitness/workouts-page-v2');
     import('@/components/fitness/profile-page');
+    import('@/components/settings/SettingsPage');
   });
 }
 
@@ -320,6 +322,7 @@ function ProgressCompanionHome() {
   
   // Check if returning from settings - go to profile tab
   const [activeTab, setActiveTab] = useState('home');
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [coachOpen, setCoachOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -1265,7 +1268,7 @@ function ProgressCompanionHome() {
             >
               <ErrorBoundary showDetails={process.env.NODE_ENV === 'development'}>
                 <Suspense fallback={<PageLoader />}>
-                  <ProfilePage />
+                  <ProfilePage onOpenSettings={() => setSettingsOpen(true)} />
                 </Suspense>
               </ErrorBoundary>
             </motion.div>
@@ -1345,6 +1348,18 @@ function ProgressCompanionHome() {
     </div>
       )}
       
+      {/* ═══ SETTINGS SHEET - Embedded full-height panel (no route change) ═══ */}
+      <Suspense fallback={<PageLoader />}>
+        <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
+          <SheetContent side="right" className="w-full sm:max-w-lg p-0 overflow-y-auto">
+            <SheetHeader className="sr-only">
+              <SheetTitle>{t('settings.title')}</SheetTitle>
+            </SheetHeader>
+            <SettingsSheet />
+          </SheetContent>
+        </Sheet>
+      </Suspense>
+
       {/* ═══ SPLASH SCREEN OVERLAY - Waits until app ready, skips on back nav ═══ */}
       {splashVisible && (
         <div data-splash-overlay className="fixed inset-0 z-50 transition-opacity duration-500 ease-out">

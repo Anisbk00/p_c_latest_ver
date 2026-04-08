@@ -6,7 +6,7 @@ import { useTheme } from "next-themes";
 import { UserSettings, DEFAULT_SETTINGS } from "@/lib/types/settings";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { Settings, Shield, Bell, User, Loader2, ArrowLeft, Globe, Check, RefreshCw, AlertTriangle } from "lucide-react";
+import { Settings, Shield, Bell, User, Loader2, Globe, Check, RefreshCw, AlertTriangle } from "lucide-react";
 import { LogOut, Trash2 } from "lucide-react";
 import { useLocale } from "@/lib/i18n";
 import { useApp } from "@/contexts/app-context";
@@ -15,8 +15,6 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useSupabaseAuth } from "@/lib/supabase/auth-context";
 import { toast } from "sonner";
@@ -37,9 +35,8 @@ import { useBiometricAuth } from "@/hooks/use-biometric-auth";
 import { AppearanceSettings } from "./AppearanceSettings";
 
 function SettingsPage() {
-  const { settings, updateSettings, isLoading, isRefreshing } = useSettings();
+  const { settings, updateSettings } = useSettings();
   const { setTheme } = useTheme();
-  const router = useRouter();
   const [activeTab, setActiveTab] = useState("appearance");
   const { signOut } = useSupabaseAuth();
   const [isSigningOut, setIsSigningOut] = useState(false);
@@ -115,7 +112,6 @@ function SettingsPage() {
       // Clear all local caches to prevent stale data on next sign-in
       try { localStorage.removeItem('progress-companion-settings-cache'); } catch {}
       try { localStorage.removeItem('progress-companion-profile-cache'); } catch {}
-      router.push("/");
     } catch (error: any) {
       toast.error(error?.message || "Failed to delete account");
     } finally {
@@ -136,36 +132,9 @@ function SettingsPage() {
 
   // REMOVED: Blocking loading spinner
   // UI now renders immediately with defaults/cached data
-  // Fresh data loads in background when isRefreshing is true
 
   return (
     <div className="container max-w-4xl mx-auto py-8 px-4 pb-24">
-      <div className="flex items-center gap-4 mb-8">
-        <Button variant="ghost" size="icon" onClick={() => {
-          // Set flag to go to profile tab on return — router.back() triggers 'back_forward'
-          // navigation type which is already handled in page.tsx to skip splash.
-          // We keep the sessionStorage flag as a secondary guard for edge cases.
-          sessionStorage.setItem('return-to-profile', 'true');
-          sessionStorage.setItem('skip-splash', 'true');
-          // Use router.back() instead of router.push('/') to avoid a full page
-          // navigation that re-initializes auth, context and all data sources.
-          router.back();
-        }}>
-          <ArrowLeft className="h-4 w-4" />
-        </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold tracking-tight">{t('settings.title')}</h1>
-          <p className="text-muted-foreground">{t('settings.subtitle')}</p>
-        </div>
-        {/* Subtle refresh indicator when loading in background */}
-        {isRefreshing && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground animate-pulse">
-            <RefreshCw className="h-3 w-3 animate-spin" />
-            <span>Syncing...</span>
-          </div>
-        )}
-      </div>
-
       <Tabs defaultValue="appearance" value={activeTab} onValueChange={setActiveTab} className="space-y-8">
         <div className="overflow-x-auto pb-2">
             <TabsList className="inline-flex h-10 items-center justify-center rounded-md bg-muted p-1 text-muted-foreground w-full sm:w-auto min-w-100">
@@ -298,7 +267,6 @@ function SettingsPage() {
                     try {
                       setIsSigningOut(true);
                       await signOut();
-                      router.push("/");
                     } catch (error: any) {
                       toast.error(error?.message || "Failed to sign out");
                     } finally {

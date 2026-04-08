@@ -5,7 +5,8 @@ $ next dev -p 3000
 - Environments: .env
 
 ✓ Starting...
-✓ Ready in 779ms
+✓ Ready in 711ms
+○ Compiling / ...
 [AuthScreen] Rendering, mode: welcome
- GET / 200 in 3.1s (compile: 2.6s, proxy.ts: 148ms, render: 261ms)
- GET /api/ai/home-insights 200 in 117ms (compile: 92ms, proxy.ts: 5ms, render: 19ms)
+ GET / 200 in 3.8s (compile: 3.3s, proxy.ts: 145ms, render: 295ms)
+ GET /api/ai/home-insights 200 in 110ms (compile: 86ms, proxy.ts: 6ms, render: 19ms)
