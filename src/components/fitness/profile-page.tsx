@@ -2029,7 +2029,7 @@ function PhotoDetailSheet({
         
         <div className="px-6 space-y-4">
           {/* Photo Preview */}
-          <div className="aspect-3/4 rounded-2xl overflow-hidden bg-linear-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center relative">
+          <div className="aspect-3/4 max-h-[40vh] rounded-2xl overflow-hidden bg-linear-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center relative mx-auto w-full shadow-lg ring-1 ring-black/5">
             {photo.imageUrl && !photo.imageUrl.startsWith('test://') ? (
               <img src={photo.imageUrl} alt="Progress photo" className="w-full h-full object-cover" />
             ) : (
