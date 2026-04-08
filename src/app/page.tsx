@@ -38,7 +38,7 @@ import {
   X,
   ChevronDown,
 } from "lucide-react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
 
 // OnboardingFlow removed — personalization is handled by the DB-backed SetupModal
 // ═══════════════════════════════════════════════════════════════
@@ -1354,6 +1354,7 @@ function ProgressCompanionHome() {
           <SheetContent side="right" className="w-full sm:max-w-lg p-0 overflow-y-auto">
             <SheetHeader className="sr-only">
               <SheetTitle>{t('settings.title')}</SheetTitle>
+              <SheetDescription>App settings</SheetDescription>
             </SheetHeader>
             <ErrorBoundary>
               <SettingsSheet />
