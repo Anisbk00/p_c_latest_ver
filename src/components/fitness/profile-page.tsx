@@ -1428,7 +1428,7 @@ function TransformationArchive({
               <CameraOff className="w-7 h-7 text-muted-foreground/50" />
             </div>
             <p className="text-sm text-muted-foreground">
-              Your journey starts with a single snapshot.
+              Upload progress photos for AI body composition analysis.
             </p>
             <Button
               variant="outline"
@@ -3625,12 +3625,6 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
       <TransformationArchive
         photos={data.progressPhotos ?? []}
         onPhotoTap={handlePhotoTap}
-        onUploadPhoto={handleUploadPhoto}
-      />
-
-      {/* AI Body Composition */}
-      <AIBodyComposition
-        result={data.bodyComposition ?? null}
         onUploadPhoto={handleUploadPhoto}
       />
 
