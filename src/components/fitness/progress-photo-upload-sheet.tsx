@@ -352,15 +352,35 @@ export function ProgressPhotoUploadSheet({
                     <Input
                       id="weight"
                       type="number"
+                      inputMode="decimal"
                       step="0.1"
+                      min={25}
+                      max={550}
                       placeholder="e.g., 75.5"
                       value={weight}
                       onChange={(e) => setWeight(e.target.value)}
-                      className="h-12"
+                      onBlur={() => {
+                        if (weight) {
+                          const num = parseFloat(weight);
+                          if (isNaN(num) || num < 25) setWeight('25');
+                          else if (num > 550) setWeight('550');
+                        }
+                      }}
+                      className={cn(
+                        "h-12",
+                        weight && (parseFloat(weight) < 25 || parseFloat(weight) > 550) && "border-destructive focus-visible:ring-destructive"
+                      )}
                     />
-                    <p className="text-xs text-muted-foreground">
-                      Enter your current weight for accurate tracking
-                    </p>
+                    {weight && (parseFloat(weight) < 25 || parseFloat(weight) > 550) ? (
+                      <p className="text-xs text-destructive flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        Weight must be between 25 kg and 550 kg
+                      </p>
+                    ) : (
+                      <p className="text-xs text-muted-foreground">
+                        Enter your weight at the time the photo was taken
+                      </p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -535,7 +555,7 @@ export function ProgressPhotoUploadSheet({
                 {/* Upload Button */}
                 <Button
                   onClick={handleUpload}
-                  disabled={isUploading}
+                  disabled={isUploading || !!(weight && (parseFloat(weight) < 25 || parseFloat(weight) > 550))}
                   className="w-full h-12 bg-emerald-500 hover:bg-emerald-600"
                 >
                   {isUploading ? (
