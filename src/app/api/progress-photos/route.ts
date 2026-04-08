@@ -222,14 +222,9 @@ export async function POST(request: NextRequest) {
     // ─── Insert into user_files table ───────────────────────────
     let insertResult: { data: any; error: any };
 
-    // Build metadata payload from form fields
-    const fileMetadata: Record<string, any> = {};
-    if (responseData.weight) fileMetadata.weight = responseData.weight;
-    if (responseData.notes) fileMetadata.notes = responseData.notes;
-    if (responseData.bodyFat) fileMetadata.bodyFat = responseData.bodyFat;
-    if (responseData.muscleMass) fileMetadata.muscleMass = responseData.muscleMass;
-
-    const insertPayload: Record<string, any> = {
+    // NOTE: metadata column may not exist in production DB.
+    // Build payload without metadata first; try with metadata only if column exists.
+    const insertPayloadBase: Record<string, any> = {
       user_id: user.id,
       bucket: isStorageConfigured() ? BUCKET : 'local',
       path: filePath,
@@ -238,13 +233,31 @@ export async function POST(request: NextRequest) {
       size_bytes: sizeBytes,
       category: CATEGORY,
       entity_type: 'progress_photo',
-      metadata: Object.keys(fileMetadata).length > 0 ? fileMetadata : {},
     };
 
+    // Try insert with metadata — fall back to without if column missing
     try {
-      insertResult = await (supabase.from('user_files') as any).insert(insertPayload).select().single()
+      const fileMetadata: Record<string, any> = {};
+      if (responseData.weight) fileMetadata.weight = responseData.weight;
+      if (responseData.notes) fileMetadata.notes = responseData.notes;
+      if (responseData.bodyFat) fileMetadata.bodyFat = responseData.bodyFat;
+      if (responseData.muscleMass) fileMetadata.muscleMass = responseData.muscleMass;
+
+      const withMeta = { ...insertPayloadBase, metadata: fileMetadata };
+      insertResult = await (supabase.from('user_files') as any).insert(withMeta).select().single();
+
+      // If metadata column doesn't exist, retry without it
+      if (insertResult.error?.message?.includes("metadata")) {
+        console.log('[progress-photos] metadata column missing, inserting without it');
+        insertResult = await (supabase.from('user_files') as any).insert(insertPayloadBase).select().single();
+      }
     } catch (insertErr) {
-      insertResult = { data: null, error: insertErr instanceof Error ? insertErr : new Error(String(insertErr)) };
+      // Column error on catch path — retry without metadata
+      try {
+        insertResult = await (supabase.from('user_files') as any).insert(insertPayloadBase).select().single();
+      } catch (retryErr) {
+        insertResult = { data: null, error: retryErr instanceof Error ? retryErr : new Error(String(retryErr)) };
+      }
     }
 
     // If insert failed, try admin client fallback
@@ -262,7 +275,7 @@ export async function POST(request: NextRequest) {
             const adminClient = createClient(supabaseUrl, serviceRoleKey, {
               auth: { autoRefreshToken: false, persistSession: false },
             });
-            const adminResult = await (adminClient.from('user_files') as any).insert(insertPayload).select().single();
+            const adminResult = await (adminClient.from('user_files') as any).insert(insertPayloadBase).select().single();
             if (!adminResult.error) {
               insertResult = adminResult;
             } else {
