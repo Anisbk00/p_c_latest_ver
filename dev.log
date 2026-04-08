@@ -5,17 +5,7 @@ $ next dev -p 3000
 - Environments: .env
 
 ✓ Starting...
-Attention: Next.js now collects completely anonymous telemetry regarding usage.
-This information is used to shape Next.js' roadmap and prioritize features.
-You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
-https://nextjs.org/telemetry
-
-✓ Ready in 908ms
-○ Compiling / ...
+✓ Ready in 779ms
 [AuthScreen] Rendering, mode: welcome
- GET / 200 in 6.7s (compile: 6.2s, proxy.ts: 149ms, render: 315ms)
-[AuthScreen] Rendering, mode: welcome
- GET / 200 in 63ms (compile: 15ms, proxy.ts: 6ms, render: 42ms)
- GET /api/ai/home-insights 200 in 501ms (compile: 480ms, proxy.ts: 5ms, render: 17ms)
-[AuthScreen] Rendering, mode: welcome
- GET / 200 in 45ms (compile: 4ms, proxy.ts: 4ms, render: 37ms)
+ GET / 200 in 3.1s (compile: 2.6s, proxy.ts: 148ms, render: 261ms)
+ GET /api/ai/home-insights 200 in 117ms (compile: 92ms, proxy.ts: 5ms, render: 19ms)

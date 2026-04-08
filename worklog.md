@@ -434,3 +434,54 @@ Stage Summary:
 - Inspect: https://vercel.com/anisbk00s-projects/my-project/4AD44b4nivLS3BZ75RQGYB9PGdMw
 - Zero code changes — pure deployment
 - Supabase credentials applied from Vercel environment variables
+
+---
+Task ID: 3
+Agent: Main Architect
+Task: Audit auth token refresh implementation — make production ready
+
+Work Log:
+- **Audit scope:** 7 auth files (client.ts, auth-context.tsx, auth-middleware.ts, auth-helpers.ts, proxy.ts, server.ts, offline-auth.ts)
+- **Audit scope:** 3 API routes (session, revoke, callback)
+
+Finding 1 — CRITICAL (FIXED): TOKEN_REFRESHED handler had recursive retry loop without mounted guard
+  - Old: 3 recursive retryRefresh() calls with exponential backoff, no mounted check
+  - Risk: State updates on unmounted component, memory leak in React 19
+  - Fix: Removed recursive retry. Added `if (!mounted) return` guard. On failure: clear offline cache + sign out immediately.
+  - File: src/lib/supabase/auth-context.tsx
+
+Finding 2 — HIGH (FIXED): No proactive token refresh before expiry
+  - Old: Relied solely on Supabase auto-refresh (fires only when a request detects expired token)
+  - Risk: API calls fail with 401 during gap between token expiry (~1hr) and auto-refresh trigger
+  - Fix: Added proactive refresh timer — calls `refreshSession()` 60 seconds BEFORE `expires_at`
+  - Timer re-schedules on every TOKEN_REFRESHED event (new expires_at)
+  - Properly cleaned up on unmount
+  - File: src/lib/supabase/auth-context.tsx
+
+Finding 3 — VERIFIED OK: Server-side token refresh
+  - proxy.ts (Next.js 16 middleware replacement) already calls `supabase.auth.getUser()` on every request
+  - getUser() automatically refreshes access_token via refresh_token cookie
+  - Enhanced: Added try/catch around getUser() for malformed cookie resilience
+  - Enhanced: Added `.trim()` on env vars (defense against Vercel trailing newline)
+
+Finding 4 — VERIFIED OK: Session revocation
+  - /api/auth/revoke uses admin API to sign out all sessions globally
+  - /api/auth/session POST provides server-side refresh endpoint
+  - Client signOut() calls revoke FIRST, then local cleanup (correct order)
+
+Finding 5 — VERIFIED OK: Offline auth cache
+  - Encrypted with AES-GCM, device-specific key
+  - 7-day expiry, validates token online before use
+  - Properly cleared on sign-out and token expiry
+
+Stage Summary:
+- 2 files changed: auth-context.tsx (TOKEN_REFRESHED fix + proactive timer), proxy.ts (resilience)
+- 0 lint errors
+- Zero UI/UX changes
+- Zero breaking changes
+- Token refresh is now production-grade:
+  1. Server-side: proxy.ts auto-refreshes on every request via getUser()
+  2. Client-side: Proactive timer refreshes 60s before expiry
+  3. Fallback: Supabase auto-refresh on TOKEN_REFRESHED event
+  4. Failure: Clean sign-out with offline cache clearing
+- Mobile (Capacitor): All changes apply to WebView context

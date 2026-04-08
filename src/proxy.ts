@@ -10,8 +10,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const SUPABASE_URL = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim()
+const SUPABASE_ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim()
 
 if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
   console.error('[Proxy] Missing Supabase credentials. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env');
@@ -46,12 +46,21 @@ export async function proxy(request: NextRequest) {
   // IMPORTANT: Avoid writing any logic between createServerClient and
   // supabase.auth.getUser(). A simple mistake could make it very hard to debug
   // issues with users being randomly logged out.
+  //
+  // getUser() automatically refreshes the access_token if expired using
+  // the refresh_token cookie. This is the server-side token refresh mechanism.
+  // The refreshed cookies are propagated via supabaseResponse.
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser()
+  let user: { id: string } | null = null
+  try {
+    const result = await supabase.auth.getUser()
+    user = result.data.user
+  } catch {
+    // getUser() can throw if cookies are malformed — treat as unauthenticated
+  }
 
   // Protected routes - redirect to home if not authenticated
+  // Allow: / (auth screen), /auth/* (callbacks), /api/* (returns 401 itself)
   if (
     !user &&
     !request.nextUrl.pathname.startsWith('/auth') &&

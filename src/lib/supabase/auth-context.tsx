@@ -218,6 +218,49 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
     }
   }, [])
 
+  // ─── Proactive Token Refresh Timer ────────────────────────────
+  // Refreshes the access_token 60 seconds BEFORE it expires.
+  // Prevents 401 errors on API calls during the gap between
+  // token expiry and Supabase's auto-refresh trigger.
+  useEffect(() => {
+    if (!state.session || !state.isAuthenticated) return
+
+    const REFRESH_BUFFER_MS = 60_000 // Refresh 60s before expiry
+
+    function scheduleRefresh() {
+      const expiresAt = state.session?.expires_at
+      if (!expiresAt) return
+
+      const expiresMs = expiresAt * 1000
+      const nowMs = Date.now()
+      const timeUntilRefresh = expiresMs - nowMs - REFRESH_BUFFER_MS
+
+      // If token expires within buffer (or already expired), refresh immediately
+      if (timeUntilRefresh <= 0) {
+        const supabase = getClient()
+        supabase.auth.refreshSession().catch(() => {
+          // Silently fail — Supabase auto-refresh or TOKEN_REFRESHED event handles this
+        })
+        return
+      }
+
+      // Schedule refresh
+      const timerId = setTimeout(() => {
+        const supabase = getClient()
+        supabase.auth.refreshSession().catch(() => {
+          // Silently fail — Supabase auto-refresh or TOKEN_REFRESHED event handles this
+        })
+      }, timeUntilRefresh)
+
+      return timerId
+    }
+
+    const timerId = scheduleRefresh()
+    return () => {
+      if (timerId) clearTimeout(timerId)
+    }
+  }, [state.session?.expires_at, state.isAuthenticated])
+
   // ─── Initialize Auth State ─────────────────────────────────────
   useEffect(() => {
     let mounted = true
@@ -456,63 +499,30 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
         }))
       }
     } else if (event === 'TOKEN_REFRESHED') {
-      // HIGH PRIORITY FIX: Handle token refresh failures gracefully
+      // Handle token refresh result
       if (authSession?.user) {
         setState(prev => ({
           ...prev,
           session: authSession,
           user: authSession.user,
+          error: null,
         }))
       } else {
-        // Token refresh failed - session is null/undefined
-        // This can happen when the refresh token is expired or invalid
-        console.warn('[Auth] Token refresh failed - attempting retry...')
-        
-        // SECURITY FIX: Implement retry with exponential backoff before logout
-        let retryAttempt = 0;
-        const maxRetries = 3;
-        const retryRefresh = async () => {
-          if (retryAttempt >= maxRetries) {
-            console.error('[Auth] Token refresh failed after max retries - logging out');
-            setState(prev => ({
-              ...prev,
-              error: 'Your session has expired. Please sign in again.',
-              isAuthenticated: false,
-              user: null,
-              session: null,
-              profile: null,
-            }));
-            return;
-          }
-          
-          retryAttempt++;
-          const delay = Math.min(1000 * Math.pow(2, retryAttempt - 1), 5000); // 1s, 2s, 4s (max 5s)
-          
-          await new Promise(r => setTimeout(r, delay));
-          
-          try {
-            const supabase = getClient();
-            const { data: { session: newSession }, error: refreshError } = await supabase.auth.refreshSession();
-            
-            if (refreshError || !newSession) {
-              console.warn(`[Auth] Retry ${retryAttempt}/${maxRetries} failed:`, refreshError?.message);
-              retryRefresh(); // Try again
-            } else {
-              console.log('[Auth] Token refresh retry successful');
-              setState(prev => ({
-                ...prev,
-                session: newSession,
-                user: newSession.user,
-                error: null,
-              }));
-            }
-          } catch (err) {
-            console.warn(`[Auth] Retry ${retryAttempt}/${maxRetries} exception:`, err);
-            retryRefresh(); // Try again
-          }
-        };
-        
-        retryRefresh();
+        // Token refresh failed — refresh token is expired or invalid
+        // Only retry if still mounted to prevent state updates on unmounted components
+        if (!mounted) return
+
+        console.warn('[Auth] Token refresh failed — signing out');
+        // Clear offline cache to prevent stale offline login after token expiry
+        try { await clearCachedAuth() } catch { /* ignore */ }
+        setState(prev => ({
+          ...prev,
+          error: 'Your session has expired. Please sign in again.',
+          isAuthenticated: false,
+          user: null,
+          session: null,
+          profile: null,
+        }));
       }
     }
   })
