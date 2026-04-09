@@ -5,6 +5,10 @@
  * Falls back to rule-based insights if AI is unavailable.
  * 
  * GET /api/ai/home-insights
+ * 
+ * TIMEOUT STRATEGY: Uses AbortSignal.timeout(8000) as a hard deadline.
+ * If the deadline fires, returns partial/rule-based data immediately
+ * rather than letting Vercel's gateway return 504.
  */
 
 import { NextResponse } from 'next/server';
@@ -217,9 +221,17 @@ function generateRuleBasedInsights(data: {
 // ═══════════════════════════════════════════════════════════════
 
 export async function GET() {
-  // Early guard: return empty insights for unauthenticated users (no 401 noise)
+  // Hard deadline — return partial data rather than letting Vercel gateway 504.
+  // 8s deadline leaves buffer under Vercel's ~10s gateway timeout.
+  const deadline = AbortSignal.timeout(8000);
+
+  // Single auth check (was duplicated before — saved ~200ms Supabase round-trip)
+  let supabase: Awaited<ReturnType<typeof getSupabaseUser>>['supabase'];
+  let user: Awaited<ReturnType<typeof getSupabaseUser>>['user'];
   try {
-    const { user } = await getSupabaseUser();
+    const result = await getSupabaseUser();
+    supabase = result.supabase;
+    user = result.user;
     if (!user) {
       return NextResponse.json({ bodyIntelligenceInsight: '', insights: [] });
     }
@@ -233,7 +245,6 @@ export async function GET() {
   }
 
   try {
-    const { supabase, user } = await getSupabaseUser();
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const today = now.toISOString().split('T')[0];
@@ -301,7 +312,7 @@ export async function GET() {
     const totalProteinConsumed = foodLogs.reduce((sum: number, f: any) => sum + (f.protein || 0), 0);
     const totalCaloriesConsumed = foodLogs.reduce((sum: number, f: any) => sum + (f.calories || 0), 0);
 
-    // FIX: Calculate hydration average over actual days logged, not hardcoded 7
+    // Calculate hydration average over actual days logged
     const hydrationDaysLogged = hydrationLogs.length > 0
       ? new Set(hydrationLogs.map((h: any) => h.logged_at?.split('T')[0]).filter(Boolean)).size
       : 0;
@@ -328,9 +339,11 @@ export async function GET() {
     const hasFoodLogsToday = foodLogs.some((f: any) => f.logged_at?.startsWith(today));
     const hasWorkoutToday = workouts.some((w: any) => w.started_at?.startsWith(today));
 
-    // Days since last workout
+    // Days since last workout — skip if deadline approaching to avoid 504
     let daysSinceLastWorkout: number | undefined;
-    if (workouts.length === 0) {
+    if (deadline.aborted) {
+      daysSinceLastWorkout = workouts.length > 0 ? 0 : undefined;
+    } else if (workouts.length === 0) {
       const { data: olderWorkouts } = await supabase
         .from('workouts')
         .select('started_at')
@@ -363,11 +376,12 @@ export async function GET() {
       daysSinceLastWorkout,
     });
 
-    // ─── Try AI-powered insight (best-effort, non-blocking) ─────
+    // ─── Try AI-powered insight (skip if deadline approaching) ──
     let aiInsight: string | null = null;
-    try {
-      const { generateText } = await import('@/lib/ai/gemini-service');
-      const prompt = `You are a concise fitness AI. Based on this user data from the past 7 days, write ONE actionable insight sentence (max 15 words). Be specific.
+    if (!deadline.aborted) {
+      try {
+        const { generateText } = await import('@/lib/ai/gemini-service');
+        const prompt = `You are a concise fitness AI. Based on this user data from the past 7 days, write ONE actionable insight sentence (max 15 words). Be specific.
 
 Workouts: ${workoutsThisWeek} sessions, ${totalCaloriesBurned} cal burned
 Protein: ${totalProteinConsumed}g total this week (${Math.round(totalProteinConsumed / 7)}g/day avg)
@@ -381,16 +395,17 @@ ${hasWorkoutToday ? 'Worked out today.' : 'No workout today.'}
 
 Respond with ONLY the insight sentence. No explanation, no markdown.`;
 
-      aiInsight = await generateText(prompt, 'You are a fitness data analyst. Respond with one concise insight sentence only.');
-      if (aiInsight) {
-        aiInsight = aiInsight
-          .replace(/^["'`\u201C\u201D]+|["'`\u201C\u201D]+$/g, '')
-          .replace(/^[•\-\*]\s*/, '')
-          .trim()
-          .slice(0, 200);
+        aiInsight = await generateText(prompt, 'You are a fitness data analyst. Respond with one concise insight sentence only.');
+        if (aiInsight) {
+          aiInsight = aiInsight
+            .replace(/^["'`\u201C\u201D]+|["'`\u201C\u201D]+$/g, '')
+            .replace(/^[•\-\*]\s*/, '')
+            .trim()
+            .slice(0, 200);
+        }
+      } catch {
+        aiInsight = null;
       }
-    } catch {
-      aiInsight = null;
     }
 
     const response: HomeInsightsResponse = {

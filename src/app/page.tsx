@@ -845,7 +845,9 @@ function ProgressCompanionHome() {
     let cancelled = false;
     const fetchInsights = async () => {
       try {
-        const res = await apiFetch('/api/ai/home-insights');
+        const res = await apiFetch('/api/ai/home-insights', {
+          signal: AbortSignal.timeout(10000), // Client-side: 10s timeout, grace period beyond server's 8s deadline
+        });
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (!cancelled) {
