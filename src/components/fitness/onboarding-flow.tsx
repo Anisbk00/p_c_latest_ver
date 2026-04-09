@@ -50,6 +50,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { ProvenanceTag } from "@/components/fitness/provenance-tag";
 import { ConfidenceBadge } from "@/components/fitness/confidence-badge";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/mobile-api";
 
 // ============================================
 // Types
@@ -794,7 +795,7 @@ function BaselineScreen({
       formData.append('clothing', 'light');
 
       // Upload to API
-      const response = await fetch('/api/photos/upload', {
+      const response = await apiFetch('/api/photos/upload', {
         method: 'POST',
         body: formData,
       });

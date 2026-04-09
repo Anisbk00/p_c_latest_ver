@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "@/hooks/use-toast";
+import { apiFetch } from "@/lib/mobile-api";
 
 export type XPAction =
   | "workout"
@@ -60,7 +61,7 @@ export function useXP() {
     setError(null);
     
     try {
-      const response = await fetch("/api/xp", {
+      const response = await apiFetch("/api/xp", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -133,7 +134,7 @@ export function useXP() {
     setError(null);
     
     try {
-      const response = await fetch("/api/xp");
+      const response = await apiFetch("/api/xp");
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         setError(errorData.error || "Failed to fetch stats");

@@ -30,6 +30,7 @@ import {
   Settings,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/mobile-api';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
@@ -166,7 +167,7 @@ export function NotificationCenter({
       setIsLoading(true);
       setError(null);
 
-      const response = await fetch('/api/notifications?limit=50');
+      const response = await apiFetch('/api/notifications?limit=50');
       if (!response.ok) throw new Error('Failed to fetch notifications');
 
       const data = await response.json();
@@ -230,7 +231,7 @@ export function NotificationCenter({
   // Mark all as read
   const handleMarkAllRead = async () => {
     try {
-      const response = await fetch('/api/notifications/mark-read', {
+      const response = await apiFetch('/api/notifications/mark-read', {
         method: 'POST',
       });
       if (!response.ok) throw new Error('Failed to mark all as read');
@@ -248,7 +249,7 @@ export function NotificationCenter({
   const handleNotificationClick = async (notification: Notification) => {
     try {
       // Mark as opened
-      await fetch(`/api/notifications/${notification.id}`, {
+      await apiFetch(`/api/notifications/${notification.id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'open' }),

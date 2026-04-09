@@ -14,6 +14,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Capacitor } from '@capacitor/core'
+import { apiFetch } from '@/lib/mobile-api'
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -134,7 +135,7 @@ function processOfflineQueue(): void {
 
 async function lookupBarcode(barcode: string): Promise<BarcodeScanResult> {
   try {
-    const response = await fetch(`/api/barcode-lookup?barcode=${encodeURIComponent(barcode)}`)
+    const response = await apiFetch(`/api/barcode-lookup?barcode=${encodeURIComponent(barcode)}`)
     const data = await response.json()
 
     if (data.found && data.food) {

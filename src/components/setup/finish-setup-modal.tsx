@@ -21,6 +21,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { apiFetch } from '@/lib/mobile-api';
 import { useSupabaseAuth } from '@/lib/supabase/auth-context';
 import { useApp } from '@/contexts/app-context';
 import {
@@ -245,7 +246,7 @@ export function FinishSetupModal({
     setIsLoading(true);
     try {
       // Supabase uses cookies for auth - no Authorization header needed
-      const response = await fetch('/api/setup/suggestions');
+      const response = await apiFetch('/api/setup/suggestions');
       
       if (response.ok) {
         const data = await response.json();
@@ -332,7 +333,7 @@ export function FinishSetupModal({
         avatarFormData.append('file', formData.avatarFile);
         
         // Supabase uses cookies for auth - no Authorization header needed
-        const uploadResponse = await fetch('/api/setup/avatar', {
+        const uploadResponse = await apiFetch('/api/setup/avatar', {
           method: 'POST',
           body: avatarFormData,
         });
@@ -348,7 +349,7 @@ export function FinishSetupModal({
       setUploadProgress(40);
       
       // Submit setup data - Supabase uses cookies for auth
-      const response = await fetch('/api/setup/complete', {
+      const response = await apiFetch('/api/setup/complete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -406,7 +407,7 @@ export function FinishSetupModal({
     
     try {
       // Supabase uses cookies for auth - no Authorization header needed
-      await fetch('/api/setup/complete', {
+      await apiFetch('/api/setup/complete', {
         method: 'PATCH',
       });
     } catch (err) {

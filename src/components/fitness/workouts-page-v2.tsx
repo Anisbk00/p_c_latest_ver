@@ -28,6 +28,7 @@ import {
   BluetoothSearching, AlertCircle, Calendar, Clock, Ruler,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from '@/lib/mobile-api';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -647,7 +648,7 @@ function WorkoutHistorySection() {
   useEffect(() => {
     const fetchWorkouts = async () => {
       try {
-        const response = await fetch('/api/workouts?limit=7&include_route=true');
+        const response = await apiFetch('/api/workouts?limit=7&include_route=true');
         if (response.ok) {
           const data = await response.json();
           // FIX: Map snake_case from API to camelCase for frontend

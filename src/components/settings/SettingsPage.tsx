@@ -16,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/mobile-api";
 import { useSupabaseAuth } from "@/lib/supabase/auth-context";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
@@ -96,7 +97,7 @@ export function SettingsPage() {
     
     try {
       setIsDeleting(true);
-      const resp = await fetch("/api/auth/delete", { 
+      const resp = await apiFetch("/api/auth/delete", { 
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 

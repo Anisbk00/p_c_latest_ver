@@ -24,6 +24,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from '@/lib/mobile-api';
 import { Button } from "@/components/ui/button";
 
 // ═══════════════════════════════════════════════════════════════
@@ -169,7 +170,7 @@ export function FoodPhotoScanner({
 
     // Analyze the image
     try {
-      const response = await fetch("/api/analyze-food-photo", {
+      const response = await apiFetch("/api/analyze-food-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ image: imageData }),

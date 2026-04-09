@@ -8,6 +8,7 @@
  */
 
 import { getClient } from '@/lib/supabase/client';
+import { apiFetch } from '@/lib/mobile-api';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -95,7 +96,7 @@ class NotificationService {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/notifications/register-device', {
+      const response = await apiFetch('/api/notifications/register-device', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -113,7 +114,7 @@ class NotificationService {
    */
   async unregisterDevice(deviceToken: string): Promise<{ success: boolean; error?: string }> {
     try {
-      const response = await fetch('/api/notifications/register-device', {
+      const response = await apiFetch('/api/notifications/register-device', {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ device_token: deviceToken }),
@@ -136,7 +137,7 @@ class NotificationService {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/notifications/schedule', {
+      const response = await apiFetch('/api/notifications/schedule', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(params),
@@ -156,7 +157,7 @@ class NotificationService {
     error?: string;
   }> {
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `/api/notifications/schedule?status=${status}&limit=${limit}`
       );
       return await response.json();
@@ -170,7 +171,7 @@ class NotificationService {
    */
   async getPreferences(): Promise<{ preferences: NotificationPreferences | null; error?: string }> {
     try {
-      const response = await fetch('/api/notifications/preferences');
+      const response = await apiFetch('/api/notifications/preferences');
       return await response.json();
     } catch (error) {
       return { preferences: null, error: error instanceof Error ? error.message : 'Unknown error' };
@@ -185,7 +186,7 @@ class NotificationService {
     error?: string;
   }> {
     try {
-      const response = await fetch('/api/notifications/preferences', {
+      const response = await apiFetch('/api/notifications/preferences', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updates),

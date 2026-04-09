@@ -43,9 +43,9 @@ export async function POST(request: NextRequest) {
       deadline: body.targetDate ?? body.target_date ?? body.deadline ?? null,
     }
 
-    // BUG-H006 FIX: goals table may be missing the (user_id, goal_type) unique
-    // constraint required for onConflict upsert. Fall back to plain insert.
-    // TODO DB lead: add UNIQUE INDEX on goals(user_id, goal_type) to enable clean upsert.
+    // NOTE: goals table requires UNIQUE INDEX on (user_id, goal_type) for clean upsert.
+    // Run: CREATE UNIQUE INDEX IF NOT EXISTS goals_user_id_goal_type_key ON goals(user_id, goal_type);
+    // Fallback to plain insert if constraint is missing.
     let data: unknown = null
     let error: unknown = null;
 

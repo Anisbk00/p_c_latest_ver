@@ -70,6 +70,7 @@ import { useApp, type TodayWorkoutSummary, type FoodLogEntry, calculateStreak, t
 import { format, subDays, isToday } from "date-fns";
 
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/mobile-api";
 import { useSupabaseAuth } from "@/lib/supabase/auth-context";
 import { SupabaseAuthScreen } from "@/components/auth/supabase-auth-screen";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
@@ -844,7 +845,7 @@ function ProgressCompanionHome() {
     let cancelled = false;
     const fetchInsights = async () => {
       try {
-        const res = await fetch('/api/ai/home-insights');
+        const res = await apiFetch('/api/ai/home-insights');
         if (!res.ok || cancelled) return;
         const data = await res.json();
         if (!cancelled) {

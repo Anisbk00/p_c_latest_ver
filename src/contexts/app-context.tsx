@@ -1101,7 +1101,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           endDate: dateEnd,
           dateField: 'logged_at'
         }),
-        fetch(`/api/supplement-log?date=${selectedDate}`).then(r => r.ok ? r.json() : { entries: [] }).catch(() => ({ entries: [] }))
+        apiFetch(`/api/supplement-log?date=${selectedDate}`).then(r => r.ok ? r.json() : { entries: [] }).catch(() => ({ entries: [] }))
       ]);
 
       // Aggregate food_logs

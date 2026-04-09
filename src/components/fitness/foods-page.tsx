@@ -39,6 +39,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle, DrawerDescription } from "@/components/ui/drawer";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
+import { apiFetch } from '@/lib/mobile-api';
 import { useApp } from "@/contexts/app-context";
 import { useLocale } from "@/lib/i18n/locale-context";
 import type { AnalyzedFood } from "./food-photo-scanner";
@@ -1832,7 +1833,7 @@ export function FoodsPage() {
   const fetchSupplementLogs = useCallback(async () => {
     setSupplementsLoading(true);
     try {
-      const response = await fetch(`/api/supplement-log?date=${selectedFoodDate}`);
+      const response = await apiFetch(`/api/supplement-log?date=${selectedFoodDate}`);
       if (response.ok) {
         const data = await response.json();
         setSupplementLogs(mapSupplementLogEntries(data.entries));
@@ -1929,8 +1930,8 @@ export function FoodsPage() {
 
       // Fetch food logs and supplement logs in parallel
       const [foodRes, suppRes] = await Promise.all([
-        fetch(`/api/food-logs?startDate=${apiStartDate}&endDate=${apiEndDate}`),
-        fetch(`/api/supplement-log?startDate=${apiStartDate}&endDate=${apiEndDate}`),
+        apiFetch(`/api/food-logs?startDate=${apiStartDate}&endDate=${apiEndDate}`),
+        apiFetch(`/api/supplement-log?startDate=${apiStartDate}&endDate=${apiEndDate}`),
       ]);
 
       if (!foodRes.ok) throw new Error(`HTTP ${foodRes.status}`);
@@ -2184,7 +2185,7 @@ export function FoodsPage() {
       try {
         if (editingEntry) {
           // Update existing supplement log
-          const response = await fetch('/api/supplement-log', {
+          const response = await apiFetch('/api/supplement-log', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2205,7 +2206,7 @@ export function FoodsPage() {
           }
         } else {
           // Add new supplement log
-          const response = await fetch('/api/supplement-log', {
+          const response = await apiFetch('/api/supplement-log', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2285,7 +2286,7 @@ export function FoodsPage() {
       // Optimistic update: remove from local state immediately
       setSupplementLogs(prev => prev.filter(e => e.id !== entryId));
       try {
-        const response = await fetch(`/api/supplement-log?id=${entryId}`, {
+        const response = await apiFetch(`/api/supplement-log?id=${entryId}`, {
           method: 'DELETE',
         });
         if (!response.ok) {

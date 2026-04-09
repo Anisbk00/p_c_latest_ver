@@ -54,8 +54,8 @@ const config: CapacitorConfig = {
           androidScheme: 'https',
           iosScheme: 'https',
           allowNavigation: [
-            // Your deployed backend
-            new URL(API_URL).hostname,
+            // Your deployed backend (guard against empty API_URL)
+            ...(API_URL ? [new URL(API_URL).hostname] : []),
             // Supabase
             supabaseDomain,
             '*.supabase.co',

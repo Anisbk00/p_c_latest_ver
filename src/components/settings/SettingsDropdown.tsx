@@ -32,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { apiFetch } from "@/lib/mobile-api";
 import { useSupabaseAuth } from "@/lib/supabase/auth-context";
 import { useSettings } from "@/hooks/use-settings";
 import { useLocale } from "@/lib/i18n/locale-context";
@@ -223,7 +224,7 @@ export function SettingsDropdown({ isOpen, onClose, triggerRef }: SettingsDropdo
   const handleDeleteAccount = useCallback(async () => {
     setIsDeleting(true);
     try {
-      const resp = await fetch('/api/auth/delete', { method: 'DELETE' });
+      const resp = await apiFetch('/api/auth/delete', { method: 'DELETE' });
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}));
         throw new Error(data.error || 'Failed to delete account');

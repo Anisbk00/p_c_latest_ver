@@ -11,6 +11,7 @@ import { createBrowserClient } from '@supabase/ssr'
 import type { Database } from './database.types'
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './config'
 import { clearCachedAuth } from '@/lib/offline-auth'
+import { apiFetch } from '@/lib/mobile-api'
 
 let client: ReturnType<typeof createBrowserClient<Database>> | undefined
 
@@ -143,7 +144,7 @@ export async function signOut(): Promise<{ error: string | null }> {
     const timeoutId = setTimeout(() => controller.abort(), 3000)
     
     try {
-      const response = await fetch('/api/auth/revoke', {
+      const response = await apiFetch('/api/auth/revoke', {
         method: 'POST',
         credentials: 'include',
         signal: controller.signal,

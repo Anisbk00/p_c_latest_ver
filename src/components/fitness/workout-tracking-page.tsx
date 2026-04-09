@@ -43,6 +43,7 @@ import {
   Ruler,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from '@/lib/mobile-api';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -778,6 +779,13 @@ export function WorkoutTrackingPage() {
   const { workouts, workoutsLoading, refetchWorkouts, latestWeight } = useApp();
   const { isSyncing } = useWorkoutSync();
 
+  // Estimated max heart rate (Tanaka formula: 208 - 0.7 × age).
+  // Uses age 30 as default when birthDate is unavailable from profile.
+  const estimatedMaxHR = useMemo(() => {
+    const defaultAge = 30;
+    return Math.round(208 - 0.7 * defaultAge);
+  }, []);
+
   // GPS tracking hook
   const {
     session,
@@ -796,7 +804,7 @@ export function WorkoutTrackingPage() {
     fusionEngineRef,
   } = useGPSTracking(
     latestWeight?.value || 70,
-    180 // TODO: Get from user profile
+    estimatedMaxHR
   );
 
   // UI state
@@ -833,7 +841,7 @@ export function WorkoutTrackingPage() {
     if (!completedSession || !completedMetrics) return;
 
     try {
-      const response = await fetch("/api/workouts", {
+      const response = await apiFetch("/api/workouts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

@@ -621,7 +621,7 @@ function ProfileHeader({
   const handleResetApp = async () => {
     setIsResetting(true);
     try {
-      const response = await fetch('/api/auth/reset', {
+      const response = await apiFetch('/api/auth/reset', {
         method: 'POST',
       });
       
@@ -646,7 +646,7 @@ function ProfileHeader({
   const handleDeleteAccount = async () => {
     setIsDeleting(true);
     try {
-      const response = await fetch('/api/auth/delete', {
+      const response = await apiFetch('/api/auth/delete', {
         method: 'DELETE',
       });
       
@@ -2637,7 +2637,7 @@ function EditProfileForm({
       // Upload to server
       setIsUploadingAvatar(true);
       try {
-        const response = await fetch('/api/user/avatar', {
+        const response = await apiFetch('/api/user/avatar', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ image: base64 }),
@@ -3290,7 +3290,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
   const handleGenerateExperiments = useCallback(async (silent = false, skipRefetch = false) => {
     setIsGeneratingExperiments(true);
     try {
-      const response = await fetch('/api/experiments/generate', {
+      const response = await apiFetch('/api/experiments/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ count: 4 }),
@@ -3337,7 +3337,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
     setCompletingExperimentId(experiment.id);
     
     try {
-      const response = await fetch('/api/experiments', {
+      const response = await apiFetch('/api/experiments', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3381,7 +3381,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
     
     try {
       // Use PATCH to update the existing experiment to active status
-      const response = await fetch('/api/experiments', {
+      const response = await apiFetch('/api/experiments', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3431,7 +3431,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
         mappedGoal = 'weight_loss';
       }
       
-      const response = await fetch('/api/profile', {
+      const response = await apiFetch('/api/profile', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3505,7 +3505,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
       }
       
       // Update both User and UserProfile tables
-      const response = await fetch('/api/profile', {
+      const response = await apiFetch('/api/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -3563,7 +3563,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
     
     setIsExporting(true);
     try {
-      const response = await fetch('/api/profile/export-pdf');
+      const response = await apiFetch('/api/profile/export-pdf');
       
       if (!response.ok) {
         throw new Error('Failed to generate PDF');
@@ -3598,7 +3598,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
     
     setIsExporting(true);
     try {
-      const response = await fetch('/api/profile');
+      const response = await apiFetch('/api/profile');
       
       if (!response.ok) {
         throw new Error('Failed to fetch profile data');
@@ -3640,7 +3640,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
     
     setIsExporting(true);
     try {
-      const response = await fetch('/api/profile');
+      const response = await apiFetch('/api/profile');
       
       if (!response.ok) {
         throw new Error('Failed to fetch profile data');

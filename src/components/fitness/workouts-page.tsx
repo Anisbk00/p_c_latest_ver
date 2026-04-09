@@ -68,6 +68,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { apiFetch } from '@/lib/mobile-api';
 import { useSystemReducedMotion } from "@/hooks/use-system-reduced-motion";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1595,6 +1596,13 @@ export function WorkoutsPage() {
     latestWeight,
   } = useApp();
   
+  // Estimated max heart rate (Tanaka formula: 208 - 0.7 × age).
+  // Uses age 30 as default when birthDate is unavailable from profile.
+  const estimatedMaxHR = useMemo(() => {
+    const defaultAge = 30;
+    return Math.round(208 - 0.7 * defaultAge);
+  }, []);
+  
   // Offline sync hook
   const {
     isOnline,
@@ -1625,7 +1633,7 @@ export function WorkoutsPage() {
     updateConfig,
   } = useGPSTracking(
     latestWeight?.value || 70,
-    180 // TODO: Get from user profile
+    estimatedMaxHR
   );
 
   // UI State
@@ -1694,7 +1702,7 @@ export function WorkoutsPage() {
     if (!completedSession || !completedMetrics) return;
 
     try {
-      const response = await fetch("/api/workouts", {
+      const response = await apiFetch("/api/workouts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1758,7 +1766,7 @@ export function WorkoutsPage() {
 
   const handleGPXImport = useCallback(async (workoutData: WorkoutImportData) => {
     try {
-      const response = await fetch("/api/workouts", {
+      const response = await apiFetch("/api/workouts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

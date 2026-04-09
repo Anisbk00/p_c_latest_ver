@@ -42,6 +42,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Slider } from "@/components/ui/slider";
 import { cn } from "@/lib/utils";
+import { apiFetch } from '@/lib/mobile-api';
 import { format, formatDistanceToNow } from "date-fns";
 import { ProvenanceTag } from "./provenance-tag";
 import { ConfidenceBadge } from "./confidence-badge";
@@ -909,7 +910,7 @@ export function BodyCompositionPage() {
   const fetchHistory = useCallback(async () => {
     try {
       setIsLoading(true);
-      const response = await fetch("/api/body-composition?summary=true");
+      const response = await apiFetch("/api/body-composition?summary=true");
       if (!response.ok) throw new Error("Failed to fetch history");
       const data = await response.json();
       setHistory(data);
@@ -932,7 +933,7 @@ export function BodyCompositionPage() {
     setIsProcessing(true);
 
     try {
-      const response = await fetch("/api/body-composition", {
+      const response = await apiFetch("/api/body-composition", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

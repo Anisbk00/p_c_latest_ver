@@ -6,6 +6,7 @@
  */
 
 import logger from './logger';
+import { apiFetch } from '@/lib/mobile-api';
 
 // ═══════════════════════════════════════════════════════════════
 // TYPES
@@ -696,7 +697,7 @@ export async function syncErrors(): Promise<{ synced: number; failed: number }> 
       const batch = unsyncedErrors.slice(i, i + SYNC_BATCH_SIZE);
 
       try {
-        const response = await fetch('/api/errors', {
+        const response = await apiFetch('/api/errors', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ errors: batch }),

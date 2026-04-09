@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
+import { apiFetch } from '@/lib/mobile-api';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -182,7 +183,7 @@ export function BarcodeScanner({
     await stopScanner();
 
     try {
-      const response = await fetch(`/api/barcode-lookup?barcode=${decodedText}`);
+      const response = await apiFetch(`/api/barcode-lookup?barcode=${decodedText}`);
       const data = await response.json();
 
       if (data.found && data.food) {
@@ -217,7 +218,7 @@ export function BarcodeScanner({
     setStatusMessage("Looking up product...");
 
     try {
-      const response = await fetch(`/api/barcode-lookup?barcode=${manualBarcode.trim()}`);
+      const response = await apiFetch(`/api/barcode-lookup?barcode=${manualBarcode.trim()}`);
       const data = await response.json();
 
       if (data.found && data.food) {

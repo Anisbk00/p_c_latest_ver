@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { Activity, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { getClient } from '@/lib/supabase/client';
+import { apiFetch } from '@/lib/mobile-api';
 
 /**
  * Auth Callback Page
@@ -50,7 +51,7 @@ function AuthCallbackContent() {
           // Sync user to our database
           if (data.user) {
             try {
-              await fetch('/api/auth/callback', {
+              await apiFetch('/api/auth/callback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ code }),
