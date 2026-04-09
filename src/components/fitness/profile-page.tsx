@@ -1381,24 +1381,14 @@ function AIBodyComposition({
 // Transformation Archive
 function TransformationArchive({
   photos,
-  onPhotoTap,
   onUploadPhoto,
   onViewAll,
 }: {
   photos: ProfileData["progressPhotos"];
-  onPhotoTap: (photo: ProfileData["progressPhotos"][0]) => void;
+  onPhotoTap?: (photo: ProfileData["progressPhotos"][0]) => void;
   onUploadPhoto: () => void;
   onViewAll?: () => void;
 }) {
-  // Track image load state to prevent black/invisible thumbnails
-  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
-  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
-
-  const MAX_VISIBLE = 6;
-  const visiblePhotos = photos.slice(0, MAX_VISIBLE);
-  const hasMore = photos.length > MAX_VISIBLE;
-  const hasRealImage = (photo: ProfileData["progressPhotos"][0]) =>
-    !!photo.imageUrl && !photo.imageUrl.startsWith('test://');
 
   return (
     <Card>
@@ -1442,117 +1432,15 @@ function TransformationArchive({
             </Button>
           </div>
         ) : (
-          <>
-            <div className="grid grid-cols-3 gap-2">
-              {visiblePhotos.map((photo, index) => {
-                const isLoaded = loadedImages.has(photo.id);
-                const isFailed = failedImages.has(photo.id);
-                const showRealImage = hasRealImage(photo);
-
-                return (
-                  <motion.button
-                    key={photo.id}
-                    initial={{ opacity: 0, scale: 0.95 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: index * 0.04, duration: 0.25 }}
-                    onClick={(e) => { (e.currentTarget as HTMLElement).blur(); onPhotoTap(photo); }}
-                    className={cn(
-                      "aspect-square rounded-xl overflow-hidden relative touch-manipulation bg-muted/50",
-                      photo.isHighlight && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
-                    )}
-                  >
-                    {/* Loading skeleton while image loads */}
-                    {showRealImage && !isLoaded && !isFailed && (
-                      <div className="absolute inset-0 bg-muted animate-pulse flex items-center justify-center">
-                        <Loader2 className="w-4 h-4 text-muted-foreground/30 animate-spin" />
-                      </div>
-                    )}
-
-                    {/* Actual image */}
-                    {showRealImage && !isFailed && (
-                      <img
-                        src={photo.imageUrl}
-                        alt="Progress photo"
-                        className={cn(
-                          "absolute inset-0 w-full h-full object-cover transition-opacity duration-300",
-                          isLoaded ? "opacity-100" : "opacity-0"
-                        )}
-                        onLoad={() =>
-                          setLoadedImages((prev) => new Set(prev).add(photo.id))
-                        }
-                        onError={() => {
-                          setLoadedImages((prev) => {
-                            const next = new Set(prev);
-                            next.delete(photo.id);
-                            return next;
-                          });
-                          setFailedImages((prev) => new Set(prev).add(photo.id));
-                        }}
-                      />
-                    )}
-
-                    {/* Placeholder: no image or broken image */}
-                    {(!showRealImage || isFailed) && (
-                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-linear-to-br from-muted to-muted/50">
-                        {isFailed ? (
-                          <ImageOff className="w-6 h-6 text-muted-foreground/40" />
-                        ) : (
-                          <User className="w-7 h-7 text-emerald-500/30" />
-                        )}
-                      </div>
-                    )}
-
-                    {/* Highlight glow */}
-                    {photo.isHighlight && (
-                      <div className="absolute inset-0 bg-linear-to-t from-emerald-500/20 to-transparent pointer-events-none" />
-                    )}
-
-                    {/* Body fat overlay */}
-                    {photo.bodyFat && isLoaded && (
-                      <div className="absolute top-1.5 left-1.5 right-1.5">
-                        <div className="bg-black/50 backdrop-blur-sm rounded-md px-1.5 py-0.5 flex items-center gap-1">
-                          <Activity className="w-2.5 h-2.5 text-emerald-400" />
-                          <span className="text-[8px] text-white font-medium leading-none">
-                            {photo.bodyFat.min.toFixed(0)}-{photo.bodyFat.max.toFixed(0)}%
-                          </span>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Date label */}
-                    {isLoaded && (
-                      <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-linear-to-t from-black/60 to-transparent pointer-events-none">
-                        <p className="text-[9px] text-white font-medium leading-none">
-                          {format(new Date(photo.date), "MMM d")}
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Highlight star */}
-                    {photo.isHighlight && isLoaded && (
-                      <div className="absolute top-1.5 right-1.5 pointer-events-none">
-                        <Star className="w-3 h-3 text-yellow-400" />
-                      </div>
-                    )}
-                  </motion.button>
-                );
-              })}
-
-              {/* View All cell when more than 6 photos */}
-              {hasMore && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.95 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: visiblePhotos.length * 0.04, duration: 0.25 }}
-                  onClick={onViewAll}
-                  className="aspect-square rounded-xl overflow-hidden relative touch-manipulation bg-muted/30 border border-dashed border-muted-foreground/20 flex flex-col items-center justify-center gap-1"
-                >
-                  <Grid3x3 className="w-5 h-5 text-muted-foreground/40" />
-                  <span className="text-[10px] text-muted-foreground font-medium">+{photos.length - MAX_VISIBLE}</span>
-                </motion.button>
-              )}
-            </div>
-          </>
+          <motion.button
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={onViewAll}
+            className="w-full py-4 rounded-xl bg-muted/30 border border-dashed border-muted-foreground/20 flex items-center justify-center gap-2 hover:bg-muted/50 active:scale-[0.98] transition-all touch-manipulation"
+          >
+            <Grid3x3 className="w-5 h-5 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground font-medium">Tap to view all {photos.length} photos</span>
+          </motion.button>
         )}
       </CardContent>
     </Card>

@@ -824,3 +824,23 @@ Stage Summary:
 - MEDIUM (capacitor config): ✅ Defensive try-catch added (was already guarded)
 - LOW (TODO items): ✅ 4 TODOs implemented — 2 sharing, 1 GPX import, 1 workout detail tap
 - LOW (TS errors): ⚠️ Partially fixed — 33 errors resolved, 721 remain (root cause: stale Supabase types). `ignoreBuildErrors` kept true with documented migration path. tsconfig scoped to src/ only.
+---
+Task ID: 1
+Agent: Main Agent
+Task: Remove photo grid from transformation archive, keep only "tap to view" button
+
+Work Log:
+- Read TransformationArchive component in profile-page.tsx
+- Identified the 3-column photo thumbnail grid (MAX_VISIBLE=6) and "+N more" view-all cell
+- Replaced the entire photo grid section with a single "Tap to view all N photos" button
+- Removed unused state (loadedImages, failedImages) and constants (MAX_VISIBLE, visiblePhotos, hasMore, hasRealImage)
+- Made onPhotoTap optional in component props (no longer needed since grid is removed)
+- Empty state (no photos) preserved with upload CTA
+- Lint: 0 errors (22 pre-existing warnings unchanged)
+
+Stage Summary:
+- 1 file changed: profile-page.tsx
+- Photo grid removed, replaced with "Tap to view all N photos" button
+- Button opens PhotoGallerySheet (same as old "View All" cell)
+- Zero breaking changes
+- No visual design changes to other components
