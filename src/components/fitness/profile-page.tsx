@@ -1381,14 +1381,28 @@ function AIBodyComposition({
 // Transformation Archive
 function TransformationArchive({
   photos,
+  onPhotoTap,
   onUploadPhoto,
   onViewAll,
 }: {
   photos: ProfileData["progressPhotos"];
-  onPhotoTap?: (photo: ProfileData["progressPhotos"][0]) => void;
+  onPhotoTap: (photo: ProfileData["progressPhotos"][0]) => void;
   onUploadPhoto: () => void;
   onViewAll?: () => void;
 }) {
+  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+
+  const MAX_VISIBLE = 4;
+  // Photos are already sorted recent-first from API; ensure it
+  const sortedPhotos = useMemo(() => 
+    [...photos].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
+    [photos]
+  );
+  const visiblePhotos = sortedPhotos.slice(0, MAX_VISIBLE);
+  const hasMore = sortedPhotos.length > MAX_VISIBLE;
+  const hasRealImage = (photo: ProfileData["progressPhotos"][0]) =>
+    !!photo.imageUrl && !photo.imageUrl.startsWith('test://');
 
   return (
     <Card>
@@ -1432,15 +1446,112 @@ function TransformationArchive({
             </Button>
           </div>
         ) : (
-          <motion.button
-            initial={{ opacity: 0, y: 5 }}
-            animate={{ opacity: 1, y: 0 }}
-            onClick={onViewAll}
-            className="w-full py-4 rounded-xl bg-muted/30 border border-dashed border-muted-foreground/20 flex items-center justify-center gap-2 hover:bg-muted/50 active:scale-[0.98] transition-all touch-manipulation"
-          >
-            <Grid3x3 className="w-5 h-5 text-muted-foreground" />
-            <span className="text-sm text-muted-foreground font-medium">Tap to view all {photos.length} photos</span>
-          </motion.button>
+          <>
+            {/* 2x2 grid of most recent 4 photos */}
+            <div className="grid grid-cols-2 gap-2">
+              {visiblePhotos.map((photo, index) => {
+                const isLoaded = loadedImages.has(photo.id);
+                const isFailed = failedImages.has(photo.id);
+                const showRealImage = hasRealImage(photo);
+
+                return (
+                  <motion.button
+                    key={photo.id}
+                    initial={{ opacity: 0, scale: 0.95 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: index * 0.04, duration: 0.25 }}
+                    onClick={(e) => { (e.currentTarget as HTMLElement).blur(); onPhotoTap(photo); }}
+                    className="aspect-square rounded-xl overflow-hidden relative touch-manipulation bg-muted/50"
+                  >
+                    {/* Loading skeleton */}
+                    {showRealImage && !isLoaded && !isFailed && (
+                      <div className="absolute inset-0 bg-muted animate-pulse flex items-center justify-center">
+                        <Loader2 className="w-4 h-4 text-muted-foreground/30 animate-spin" />
+                      </div>
+                    )}
+
+                    {/* Image */}
+                    {showRealImage && !isFailed && (
+                      <img
+                        src={photo.imageUrl}
+                        alt="Progress photo"
+                        className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+                        style={{ opacity: isLoaded ? 1 : 0 }}
+                        onLoad={() =>
+                          setLoadedImages((prev) => new Set(prev).add(photo.id))
+                        }
+                        onError={() => {
+                          setLoadedImages((prev) => {
+                            const next = new Set(prev);
+                            next.delete(photo.id);
+                            return next;
+                          });
+                          setFailedImages((prev) => new Set(prev).add(photo.id));
+                        }}
+                      />
+                    )}
+
+                    {/* Placeholder */}
+                    {(!showRealImage || isFailed) && (
+                      <div className="absolute inset-0 flex flex-col items-center justify-center bg-linear-to-br from-muted to-muted/50">
+                        {isFailed ? (
+                          <ImageOff className="w-6 h-6 text-muted-foreground/40" />
+                        ) : (
+                          <User className="w-7 h-7 text-emerald-500/30" />
+                        )}
+                      </div>
+                    )}
+
+                    {/* Body fat overlay */}
+                    {photo.bodyFat && isLoaded && (
+                      <div className="absolute top-1.5 left-1.5 right-1.5">
+                        <div className="bg-black/50 backdrop-blur-sm rounded-md px-1.5 py-0.5 flex items-center gap-1">
+                          <Activity className="w-2.5 h-2.5 text-emerald-400" />
+                          <span className="text-[8px] text-white font-medium leading-none">
+                            {photo.bodyFat.min.toFixed(0)}-{photo.bodyFat.max.toFixed(0)}%
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Date label */}
+                    {isLoaded && (
+                      <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-linear-to-t from-black/60 to-transparent pointer-events-none">
+                        <p className="text-[9px] text-white font-medium leading-none">
+                          {format(new Date(photo.date), "MMM d")}
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Weight badge */}
+                    {photo.weight && isLoaded && (
+                      <div className="absolute top-1.5 right-1.5">
+                        <div className="bg-black/50 backdrop-blur-sm rounded-md px-1 py-0.5">
+                          <span className="text-[8px] text-white font-medium leading-none">
+                            {photo.weight}kg
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </motion.button>
+                );
+              })}
+            </div>
+
+            {/* View All button when there are more photos */}
+            {hasMore && (
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: visiblePhotos.length * 0.04 }}
+                onClick={onViewAll}
+                className="w-full mt-2 py-3 rounded-xl bg-muted/30 border border-dashed border-muted-foreground/20 flex items-center justify-center gap-2 hover:bg-muted/50 active:scale-[0.98] transition-all touch-manipulation"
+              >
+                <Grid3x3 className="w-4 h-4 text-muted-foreground" />
+                <span className="text-xs text-muted-foreground font-medium">View all {photos.length} photos</span>
+              </motion.button>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
@@ -2253,10 +2364,11 @@ function PhotoGallerySheet({
   const hasRealImage = (photo: ProfileData["progressPhotos"][0]) =>
     !!photo.imageUrl && !photo.imageUrl.startsWith('test://');
 
-  if (!photos || photos.length === 0) return null;
+  // Don't render empty sheet content, but keep Sheet mounted to prevent flicker
+  const displayPhotos = photos && photos.length > 0 ? photos : [];
 
   return (
-    <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+    <Sheet open={open && displayPhotos.length > 0} onOpenChange={(isOpen) => !isOpen && onClose()}>
       <SheetContent side="bottom" className="rounded-t-3xl px-0 max-h-[92vh] flex flex-col">
         <div className="h-1 w-12 bg-muted rounded-full mx-auto mt-2 mb-3" />
         <SheetHeader className="px-6 pb-3 shrink-0">
@@ -2272,7 +2384,7 @@ function PhotoGallerySheet({
 
         <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-6">
           <div className="grid grid-cols-3 gap-2">
-            {photos.map((photo, index) => {
+            {displayPhotos.map((photo, index) => {
               const isLoaded = loadedImages.has(photo.id);
               const isFailed = failedImages.has(photo.id);
               const showRealImage = hasRealImage(photo);
@@ -2300,7 +2412,6 @@ function PhotoGallerySheet({
                       alt="Progress photo"
                       className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
                       style={{ opacity: isLoaded ? 1 : 0 }}
-                      loading="lazy"
                       onLoad={() =>
                         setLoadedImages((prev) => new Set(prev).add(photo.id))
                       }
@@ -3692,15 +3803,12 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
       />
 
       {/* Photo Gallery Sheet - View All Photos */}
-      {galleryOpen && (
-        <PhotoGallerySheet
-          key={`gallery-${Date.now()}`}
-          open={galleryOpen}
-          onClose={() => setGalleryOpen(false)}
-          photos={data.progressPhotos ?? []}
-          onPhotoTap={handlePhotoTap}
-        />
-      )}
+      <PhotoGallerySheet
+        open={galleryOpen}
+        onClose={() => setGalleryOpen(false)}
+        photos={data.progressPhotos ?? []}
+        onPhotoTap={handlePhotoTap}
+      />
 
       {/* Progress Photo Upload Sheet */}
       <ProgressPhotoUploadSheet

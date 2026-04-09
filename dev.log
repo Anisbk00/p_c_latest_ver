@@ -4,7 +4,7 @@
 - Environments: .env
 
 ✓ Starting...
-✓ Ready in 794ms
+✓ Ready in 946ms
 ○ Compiling / ...
 [AuthScreen] Rendering, mode: welcome
- GET / 200 in 7.5s (compile: 7.0s, proxy.ts: 192ms, render: 365ms)
+ GET / 200 in 4.1s (compile: 3.7s, proxy.ts: 184ms, render: 245ms)
