@@ -17,7 +17,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, X, Flame, Zap, Dumbbell, Target, Utensils, Cpu, Crown, Loader2, Trash2, MoreVertical, CalendarDays, MessageSquare, RefreshCw, AlertTriangle } from 'lucide-react';
+import { Send, X, Flame, Zap, Dumbbell, Target, Utensils, Cpu, Crown, Loader2, Trash2, MoreVertical, CalendarDays, MessageSquare, RefreshCw, AlertTriangle, TrendingUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sanitizeAIContent } from '@/lib/security-utils';
 import { apiFetch, getApiUrl } from '@/lib/mobile-api';
@@ -36,6 +36,16 @@ import dynamic from 'next/dynamic';
 
 // Dynamically import planner to avoid SSR issues
 const WeeklyPlanner = dynamic(() => import('./weekly-planner').then(m => ({ default: m.WeeklyPlanner })), {
+  ssr: false,
+  loading: () => (
+    <div className="flex items-center justify-center h-full">
+      <Loader2 className="w-6 h-6 animate-spin text-orange-400" />
+    </div>
+  ),
+});
+
+// Dynamically import weight progress tracker
+const WeightProgressTracker = dynamic(() => import('./weight-progress-tracker').then(m => ({ default: m.WeightProgressTracker })), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full">
@@ -465,7 +475,7 @@ export function IronCoach({ className }: IronCoachProps) {
   const { t, locale } = useLocale();
   
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'planner'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'planner' | 'progress'>('chat');
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -1082,7 +1092,7 @@ export function IronCoach({ className }: IronCoachProps) {
                         <Trash2 className="w-4 h-4 text-red-400" />
                         <span>{isClearing && confirmModalType === 'clear' ? 'Clearing...' : 'Clear Chat History'}</span>
                       </button>
-                    ) : (
+                    ) : activeTab === 'planner' ? (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
@@ -1099,7 +1109,7 @@ export function IronCoach({ className }: IronCoachProps) {
                         <RefreshCw className={cn("w-4 h-4 text-amber-500", isClearing && confirmModalType === 'update' && "animate-spin")} />
                         <span>{isClearing && confirmModalType === 'update' ? 'Updating...' : 'Update Plan'}</span>
                       </button>
-                    )}
+                    ) : null}
                   </motion.div>,
                   document.body
                 )}
@@ -1144,12 +1154,30 @@ export function IronCoach({ className }: IronCoachProps) {
                 <CalendarDays className="w-4 h-4" />
                 Weekly Plan
               </button>
+              <button
+                onClick={() => setActiveTab('progress')}
+                className={cn(
+                  "flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-all",
+                  activeTab === 'progress' 
+                    ? cn(styles.accent === 'red' ? 'text-red-400 border-b-2 border-red-400' : 
+                         styles.accent === 'pink' ? 'text-pink-400 border-b-2 border-pink-400' : 
+                         'text-orange-400 border-b-2 border-orange-400')
+                    : cn(styles.subtitle, "hover:opacity-80")
+                )}
+              >
+                <TrendingUp className="w-3.5 h-3.5" />
+                Progress
+              </button>
             </div>
 
-            {/* Content - Chat or Planner */}
+            {/* Content - Chat, Planner, or Progress */}
             {activeTab === 'planner' ? (
               <div className="flex-1 min-h-0 overflow-hidden">
                 <WeeklyPlanner theme={theme} />
+              </div>
+            ) : activeTab === 'progress' ? (
+              <div className="flex-1 min-h-0 overflow-hidden">
+                <WeightProgressTracker theme={theme} />
               </div>
             ) : (
               <>

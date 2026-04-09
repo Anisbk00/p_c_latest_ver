@@ -4,7 +4,12 @@
 - Environments: .env
 
 ✓ Starting...
-✓ Ready in 946ms
+✓ Ready in 850ms
 ○ Compiling / ...
 [AuthScreen] Rendering, mode: welcome
- GET / 200 in 4.1s (compile: 3.7s, proxy.ts: 184ms, render: 245ms)
+ GET / 200 in 3.9s (compile: 3.4s, proxy.ts: 184ms, render: 374ms)
+ GET /api/ai/home-insights 200 in 482ms (compile: 461ms, proxy.ts: 5ms, render: 16ms)
+[AuthScreen] Rendering, mode: welcome
+ GET / 200 in 59ms (compile: 4ms, proxy.ts: 6ms, render: 49ms)
+[AuthScreen] Rendering, mode: welcome
+ GET / 200 in 48ms (compile: 4ms, proxy.ts: 5ms, render: 40ms)
