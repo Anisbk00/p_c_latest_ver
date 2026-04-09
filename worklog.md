@@ -619,3 +619,44 @@ Stage Summary:
 - BMI requires both photo.weight AND user height (heightCm >= 100) to display
 - Zero UI/UX changes — purely backend data integrity fix
 - Mobile (Capacitor): Same apiFetch path → same fix applies
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix transformation archive - upload speed + photo gallery for 20+ photos
+
+Work Log:
+- Investigated transformation archive: upload flow (5-step wizard), photo display (MAX_VISIBLE=6, limit 20)
+- Identified root causes:
+  1. No upload progress indicator (binary spinner), full-size images uploaded without compression
+  2. Grid shows only 6 photos, "+N more" opens single photo detail, no full gallery view
+  3. Profile API hard-caps at 20 photos
+
+- FIX 1: Upload Progress + Image Compression (progress-photo-upload-sheet.tsx)
+  - Added image compression: resize to max 1920px, JPEG quality 0.82 (50-70% size reduction)
+  - Replaced apiFetch with XMLHttpRequest for byte-level upload progress tracking
+  - Added uploadProgress state (0-100) with animated progress bar
+  - Shows "Preparing upload... Compressing and optimizing" before upload starts
+  - Shows percentage + progress bar during upload
+  - Handles mobile auth via exported getAccessToken from mobile-api.ts
+
+- FIX 2: Full Photo Gallery (profile-page.tsx)
+  - Created new PhotoGallerySheet component: scrollable 3-column grid of ALL photos
+  - Shows body fat overlay, date, and weight badges on each thumbnail
+  - Uses lazy loading (loading="lazy") for performance
+  - Force-remounts on open via key prop to reset image load state
+  - Updated TransformationArchive: "+N more" cell now opens gallery
+  - Added "View all N" link in archive footer
+  - Tapping any photo in gallery opens PhotoDetailSheet for full details
+
+- FIX 3: Increased API limit (api/profile/route.ts)
+  - Changed .limit(20) to .limit(50) in both main query and admin RLS fallback
+  - Fetches up to 50 progress photos instead of 20
+
+Stage Summary:
+- 4 files changed: progress-photo-upload-sheet.tsx, profile-page.tsx, mobile-api.ts, api/profile/route.ts
+- 308 insertions, 44 deletions
+- 0 lint errors (22 pre-existing warnings unchanged)
+- Zero UI/UX visual design changes (only functional improvements)
+- Mobile (Capacitor): XHR auth handled for Android/iOS
+- Deployed via git push to GitHub (auto-deploys to Vercel)
