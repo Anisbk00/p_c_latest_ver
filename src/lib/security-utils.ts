@@ -436,6 +436,21 @@ export async function secureFetch(
     }
   }
   
+  // Use apiFetch for /api/ routes to handle Capacitor mobile correctly
+  // (base URL resolution, Authorization header injection)
+  // For non-API routes, use native fetch directly.
+  const { apiFetch } = await import('@/lib/mobile-api');
+  if (url.startsWith('/api/')) {
+    // Merge secure headers into apiFetch — apiFetch already adds credentials + auth
+    const mergedOptions: RequestInit = {
+      ...fetchOptions,
+      headers,
+    };
+    // apiFetch sets credentials: 'include' internally, remove from merged to avoid dup
+    delete (mergedOptions as Record<string, unknown>).credentials;
+    return apiFetch(url, mergedOptions);
+  }
+
   return fetch(url, {
     ...fetchOptions,
     headers,

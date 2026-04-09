@@ -248,6 +248,9 @@ export async function POST(request: NextRequest) {
   return withRequestId(requestId, async () => {
     const startTime = Date.now()
 
+    // Declare outside try so it's accessible in catch
+    let user: Awaited<ReturnType<typeof requireAuth>> | undefined
+
     try {
       // ─── Rate Limiting ─────────────────────────────────────────
       const rateLimitKey = createRateLimitKey(request)
@@ -276,7 +279,6 @@ export async function POST(request: NextRequest) {
       }
 
       // ─── Authentication ─────────────────────────────────────────
-      let user
       try {
         user = await requireAuth(request)
       } catch {

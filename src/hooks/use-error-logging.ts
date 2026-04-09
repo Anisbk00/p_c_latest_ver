@@ -114,7 +114,9 @@ export function useErrorLogging(
       });
     });
 
-    // Network status listener
+    // Network status listeners
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
     let removeCapNetListener: (() => void) | null = null;
 
     if (isNative) {

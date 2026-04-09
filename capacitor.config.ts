@@ -19,10 +19,16 @@ const isDev = process.env.CAPACITOR_DEV === 'true';
 
 // Supabase URL from environment
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseDomain = SUPABASE_URL ? new URL(SUPABASE_URL).hostname : 'supabase.co';
+let supabaseDomain = 'supabase.co';
+try {
+  if (SUPABASE_URL) supabaseDomain = new URL(SUPABASE_URL).hostname;
+} catch { /* malformed URL — keep default */ }
 
 // API URL for mobile - the deployed backend
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '';
+function safeExtractHostname(url: string): string {
+  try { return new URL(url).hostname; } catch { return ''; }
+}
 
 const config: CapacitorConfig = {
   appId: 'com.progresscompanion.app',
@@ -54,8 +60,8 @@ const config: CapacitorConfig = {
           androidScheme: 'https',
           iosScheme: 'https',
           allowNavigation: [
-            // Your deployed backend (guard against empty API_URL)
-            ...(API_URL ? [new URL(API_URL).hostname] : []),
+            // Your deployed backend (guard against empty/invalid API_URL)
+            ...(API_URL ? (() => { const h = safeExtractHostname(API_URL); return h ? [h] : []; })() : []),
             // Supabase
             supabaseDomain,
             '*.supabase.co',

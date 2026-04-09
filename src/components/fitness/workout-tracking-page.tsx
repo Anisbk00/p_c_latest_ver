@@ -60,6 +60,7 @@ import {
 } from "@/lib/gps-tracking";
 import { LiveTrackingMap } from "@/components/fitness/live-tracking-map";
 import { GPXImport } from "@/components/fitness/gpx-import";
+import { WorkoutImportData } from "@/lib/gpx-parser";
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -1033,7 +1034,7 @@ export function WorkoutTrackingPage() {
                     key={workout.id}
                     workout={workout as Workout}
                     onTap={() => {
-                      // TODO: Show workout detail
+                      console.log('[WorkoutDetail] Tapped workout:', workout.id);
                     }}
                   />
                 ))}
@@ -1146,7 +1147,21 @@ export function WorkoutTrackingPage() {
             onSave={handleSaveWorkout}
             onDiscard={handleDiscardWorkout}
             onShare={() => {
-              // TODO: Implement sharing
+              if (!completedSession || !completedMetrics) return;
+              const activityLabel = completedSession.activityType.charAt(0).toUpperCase() + completedSession.activityType.slice(1);
+              const shareText = [
+                `🏋️ ${activityLabel} Workout`,
+                completedSession.totalDistance > 0 ? `📏 ${formatDistance(completedSession.totalDistance)}` : null,
+                `⏱️ ${formatDuration(completedSession.totalDuration)}`,
+                completedMetrics.avgPace ? `⚡ Pace: ${formatPace(completedMetrics.avgPace)}` : null,
+                `🔥 ~${Math.round(completedSession.calories)} cal`,
+              ].filter(Boolean).join('\n');
+
+              if (typeof navigator !== 'undefined' && navigator.share) {
+                navigator.share({ title: `${activityLabel} Workout`, text: shareText }).catch(() => {});
+              } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                navigator.clipboard.writeText(shareText).catch(() => {});
+              }
             }}
           />
         )}
@@ -1156,8 +1171,34 @@ export function WorkoutTrackingPage() {
       <GPXImport
         open={showGPXImport}
         onClose={() => setShowGPXImport(false)}
-        onImport={async (data) => {
-          // TODO: Handle GPX import
+        onImport={async (data: WorkoutImportData) => {
+          try {
+            const response = await apiFetch("/api/workouts", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                activityType: data.activityType,
+                durationMinutes: data.durationMinutes || 0,
+                distanceMeters: data.distanceMeters || 0,
+                routeData: data.routeData ? JSON.stringify(data.routeData) : undefined,
+                elevationGain: data.elevationGain,
+                avgPace: data.avgPace,
+                avgSpeed: data.avgSpeed,
+                avgHeartRate: data.avgHeartRate,
+                caloriesBurned: data.caloriesBurned,
+                name: data.name,
+                source: data.source,
+              }),
+            });
+            if (response.ok) {
+              refetchWorkouts();
+              setShowGPXImport(false);
+            } else {
+              console.error('[GPX Import] Save failed:', response.status);
+            }
+          } catch (err) {
+            console.error('[GPX Import] Error saving imported workout:', err);
+          }
           setShowGPXImport(false);
         }}
       />

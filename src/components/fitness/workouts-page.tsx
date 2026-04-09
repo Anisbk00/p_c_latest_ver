@@ -15,7 +15,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   Play,
   Pause,
@@ -2094,7 +2094,22 @@ export function WorkoutsPage() {
             onSave={handleSaveWorkout}
             onDiscard={handleDiscardWorkout}
             onShare={() => {
-              // TODO: Implement sharing
+              if (!completedSession || !completedMetrics) return;
+              const activityLabel = completedSession.activityType.charAt(0).toUpperCase() + completedSession.activityType.slice(1);
+              const shareText = [
+                `🏋️ ${activityLabel} Workout`,
+                completedSession.totalDistance > 0 ? `📏 ${formatDistance(completedSession.totalDistance)}` : null,
+                `⏱️ ${formatDuration(completedSession.totalDuration)}`,
+                completedMetrics.avgPace ? `⚡ Pace: ${formatPace(completedMetrics.avgPace)}` : null,
+                `🔥 ~${Math.round(completedSession.calories)} cal`,
+                detectedPR ? `🏆 New PR: ${detectedPR.name}` : null,
+              ].filter(Boolean).join('\n');
+
+              if (typeof navigator !== 'undefined' && navigator.share) {
+                navigator.share({ title: `${activityLabel} Workout`, text: shareText }).catch(() => {});
+              } else if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                navigator.clipboard.writeText(shareText).catch(() => {});
+              }
             }}
             onExportGPX={handleExportGPX}
             detectedPR={detectedPR}

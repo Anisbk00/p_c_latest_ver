@@ -18,6 +18,7 @@ import type { Database } from './database.types'
 import { initDeviceId } from '@/lib/unified-data-service'
 import { clearAllLocalData } from '@/lib/offline-storage'
 import { clearCachedAuth } from '@/lib/offline-auth'
+import { apiFetch } from '@/lib/mobile-api'
 
 type Profile = Database['public']['Tables']['profiles']['Row']
 
@@ -167,16 +168,15 @@ export function SupabaseAuthProvider({ children }: { children: React.ReactNode }
       }
     }
     
-    // Web or mobile with API server: use API route
+    // Web or mobile with API server: use API route via apiFetch
+    // apiFetch handles base URL resolution and Authorization header injection
+    // for Capacitor mobile, so we don't need manual baseUrl logic here.
     try {
-      const baseUrl = isCapacitor && hasApiServer ? apiUrl : '';
-      
       // SECURITY FIX: Add 10s timeout to prevent hanging on profile fetch
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 10000);
       
-      const response = await fetch(`${baseUrl}/api/profile`, { 
-        credentials: 'include',
+      const response = await apiFetch('/api/profile', {
         signal: controller.signal,
       });
       

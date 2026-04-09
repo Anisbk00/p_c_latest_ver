@@ -1365,7 +1365,7 @@ function SearchFoodSheet({
           url = `/api/foods?${params.toString()}`;
         }
         
-        const response = await fetch(url);
+        const response = await apiFetch(url);
         if (response.ok) {
           const data = await response.json();
           const items = mealType === 'supplements' ? (data.supplements || []) : (data.foods || []);

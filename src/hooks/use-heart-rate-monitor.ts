@@ -15,6 +15,44 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+
+// Web Bluetooth API types (available in Chrome/Edge/Safari)
+interface RequestDeviceOptions {
+  filters?: Array<{ services?: string[]; namePrefix?: string; name?: string }>;
+  optionalServices?: string[];
+  acceptAllDevices?: boolean;
+}
+declare interface BluetoothDevice extends EventTarget {
+  id: string;
+  name?: string;
+  gatt?: BluetoothRemoteGATTServer;
+}
+declare interface BluetoothRemoteGATTServer {
+  connected: boolean;
+  connect(): Promise<BluetoothRemoteGATTServer>;
+  disconnect(): void;
+  getPrimaryService(service: string): Promise<BluetoothRemoteGATTService>;
+}
+declare interface BluetoothRemoteGATTService {
+  getCharacteristic(characteristic: string): Promise<BluetoothRemoteGATTCharacteristic>;
+}
+declare interface BluetoothRemoteGATTCharacteristic extends EventTarget {
+  value: DataView | null;
+  startNotifications(): Promise<void>;
+  stopNotifications(): Promise<void>;
+  readValue(): Promise<DataView>;
+  writeValueWithResponse(value: BufferSource): Promise<void>;
+  addEventListener(type: string, listener: EventListenerOrEventListenerObject): void;
+  removeEventListener(type: string, listener: EventListenerOrEventListenerObject): void;
+}
+declare interface Bluetooth extends EventTarget {
+  requestDevice(options: RequestDeviceOptions): Promise<BluetoothDevice>;
+}
+declare global {
+  interface Navigator {
+    bluetooth: Bluetooth;
+  }
+}
 import { vibrate as capVibrate } from '@/lib/capacitor';
 
 // ═══════════════════════════════════════════════════════════════
