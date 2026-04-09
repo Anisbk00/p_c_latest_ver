@@ -747,3 +747,52 @@ Stage Summary:
 - 🔴 CRITICAL: ~40+ direct fetch('/api/...') calls will break on mobile (must use apiFetch())
 - 🟡 capacitor.config.ts needs empty-URL guard
 - Full codebase scan report provided to user
+
+---
+Task ID: 1
+Agent: Main Architect
+Task: Post-context-restore — Clone repo, configure Supabase, mobile build check, full codebase scan, preview readiness
+
+Work Log:
+- Verified repo already cloned at /home/z/my-project (remote: Anisbk00/p_c_latest_ver)
+- Git remote configured with PAT: https://ghp_***@github.com/Anisbk00/p_c_latest_ver.git
+- Branch: main, 1 commit ahead of origin/main, clean working tree
+- Verified .env contains all correct Supabase credentials (URL, anon key, service role, DB URL, access token, Expo token)
+- Verified eas.json has Supabase URL + anon key in all 3 build profiles (development, preview, production)
+- Verified app.json has EAS projectId: 4c225a1f-48a4-4cb3-bd3d-58f1b0a18057
+- SECURITY FLAG: .env is tracked in git (.gitignore has it commented out) — service role key, DB password, AI secrets exposed on GitHub
+- Launched parallel agents: codebase scan (Explore) + build readiness check (general-purpose)
+- Build readiness: READY (0 lint errors, 22 warnings, correct static export config)
+- Performed additional manual scan: auth patterns, console.log count, unauthenticated routes, TODO items
+
+Comprehensive Codebase Scan Results:
+- 302 TypeScript/TSX files total
+- 85 API routes, 95 components, 83 lib modules, 22 hooks
+- 15+ Supabase tables (profiles, user_settings, body_metrics, global_foods, foods, food_logs, workouts, routes, workout_laps, workout_exercises, offline_map_regions, wearable_devices, sleep_logs, ai_insights, goals, user_files, supplements, supplement_logs, notifications, notification_preferences)
+- Auth: Primary mechanism is getSupabaseUser() from supabase-data.ts — supports cookie-based (web) + Bearer token (mobile)
+- AI: Gemini API (via Google Generative AI SDK), Iron Coach hybrid engine (cloud + local), adaptive engine, multi-agent system
+- Unified Data Service: Offline-first with local cache (IndexedDB via Dexie), sync queue, realtime subscriptions, conflict resolution
+- Human State Engine: Signal-based AI suggestion system for goal, activity, coaching tone inference
+- GPS: Pipeline with interpolation, fusion engine, background tracking
+- i18n: English, French, Arabic with locale context bridge
+- Themes: gymgirl, gymbro, white (JSON configs)
+- XP System: Gamification with leveling
+- Notifications: Push + local + scheduled + behavioral engine
+- Offline: Service worker v14, offline storage (IndexedDB), offline auth cache
+
+Security Findings:
+- 59 API routes don't directly import requireAuth/createServerClient BUT most use getSupabaseUser() (alternative auth pattern)
+- Auth routes intentionally public (signin, signup, reset, callback, health, errors)
+- 7 TODO items found (non-critical, mostly UI placeholders)
+- 800+ console.log/warn/error statements across codebase (many guarded by NODE_ENV checks)
+
+Stage Summary:
+- ✅ Repo already cloned and properly configured
+- ✅ Supabase credentials correct everywhere (.env, eas.json × 3 profiles)
+- ✅ EAS project linked (ID in app.json)
+- ✅ Build readiness: READY (0 errors, correct static export)
+- ✅ Full codebase scan completed (302 files, 85 API routes, 97K+ lines)
+- ⚠️ SECURITY: .env tracked in git — sensitive secrets exposed on GitHub
+- ⚠️ KNOWN ISSUE: ~40+ direct fetch('/api/...') calls will break on mobile (must use apiFetch())
+- EAS preview build cannot be run from sandbox (requires Expo build servers)
+- Lint: 0 errors, 22 warnings (unused eslint-disable directives)
