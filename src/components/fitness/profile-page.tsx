@@ -1455,7 +1455,7 @@ function TransformationArchive({
                     initial={{ opacity: 0, scale: 0.95 }}
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ delay: index * 0.04, duration: 0.25 }}
-                    onClick={() => onPhotoTap(photo)}
+                    onClick={(e) => { (e.currentTarget as HTMLElement).blur(); onPhotoTap(photo); }}
                     className={cn(
                       "aspect-square rounded-xl overflow-hidden relative touch-manipulation bg-muted/50",
                       photo.isHighlight && "ring-2 ring-emerald-500 ring-offset-2 ring-offset-background"
@@ -2405,7 +2405,7 @@ function PhotoGallerySheet({
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: Math.min(index * 0.03, 0.6), duration: 0.2 }}
-                  onClick={() => onPhotoTap(photo)}
+                  onClick={(e) => { (e.currentTarget as HTMLElement).blur(); onPhotoTap(photo); }}
                   className="aspect-square rounded-xl overflow-hidden relative touch-manipulation bg-muted/50"
                 >
                   {/* Loading skeleton */}
