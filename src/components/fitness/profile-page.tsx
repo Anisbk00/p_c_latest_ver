@@ -1552,16 +1552,6 @@ function TransformationArchive({
                 </motion.button>
               )}
             </div>
-
-            <p className="text-[11px] text-muted-foreground/60 mt-2.5 text-center">
-              Tap a photo to view details
-              {hasMore && ' · '}
-              {hasMore && (
-                <button onClick={onViewAll} className="text-emerald-500 hover:underline">
-                  View all {photos.length}
-                </button>
-              )}
-            </p>
           </>
         )}
       </CardContent>
