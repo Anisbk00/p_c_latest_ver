@@ -660,3 +660,90 @@ Stage Summary:
 - Zero UI/UX visual design changes (only functional improvements)
 - Mobile (Capacitor): XHR auth handled for Android/iOS
 - Deployed via git push to GitHub (auto-deploys to Vercel)
+
+---
+Task ID: 5
+Agent: mobile-build-checker
+Task: Check mobile build configuration
+
+Work Log:
+- Examined all 10 mobile build config files: next.config.ts, capacitor.config.ts, app.json, eas.json, handle-api-routes.js, remove-dynamic-export.js, add-dynamic-export.js, Caddyfile, public/manifest.json, public/sw.js
+- Examined package.json scripts section, mobile-api.ts, and all page.tsx files
+- Cross-referenced Supabase credentials in .env vs eas.json (all 3 profiles)
+- Tested capacitor.config.ts for empty URL crash scenario
+- Audited all fetch() calls in src/ for mobile compatibility
+
+Findings — GOOD:
+1. ✅ Supabase credentials in eas.json match expected values in ALL 3 build profiles (development, preview, production)
+2. ✅ .env credentials match expected values
+3. ✅ NEXT_PUBLIC_API_URL is consistent: https://p-c-five.vercel.app in eas.json and .env
+4. ✅ next.config.ts properly enables static export when NEXT_PUBLIC_MOBILE_BUILD=true (output: 'export', trailingSlash: true, images: { unoptimized: true })
+5. ✅ handle-api-routes.js correctly backs up/restores API routes for mobile build (no server routes in static export)
+6. ✅ All 6 pages are static (no dynamic [id]/[slug] segments) — safe for static export
+7. ✅ offline.html exists in public/ for service worker fallback
+8. ✅ PWA manifest (manifest.json) properly configured with standalone display, theme colors, icons
+9. ✅ Service worker v14 comprehensive: cache-first static, network-first API, background sync, push notifications
+10. ✅ app.json has correct EAS projectId: 4c225a1f-48a4-4cb3-bd3d-58f1b0a18057
+11. ✅ Expo/EAS build profiles are reasonable (dev client, preview APK, production AAB with autoIncrement)
+12. ✅ Caddyfile properly proxies port 81 → localhost:3000 with correct headers
+13. ✅ Package.json has complete mobile build scripts (mobile:build, mobile:sync, mobile:android, mobile:ios, eas:build:*)
+14. ✅ mobile-api.ts properly handles mobile vs web API routing with Bearer token auth
+
+Findings — ISSUES:
+
+1. 🔴 CRITICAL: ~40+ direct fetch('/api/...') calls bypass apiFetch() — WILL BREAK ON MOBILE
+   - On Capacitor, relative URLs like '/api/profile' fail because there's no local server
+   - All /api/ calls MUST go through apiFetch() which prefixes NEXT_PUBLIC_API_URL
+   - Affected files: profile-page.tsx (~15 calls), foods-page.tsx, workouts-page.tsx, body-composition-page.tsx, SettingsPage.tsx, SettingsDropdown.tsx, notification-center.tsx, onboarding-flow.tsx, finish-setup-modal.tsx, food-photo-scanner.tsx, workout-tracking-page.tsx, use-xp.ts, auth-context.tsx (via client.ts), notifications/service.ts, error-monitoring.ts, page.tsx
+   - Only 12 files correctly use apiFetch(); 28 files use direct fetch()
+
+2. 🟡 MEDIUM: capacitor.config.ts crashes when NEXT_PUBLIC_API_URL is empty
+   - Production mode: `new URL(API_URL).hostname` throws "Invalid URL" if API_URL is ''
+   - Would crash `npx cap sync` if env var not set locally
+   - Safe during EAS build (env injected) but risky for manual operations
+
+3. 🟡 MEDIUM: remove-dynamic-export.js and add-dynamic-export.js are unused
+   - mobile:build uses handle-api-routes.js (backup/restore approach) instead
+   - The dynamic export scripts exist but aren't in any build pipeline
+   - No issue but dead code that may confuse future developers
+
+4. 🟢 LOW: No native platform directories (android/, ios/) exist yet
+   - `npx cap add android/ios` not yet run
+   - Expected for fresh setup but must be done before APK/IPA builds
+
+5. 🟢 LOW: Production EAS build has no android.buildType specified
+   - Defaults to AAB (Android App Bundle) — correct for Play Store
+   - Preview profile explicitly sets APK — correct for internal testing
+   - No action needed but good to be aware
+
+Stage Summary:
+- ✅ Supabase credentials correct in all locations (.env, eas.json × 3 profiles)
+- ✅ Static export configuration is correct and builds successfully
+- ✅ Expo/EAS/Capacitor configuration is well-structured
+- 🔴 CRITICAL: ~40+ direct fetch() calls will fail on mobile — must migrate to apiFetch()
+- 🟡 capacitor.config.ts needs empty-URL guard
+- Mobile build will compile but runtime API calls will fail until fetch migration is done
+---
+Task ID: 6
+Agent: main-architect
+Task: Clone repo, install, configure Supabase, verify build, scan entire codebase
+
+Work Log:
+- Cloned https://github.com/Anisbk00/p_c_latest_ver.git (already at /home/z/temp-repo)
+- Replaced entire existing project at /home/z/my-project with cloned repo
+- Verified .env contains all correct credentials (Supabase URL, anon key, service role, DB URL, access token, Expo token)
+- Verified eas.json has correct Supabase credentials in all 3 build profiles (development, preview, production)
+- Ran bun install — 1262 packages installed
+- Ran bun run lint — 0 errors, 22 warnings (all unused eslint-disable directives)
+- Ran bun run build — successful, all 77+ routes compiled
+- Started dev server on port 3000 — page renders correctly (AuthScreen welcome mode)
+- Performed comprehensive codebase scan (97K+ lines)
+
+Stage Summary:
+- ✅ Project installed and running successfully
+- ✅ Supabase credentials properly configured everywhere
+- ✅ Build compiles successfully
+- ✅ Dev server running on port 3000
+- 🔴 CRITICAL: ~40+ direct fetch('/api/...') calls will break on mobile (must use apiFetch())
+- 🟡 capacitor.config.ts needs empty-URL guard
+- Full codebase scan report provided to user
