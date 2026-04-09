@@ -844,3 +844,27 @@ Stage Summary:
 - Button opens PhotoGallerySheet (same as old "View All" cell)
 - Zero breaking changes
 - No visual design changes to other components
+
+---
+Task ID: 1
+Agent: Main
+Task: Fix SQL migration error 42P17 — generation expression is not immutable
+
+Work Log:
+- User reported error when running weight_progress_logs migration SQL in Supabase SQL Editor
+- Error: `42P17: generation expression is not immutable`
+- Root cause: Two columns used `GENERATED ALWAYS AS (EXTRACT(WEEK/YEAR FROM logged_at)) STORED`
+  - PostgreSQL requires generated column expressions to be immutable
+  - `EXTRACT(WEEK FROM ...)` depends on session settings (DateStyle, timezone), making it non-immutable
+- Fix: Replaced `GENERATED ALWAYS AS` columns with regular INTEGER columns
+- Added `fill_wpl_week_year()` trigger that auto-fills week_number and year on INSERT/UPDATE
+- Triggers can use non-immutable functions, so EXTRACT works fine there
+- Functionally identical — columns are always computed from logged_at
+- No changes needed to API route or frontend (they already read week_number/year)
+
+Stage Summary:
+- 1 file changed: supabase/migrations/20260626_weight_progress_logs.sql
+- Root cause: EXTRACT() is non-immutable in PostgreSQL (depends on session settings)
+- Fix: Trigger-based computation instead of GENERATED columns
+- User needs to re-run the migration in Supabase SQL Editor
+- No code changes to API or frontend components

@@ -29,12 +29,8 @@ CREATE TABLE IF NOT EXISTS weight_progress_logs (
   -- Session context
   logged_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   notes           TEXT,
-  week_number     INTEGER GENERATED ALWAYS AS (
-    EXTRACT(WEEK FROM logged_at)::INTEGER
-  ) STORED,
-  year            INTEGER GENERATED ALWAYS AS (
-    EXTRACT(YEAR FROM logged_at)::INTEGER
-  ) STORED,
+  week_number     INTEGER,                              -- computed via trigger (not GENERATED — EXTRACT is not immutable)
+  year            INTEGER,                              -- computed via trigger
   
   -- Metadata
   is_pr           BOOLEAN NOT NULL DEFAULT FALSE,       -- personal record flag
@@ -49,6 +45,25 @@ CREATE INDEX IF NOT EXISTS idx_wpl_user_exercise ON weight_progress_logs(user_id
 CREATE INDEX IF NOT EXISTS idx_wpl_user_muscle ON weight_progress_logs(user_id, muscle_group);
 CREATE INDEX IF NOT EXISTS idx_wpl_user_week ON weight_progress_logs(user_id, year, week_number);
 CREATE INDEX IF NOT EXISTS idx_wpl_user_pr ON weight_progress_logs(user_id, is_pr) WHERE is_pr = TRUE;
+
+-- ═══════════════════════════════════════════════════════════════
+-- Trigger: auto-fill week_number and year from logged_at
+-- (EXTRACT is not immutable, so can't use GENERATED columns)
+-- ═══════════════════════════════════════════════════════════════
+
+CREATE OR REPLACE FUNCTION fill_wpl_week_year()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.week_number := EXTRACT(WEEK FROM NEW.logged_at)::INTEGER;
+  NEW.year := EXTRACT(YEAR FROM NEW.logged_at)::INTEGER;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_wpl_fill_week_year ON weight_progress_logs;
+CREATE TRIGGER trg_wpl_fill_week_year
+  BEFORE INSERT OR UPDATE ON weight_progress_logs
+  FOR EACH ROW EXECUTE FUNCTION fill_wpl_week_year();
 
 -- Updated_at trigger
 CREATE OR REPLACE FUNCTION update_wpl_updated_at()
