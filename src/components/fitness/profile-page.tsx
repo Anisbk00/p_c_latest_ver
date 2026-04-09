@@ -1383,10 +1383,12 @@ function TransformationArchive({
   photos,
   onPhotoTap,
   onUploadPhoto,
+  onViewAll,
 }: {
   photos: ProfileData["progressPhotos"];
   onPhotoTap: (photo: ProfileData["progressPhotos"][0]) => void;
   onUploadPhoto: () => void;
+  onViewAll?: () => void;
 }) {
   // Track image load state to prevent black/invisible thumbnails
   const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
@@ -1542,7 +1544,7 @@ function TransformationArchive({
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: visiblePhotos.length * 0.04, duration: 0.25 }}
-                  onClick={() => onPhotoTap(photos[MAX_VISIBLE])}
+                  onClick={onViewAll}
                   className="aspect-square rounded-xl overflow-hidden relative touch-manipulation bg-muted/30 border border-dashed border-muted-foreground/20 flex flex-col items-center justify-center gap-1"
                 >
                   <Grid3x3 className="w-5 h-5 text-muted-foreground/40" />
@@ -1553,6 +1555,12 @@ function TransformationArchive({
 
             <p className="text-[11px] text-muted-foreground/60 mt-2.5 text-center">
               Tap a photo to view details
+              {hasMore && ' · '}
+              {hasMore && (
+                <button onClick={onViewAll} className="text-emerald-500 hover:underline">
+                  View all {photos.length}
+                </button>
+              )}
             </p>
           </>
         )}
@@ -2348,6 +2356,141 @@ function PhotoDetailSheet({
   );
 }
 
+// Full-screen photo gallery for browsing all progress photos
+function PhotoGallerySheet({
+  open,
+  onClose,
+  photos,
+  onPhotoTap,
+}: {
+  open: boolean;
+  onClose: () => void;
+  photos: ProfileData["progressPhotos"];
+  onPhotoTap: (photo: ProfileData["progressPhotos"][0]) => void;
+}) {
+  const [loadedImages, setLoadedImages] = useState<Set<string>>(new Set());
+  const [failedImages, setFailedImages] = useState<Set<string>>(new Set());
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  const hasRealImage = (photo: ProfileData["progressPhotos"][0]) =>
+    !!photo.imageUrl && !photo.imageUrl.startsWith('test://');
+
+  if (!photos || photos.length === 0) return null;
+
+  return (
+    <Sheet open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
+      <SheetContent side="bottom" className="rounded-t-3xl px-0 max-h-[92vh] flex flex-col">
+        <div className="h-1 w-12 bg-muted rounded-full mx-auto mt-2 mb-3" />
+        <SheetHeader className="px-6 pb-3 shrink-0">
+          <SheetTitle className="flex items-center gap-2">
+            <Camera className="w-5 h-5 text-emerald-500" />
+            All Photos
+            <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] px-1.5 py-0">
+              {photos.length}
+            </Badge>
+          </SheetTitle>
+          <SheetDescription>Tap a photo to view details</SheetDescription>
+        </SheetHeader>
+
+        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 pb-6">
+          <div className="grid grid-cols-3 gap-2">
+            {photos.map((photo, index) => {
+              const isLoaded = loadedImages.has(photo.id);
+              const isFailed = failedImages.has(photo.id);
+              const showRealImage = hasRealImage(photo);
+
+              return (
+                <motion.button
+                  key={photo.id}
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: Math.min(index * 0.03, 0.6), duration: 0.2 }}
+                  onClick={() => onPhotoTap(photo)}
+                  className="aspect-square rounded-xl overflow-hidden relative touch-manipulation bg-muted/50"
+                >
+                  {/* Loading skeleton */}
+                  {showRealImage && !isLoaded && !isFailed && (
+                    <div className="absolute inset-0 bg-muted animate-pulse flex items-center justify-center">
+                      <Loader2 className="w-4 h-4 text-muted-foreground/30 animate-spin" />
+                    </div>
+                  )}
+
+                  {/* Image */}
+                  {showRealImage && !isFailed && (
+                    <img
+                      src={photo.imageUrl}
+                      alt="Progress photo"
+                      className="absolute inset-0 w-full h-full object-cover transition-opacity duration-300"
+                      style={{ opacity: isLoaded ? 1 : 0 }}
+                      loading="lazy"
+                      onLoad={() =>
+                        setLoadedImages((prev) => new Set(prev).add(photo.id))
+                      }
+                      onError={() => {
+                        setLoadedImages((prev) => {
+                          const next = new Set(prev);
+                          next.delete(photo.id);
+                          return next;
+                        });
+                        setFailedImages((prev) => new Set(prev).add(photo.id));
+                      }}
+                    />
+                  )}
+
+                  {/* Placeholder */}
+                  {(!showRealImage || isFailed) && (
+                    <div className="absolute inset-0 flex flex-col items-center justify-center bg-linear-to-br from-muted to-muted/50">
+                      {isFailed ? (
+                        <ImageOff className="w-6 h-6 text-muted-foreground/40" />
+                      ) : (
+                        <User className="w-7 h-7 text-emerald-500/30" />
+                      )}
+                    </div>
+                  )}
+
+                  {/* Body fat overlay */}
+                  {photo.bodyFat && isLoaded && (
+                    <div className="absolute top-1 left-1 right-1">
+                      <div className="bg-black/50 backdrop-blur-sm rounded-md px-1.5 py-0.5 flex items-center gap-1">
+                        <Activity className="w-2.5 h-2.5 text-emerald-400" />
+                        <span className="text-[8px] text-white font-medium leading-none">
+                          {photo.bodyFat.min.toFixed(0)}-{photo.bodyFat.max.toFixed(0)}%
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Date label */}
+                  {isLoaded && (
+                    <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-linear-to-t from-black/60 to-transparent pointer-events-none">
+                      <p className="text-[9px] text-white font-medium leading-none">
+                        {format(new Date(photo.date), "MMM d")}
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Weight badge */}
+                  {photo.weight && isLoaded && (
+                    <div className="absolute top-1 right-1">
+                      <div className="bg-black/50 backdrop-blur-sm rounded-md px-1 py-0.5">
+                        <span className="text-[8px] text-white font-medium leading-none">
+                          {photo.weight}kg
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </motion.button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="h-[env(safe-area-inset-bottom,0px)] shrink-0" />
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // Extended profile data for editing (includes UserProfile fields)
 interface EditableProfileData {
   // User fields
@@ -3069,6 +3212,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
   const [exportSheetOpen, setExportSheetOpen] = useState(false);
   const [photoSheetOpen, setPhotoSheetOpen] = useState(false);
   const [uploadSheetOpen, setUploadSheetOpen] = useState(false);
+  const [galleryOpen, setGalleryOpen] = useState(false);
 
   // Selected items
   const [selectedPhoto, setSelectedPhoto] = useState<ProfileData["progressPhotos"][0] | null>(null);
@@ -3081,6 +3225,10 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
 
   const handleUploadPhoto = useCallback(() => {
     setUploadSheetOpen(true);
+  }, []);
+
+  const handleViewAllPhotos = useCallback(() => {
+    setGalleryOpen(true);
   }, []);
 
   const handleUploadComplete = useCallback(() => {
@@ -3626,6 +3774,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
         photos={data.progressPhotos ?? []}
         onPhotoTap={handlePhotoTap}
         onUploadPhoto={handleUploadPhoto}
+        onViewAll={handleViewAllPhotos}
       />
 
       {/* Micro-Experiments */}
@@ -3663,6 +3812,17 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
         onDelete={handleDeletePhoto}
         heightCm={data?.userProfile?.heightCm}
       />
+
+      {/* Photo Gallery Sheet - View All Photos */}
+      {galleryOpen && (
+        <PhotoGallerySheet
+          key={`gallery-${Date.now()}`}
+          open={galleryOpen}
+          onClose={() => setGalleryOpen(false)}
+          photos={data.progressPhotos ?? []}
+          onPhotoTap={handlePhotoTap}
+        />
+      )}
 
       {/* Progress Photo Upload Sheet */}
       <ProgressPhotoUploadSheet

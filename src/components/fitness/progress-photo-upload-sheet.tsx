@@ -28,7 +28,7 @@ import { ConfidenceBadge } from "@/components/fitness/confidence-badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { apiFetch } from "@/lib/mobile-api";
+import { apiFetch, getApiUrl, isMobileApp, getAccessToken } from "@/lib/mobile-api";
 
 interface PhotoUploadProps {
   open: boolean;
@@ -74,8 +74,10 @@ export function ProgressPhotoUploadSheet({
   const [notes, setNotes] = useState<string>('');
   const [aiResult, setAiResult] = useState<AIAnalysisResult | null>(null);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Reset state when closed
   const handleClose = useCallback(() => {
@@ -86,6 +88,8 @@ export function ProgressPhotoUploadSheet({
     setNotes('');
     setAiResult(null);
     setIsUploading(false);
+    setUploadProgress(0);
+    abortControllerRef.current = null;
     onClose();
   }, [onClose]);
 
@@ -183,17 +187,81 @@ export function ProgressPhotoUploadSheet({
     }
   }, [selectedFile, previewUrl, weight]);
 
-  // Upload photo
+  // Compress image before upload to reduce upload time
+  const compressImage = useCallback((file: File): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      // Skip compression for small files or non-JPEG/PNG
+      if (file.size < 500 * 1024) {
+        resolve(file);
+        return;
+      }
+
+      const img = new Image();
+      img.onload = () => {
+        const MAX_DIM = 1920;
+        let { width, height } = img;
+
+        // Only resize if image is larger than max dimension
+        if (width <= MAX_DIM && height <= MAX_DIM) {
+          // Still convert to JPEG for compression
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) { resolve(file); return; }
+          ctx.drawImage(img, 0, 0);
+          canvas.toBlob((blob) => {
+            if (blob && blob.size < file.size) {
+              resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+            } else {
+              resolve(file);
+            }
+          }, 'image/jpeg', 0.82);
+          return;
+        }
+
+        // Resize to fit within MAX_DIM
+        if (width > height) {
+          if (width > MAX_DIM) { height = Math.round((height * MAX_DIM) / width); width = MAX_DIM; }
+        } else {
+          if (height > MAX_DIM) { width = Math.round((width * MAX_DIM) / height); height = MAX_DIM; }
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { resolve(file); return; }
+        ctx.drawImage(img, 0, 0, width, height);
+
+        canvas.toBlob((blob) => {
+          if (blob) {
+            resolve(new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' }));
+          } else {
+            resolve(file);
+          }
+        }, 'image/jpeg', 0.82);
+      };
+      img.onerror = () => resolve(file);
+      img.src = URL.createObjectURL(file);
+    });
+  }, []);
+
+  // Upload photo with progress tracking
   const handleUpload = useCallback(async () => {
     if (!selectedFile) return;
 
     setStep('uploading');
     setIsUploading(true);
+    setUploadProgress(0);
 
     try {
-      // First upload the file with all metadata
+      // Compress image for faster upload
+      const compressedFile = await compressImage(selectedFile);
+
+      // Build FormData with all metadata
       const formData = new FormData();
-      formData.append('file', selectedFile);
+      formData.append('file', compressedFile);
       formData.append('capturedAt', new Date().toISOString());
       if (weight) formData.append('weight', weight);
       if (notes) formData.append('notes', notes);
@@ -210,24 +278,53 @@ export function ProgressPhotoUploadSheet({
         formData.append('muscleMass', aiResult.muscleMassEstimate.value.toString());
       }
 
-      const uploadResponse = await apiFetch('/api/progress-photos', {
-        method: 'POST',
-        body: formData,
-      });
+      // Use XMLHttpRequest for upload progress tracking
+      const uploadResult = await new Promise<any>((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
 
-      if (!uploadResponse.ok) {
-        let errorJson: any;
-        try { errorJson = await uploadResponse.json(); } catch { errorJson = {}; }
-        if (errorJson._needsMigration) {
-          throw new Error(errorJson.details || 'Database setup required. Please contact support.');
+        controller.signal.addEventListener('abort', () => xhr.abort());
+
+        // Track upload progress
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100);
+            setUploadProgress(pct);
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          try {
+            const data = JSON.parse(xhr.responseText);
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(data);
+            } else {
+              reject(new Error(data.details || data.error || 'Failed to upload photo'));
+            }
+          } catch {
+            reject(new Error('Upload failed: invalid response'));
+          }
+        });
+
+        xhr.addEventListener('error', () => reject(new Error('Network error — please check your connection')));
+        xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+
+        // Build URL with auth
+        const url = getApiUrl('/api/progress-photos');
+        xhr.open('POST', url);
+
+        // Add auth header for mobile
+        if (isMobileApp()) {
+          getAccessToken().then(token => {
+            if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+            xhr.send(formData);
+          });
+        } else {
+          xhr.withCredentials = true;
+          xhr.send(formData);
         }
-        const detail = typeof errorJson.details === 'string' ? errorJson.details
-          : errorJson.details ? JSON.stringify(errorJson.details)
-          : null;
-        throw new Error(detail || errorJson.error || 'Failed to upload photo');
-      }
-
-      const uploadResult = await uploadResponse.json();
+      });
 
       toast.success('Photo uploaded successfully!', {
         description: aiResult
@@ -245,8 +342,10 @@ export function ProgressPhotoUploadSheet({
       setStep('results');
     } finally {
       setIsUploading(false);
+      setUploadProgress(0);
+      abortControllerRef.current = null;
     }
-  }, [selectedFile, weight, notes, aiResult, onUploadComplete, handleClose]);
+  }, [selectedFile, weight, notes, aiResult, onUploadComplete, handleClose, compressImage]);
 
   return (
     <Sheet open={open} onOpenChange={(isOpen) => !isOpen && handleClose()}>
@@ -262,7 +361,7 @@ export function ProgressPhotoUploadSheet({
             {step === 'preview' && 'Add details and run AI analysis'}
             {step === 'analyzing' && 'AI is analyzing your photo...'}
             {step === 'results' && 'Review AI predictions and upload'}
-            {step === 'uploading' && 'Uploading your photo...'}
+            {step === 'uploading' && uploadProgress > 0 ? `Uploading... ${uploadProgress}%` : step === 'uploading' && 'Preparing upload...'}
           </SheetDescription>
         </SheetHeader>
 
@@ -689,11 +788,28 @@ export function ProgressPhotoUploadSheet({
                     className="w-full h-full object-cover opacity-50"
                   />
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/20 backdrop-blur-sm">
-                    <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mb-4">
-                      <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
-                    </div>
-                    <p className="font-medium text-white">Uploading...</p>
-                    <p className="text-sm text-white/70 mt-1">Saving your progress photo</p>
+                    {uploadProgress > 0 ? (
+                      <>
+                        <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mb-3">
+                          <span className="text-xl font-bold text-emerald-500">{uploadProgress}%</span>
+                        </div>
+                        <p className="font-medium text-white">Uploading...</p>
+                        <div className="w-48 h-2 rounded-full bg-white/20 mt-3 overflow-hidden">
+                          <div
+                            className="h-full bg-emerald-500 rounded-full transition-all duration-300 ease-out"
+                            style={{ width: `${uploadProgress}%` }}
+                          />
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="w-16 h-16 rounded-full bg-emerald-500/20 flex items-center justify-center mb-4">
+                          <Loader2 className="w-8 h-8 text-emerald-500 animate-spin" />
+                        </div>
+                        <p className="font-medium text-white">Preparing upload...</p>
+                        <p className="text-sm text-white/70 mt-1">Compressing and optimizing</p>
+                      </>
+                    )}
                   </div>
                 </div>
               </motion.div>

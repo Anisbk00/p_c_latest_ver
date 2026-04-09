@@ -121,7 +121,7 @@ export async function GET(request: NextRequest) {
       supabase.from('goals').select('*').eq('user_id', user.id).eq('status', 'active').order('created_at', { ascending: false }),
       supabase.from('body_metrics').select('*').eq('user_id', user.id).eq('metric_type', 'weight').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
       (supabase.from('workouts') as any).select('id, started_at').eq('user_id', user.id).gte('started_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()).order('started_at', { ascending: false }),
-      supabase.from('user_files').select('*').eq('user_id', user.id).eq('category', 'progress_photo').order('created_at', { ascending: false }).limit(20),
+      supabase.from('user_files').select('*').eq('user_id', user.id).eq('category', 'progress_photo').order('created_at', { ascending: false }).limit(50),
       supabase.from('food_logs').select('logged_at').eq('user_id', user.id).gte('logged_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
       supabase.from('body_metrics').select('captured_at').eq('user_id', user.id).gte('captured_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString()),
       supabase.from('ai_insights').select('*').eq('user_id', user.id).eq('insight_type', 'experiment').order('created_at', { ascending: false }),
@@ -141,7 +141,7 @@ export async function GET(request: NextRequest) {
           .eq('user_id', user.id)
           .eq('category', 'progress_photo')
           .order('created_at', { ascending: false })
-          .limit(20)
+          .limit(50)
         if (adminPhotos && adminPhotos.length > 0) {
           finalProgressPhotos = adminPhotos
           console.log('[profile] RLS fallback: fetched progressPhotos via admin client')

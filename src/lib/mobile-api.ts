@@ -61,7 +61,7 @@ export function getApiUrl(path: string): string {
  * Get the current access token for authentication
  * Tries Supabase session first, then falls back to cached offline session
  */
-async function getAccessToken(): Promise<string | null> {
+export async function getAccessToken(): Promise<string | null> {
   try {
     // First try to get the session from Supabase
     const session = await getSession();
