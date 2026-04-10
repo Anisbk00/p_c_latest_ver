@@ -11,14 +11,10 @@ import {
   User,
   Plus,
   Sparkles,
-  Target,
   Activity,
-  Scale,
   Dumbbell,
   Droplets,
   Footprints,
-  Sun,
-  ChevronRight,
   ArrowUp,
   ArrowDown,
   Minus,
@@ -28,8 +24,6 @@ import {
   Heart,
   TrendingUp,
   TrendingDown,
-  Coffee,
-  Apple,
   Brain,
   WifiOff,
   CloudOff,
@@ -68,14 +62,14 @@ if (typeof window !== 'undefined') {
 // Direct imports for components used on every render (no lazy loading)
 import { SplashScreen } from "@/components/splash-screen";
 import { useApp, type TodayWorkoutSummary, type FoodLogEntry, calculateStreak, toFiniteNumber } from "@/contexts/app-context";
-import { format, subDays, isToday } from "date-fns";
+import { format } from "date-fns";
 
 import { cn } from "@/lib/utils";
 import { apiFetch } from "@/lib/mobile-api";
 import { useSupabaseAuth } from "@/lib/supabase/auth-context";
 import { SupabaseAuthScreen } from "@/components/auth/supabase-auth-screen";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
-import { useTabFocus, useIntervalWithRef } from "@/hooks/use-tab-focus";
+import { useTabFocus } from "@/hooks/use-tab-focus";
 import { useKeyboardVisibility } from "@/hooks/use-safe-area";
 import { 
   sanitizeUrl, 

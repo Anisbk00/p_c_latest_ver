@@ -100,37 +100,71 @@ export async function requireAuthOrResponse(
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Validate CSRF token for state-changing requests
- * The token should be passed in X-CSRF-Token header
+ * Validate CSRF token using the double-submit cookie pattern.
+ *
+ * How it works:
+ * 1. When the client first loads, the server (or client) sets a `csrf-token` cookie
+ *    containing a random 64-hex-char token.
+ * 2. The client reads that cookie and includes the same value in the `X-CSRF-Token`
+ *    header on every state-changing request (POST, PUT, PATCH, DELETE).
+ * 3. The server compares the header value against the cookie value. Because a
+ *    cross-origin attacker cannot read cookies set with `SameSite=Lax` (or
+ *    `SameSite=Strict`) they cannot replay the token, so mismatched values are
+ *    rejected.
+ *
+ * @param request - The incoming Next.js request
+ * @returns `{ valid: true }` if the token passes all checks, otherwise `{ valid: false, error }`
  */
 export async function validateCsrfToken(
   request: NextRequest
 ): Promise<{ valid: boolean; error?: string }> {
   const method = request.method.toUpperCase()
-  
+
   // Skip CSRF check for safe methods
   if (method === 'GET' || method === 'HEAD' || method === 'OPTIONS') {
     return { valid: true }
   }
-  
-  // Get CSRF token from header
+
+  // ── Step 1: header must be present ──────────────────────────────
   const csrfToken = request.headers.get('X-CSRF-Token')
-  
+
   if (!csrfToken) {
     return { valid: false, error: 'Missing CSRF token' }
   }
-  
-  // Validate token format (should be 64 hex characters)
+
+  // ── Step 2: format check (cheap first-pass) ─────────────────────
+  // Must be exactly 64 hexadecimal characters
   if (!/^[a-f0-9]{64}$/i.test(csrfToken)) {
     return { valid: false, error: 'Invalid CSRF token format' }
   }
-  
-  // Note: For full CSRF protection, we would need to compare this 
-  // against a server-stored session token. This implementation
-  // validates format only. Full implementation would require
-  // session-based token storage.
-  
+
+  // ── Step 3: double-submit cookie comparison ─────────────────────
+  // The csrf-token cookie must exist and match the header value exactly.
+  // Use constant-time comparison to prevent timing attacks.
+  const csrfCookie = request.cookies.get('csrf-token')?.value
+
+  if (!csrfCookie) {
+    return { valid: false, error: 'Missing CSRF cookie' }
+  }
+
+  if (!timingSafeEqual(csrfToken, csrfCookie)) {
+    return { valid: false, error: 'CSRF token mismatch' }
+  }
+
   return { valid: true }
+}
+
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ * Compares two strings of equal length without short-circuiting.
+ */
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let result = 0
+  for (let i = 0; i < a.length; i++) {
+    result |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  }
+  return result === 0
 }
 
 /**

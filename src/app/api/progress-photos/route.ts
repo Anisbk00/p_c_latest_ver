@@ -43,27 +43,14 @@ export async function GET(_request: NextRequest) {
   try {
     const { supabase, user } = await getSupabaseUser()
 
-    let data = await fetchUserFiles(supabase, user.id)
+    const data = await fetchUserFiles(supabase, user.id)
 
-    // Admin fallback if RLS blocks SELECT (photos exist but user client can't see them)
-    if ((!data || data.length === 0) && process.env.SUPABASE_SERVICE_ROLE_KEY) {
-      try {
-        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-        if (serviceRoleKey && supabaseUrl) {
-          const { createClient } = await import('@supabase/supabase-js');
-          const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-            auth: { autoRefreshToken: false, persistSession: false },
-          });
-          const adminData = await fetchUserFiles(adminClient, user.id);
-          if (adminData && adminData.length > 0) {
-            data = adminData;
-            console.log('[progress-photos] RLS fallback: fetched via admin client');
-          }
-        }
-      } catch (adminErr) {
-        console.warn('[progress-photos] Admin fallback failed:', adminErr);
-      }
+    // SECURITY: Do NOT fall back to admin/service-role client when RLS blocks a query.
+    // If RLS denies access, it means a policy is misconfigured and should be fixed at the
+    // database level. Bypassing RLS with a service-role key would silently hide the root
+    // cause and could leak data across users if policies are wrong.
+    if (!data || data.length === 0) {
+      // Intentionally return empty — no admin fallback
     }
 
     // Generate image URLs — use signed URLs for private buckets, public URL for data: prefix
@@ -249,35 +236,20 @@ export async function POST(request: NextRequest) {
       insertResult = { data: null, error: insertErr instanceof Error ? insertErr : new Error(String(insertErr)) };
     }
 
-    // If insert failed, try admin client fallback (WITH metadata)
+    // SECURITY: Do NOT fall back to admin/service-role client on RLS denial.
+    // If RLS blocks the insert, the policy is misconfigured and must be fixed in the
+    // database. Bypassing RLS would silently mask the root cause and could allow
+    // unauthorized writes if policies are incorrect.
     if (insertResult.error) {
       const errMsg = insertResult.error.message || String(insertResult.error);
 
       if (errMsg.includes('row-level security') || errMsg.includes('policy') || errMsg.includes('permission')) {
-        console.warn('[progress-photos] RLS denied insert, trying admin client fallback (with metadata)...')
-        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-
-        if (serviceRoleKey && supabaseUrl) {
-          try {
-            const { createClient } = await import('@supabase/supabase-js');
-            const adminClient = createClient(supabaseUrl, serviceRoleKey, {
-              auth: { autoRefreshToken: false, persistSession: false },
-            });
-            // Admin bypasses RLS — insert WITH metadata preserved
-            const adminResult = await (adminClient.from('user_files') as any).insert(withMeta).select().single();
-            if (!adminResult.error) {
-              insertResult = adminResult;
-            } else {
-              throw adminResult.error;
-            }
-          } catch (adminErr) {
-            console.error('[progress-photos] Admin client RLS fallback failed:', adminErr);
-            throw adminErr;
-          }
-        } else {
-          throw insertResult.error;
-        }
+        console.error(
+          '[progress-photos] RLS denied insert for user', user.id,
+          '— fix the RLS policy on user_files, do NOT bypass with service-role key. Error:',
+          errMsg,
+        );
+        throw insertResult.error;
       } else if (errMsg.includes('does not exist')) {
         console.error('[progress-photos] user_files table missing. Run migration SQL in Supabase SQL Editor.');
         return NextResponse.json({

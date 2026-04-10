@@ -5,7 +5,37 @@
  * This should be called once after deployment, then can be deleted.
  * Uses the Supabase JS client (service role) to create the table.
  */
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/supabase/server'
+
+// Admin emails are defined in ADMIN_EMAILS environment variable.
+// Format: ADMIN_EMAILS=email1@example.com,email2@example.com
+// SECURITY: This must be configured in production. Empty set = no admin access.
+const ADMIN_EMAILS = new Set(
+  (process.env.ADMIN_EMAILS || '')
+    .split(',')
+    .map(e => e.toLowerCase().trim())
+    .filter(Boolean)
+);
+
+/**
+ * Check if authenticated user has admin privileges.
+ * Returns 401 if not authenticated, 403 if authenticated but not admin.
+ */
+async function requireAdmin(request: NextRequest) {
+  try {
+    const user = await requireAuth(request);
+
+    const email = user.email?.toLowerCase();
+    if (!email || !ADMIN_EMAILS.has(email)) {
+      return { authorized: false as const, status: 403 as const, error: 'Admin access required' };
+    }
+
+    return { authorized: true as const, user };
+  } catch {
+    return { authorized: false as const, status: 401 as const, error: 'Authentication required' };
+  }
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -256,7 +286,12 @@ async function migrateViaSupabaseRest(): Promise<{ success: boolean; results: st
   return { success: false, results, error: 'No available method to execute migration' }
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const authResult = await requireAdmin(request);
+  if (!authResult.authorized) {
+    return NextResponse.json({ error: authResult.error }, { status: authResult.status });
+  }
+
   try {
     const { success, results, error } = await migrateViaSupabaseRest()
 

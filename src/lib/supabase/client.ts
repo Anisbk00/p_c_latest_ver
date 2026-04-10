@@ -106,15 +106,29 @@ export function onAuthStateChange(
 }
 
 /**
- * Check if the current user has a specific role
+ * Check if the current user has a specific role.
+ *
+ * @deprecated **NOT secure for server-side authorization.** This function reads
+ * `user.user_metadata.role`, which is a client-side claim that can be modified by
+ * the user (e.g. via the Supabase dashboard or by intercepting API calls).
+ *
+ * For server-side authorization checks, use Row-Level Security (RLS) policies
+ * or query a server-controlled `roles` / `profiles` table instead.
+ *
+ * Acceptable uses (client-side only):
+ *   • Conditionally rendering UI elements (show/hide admin menu, etc.)
+ *   • Optimistic pre-checks before calling a secure endpoint
+ *
+ * @param role - The role name to check (e.g. 'admin')
+ * @returns `true` if the user's metadata claims the given role
  */
 export async function hasRole(role: string): Promise<boolean> {
   const supabase = getClient()
-  
+
   const { data: { user } } = await supabase.auth.getUser()
-  
+
   if (!user) return false
-  
+
   const userRole = user.user_metadata?.role
   return userRole === role
 }
