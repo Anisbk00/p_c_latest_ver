@@ -16,7 +16,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Plus, X, Trophy, TrendingUp, ChevronLeft, ChevronRight,
+  X, Trophy, TrendingUp, ChevronLeft, ChevronRight,
   Dumbbell, Loader2, Trash2, AlertTriangle,
   Zap, Target, Award, CalendarDays, ChevronDown, Edit3, Check,
 } from "lucide-react";
@@ -223,6 +223,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
   const [showMusclePicker, setShowMusclePicker] = useState(false);
   const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fabRef = useRef<HTMLButtonElement | null>(null);
 
   const currentWeek = getISOWeek(currentWeekStart);
   const currentYear = getYear(currentWeekStart);
@@ -439,6 +440,42 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
   // ═══════════════════════════════════════════════════════════════
 
   const isDark = theme === "gymbro" || theme === "dark";
+
+  // Mount FAB button directly into DOM to bypass portal/z-index issues
+  useEffect(() => {
+    if (typeof document === 'undefined') return;
+    const btn = document.createElement('button');
+    btn.setAttribute('aria-label', 'Log Exercise');
+    btn.style.cssText = 'position:fixed;bottom:96px;right:24px;width:56px;height:56px;border-radius:50%;border:none;cursor:pointer;z-index:99999;display:flex;align-items:center;justify-content:center;pointer-events:auto;';
+    const accentColors: Record<string, { bg: string; shadow: string }> = {
+      gymbro: { bg: 'background:#ef4444', shadow: 'box-shadow:0 8px 25px -5px rgba(239,68,68,0.4)' },
+      gymgirl: { bg: 'background:#ec4899', shadow: 'box-shadow:0 8px 25px -5px rgba(236,72,153,0.4)' },
+      light: { bg: 'background:#8b5cf6', shadow: 'box-shadow:0 8px 25px -5px rgba(139,92,246,0.4)' },
+    };
+    const colors = accentColors[theme] || { bg: 'background:#8b5cf6', shadow: 'box-shadow:0 8px 25px -5px rgba(139,92,246,0.4)' };
+    btn.style.cssText += colors.bg + ';' + colors.shadow + ';';
+    btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+    btn.addEventListener('click', () => {
+      setShowForm(true);
+      setEditingId(null);
+      setForm(DEFAULT_LOG);
+      setValidationErrors({});
+    });
+    document.body.appendChild(btn);
+    fabRef.current = btn;
+    return () => {
+      btn.removeEventListener('click', () => {});
+      if (btn.parentNode) btn.parentNode.removeChild(btn);
+      fabRef.current = null;
+    };
+  }, []);
+
+  // Keep FAB visible only when form is NOT open
+  useEffect(() => {
+    if (fabRef.current) {
+      fabRef.current.style.display = showForm ? 'none' : 'flex';
+    }
+  }, [showForm]);
 
   return (
     <>
@@ -668,22 +705,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
         </div>
       </div>
 
-      {/* ─── Floating Add Button ─── */}
-      {typeof document !== 'undefined' && createPortal(
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={() => { setShowForm(true); setEditingId(null); setForm(DEFAULT_LOG); setValidationErrors({}); }}
-          className={cn(
-            "fixed bottom-24 right-6 w-14 h-14 rounded-full shadow-xl flex items-center justify-center z-[9999] pointer-events-auto",
-            styles.accentBtn,
-            styles.accentGlow
-          )}
-          style={{ boxShadow: `0 8px 25px -5px ${theme === "gymbro" ? "rgba(239,68,68,0.4)" : theme === "gymgirl" ? "rgba(236,72,153,0.4)" : "rgba(139,92,246,0.4)"}` }}
-        >
-          <Plus className="w-6 h-6 text-white" />
-        </motion.button>,
-        document.body
-      )}
+      {/* ─── Floating Add Button is mounted via useEffect above ─── */}
 
       {/* ─── Delete Confirmation ─── */}
       <AnimatePresence>
