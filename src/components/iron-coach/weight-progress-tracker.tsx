@@ -441,8 +441,9 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
   const isDark = theme === "gymbro" || theme === "dark";
 
   return (
-    <div ref={scrollRef} className="flex-1 overflow-y-auto">
-      <div className="p-4 pb-8 space-y-4">
+    <>
+      <div ref={scrollRef} className="flex-1 overflow-y-auto">
+        <div className="p-4 pb-8 space-y-4">
 
         {/* ─── Week Navigator ─── */}
         <div className="flex items-center gap-2">
@@ -664,13 +665,16 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
           </div>
         )}
 
-        {/* ─── Floating Add Button ─── */}
-        {typeof document !== 'undefined' && createPortal(
+        </div>
+      </div>
+
+      {/* ─── Floating Add Button ─── */}
+      {typeof document !== 'undefined' && createPortal(
         <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={() => { setShowForm(true); setEditingId(null); setForm(DEFAULT_LOG); setValidationErrors({}); }}
           className={cn(
-            "fixed bottom-24 right-6 w-14 h-14 rounded-full shadow-xl flex items-center justify-center z-[250]",
+            "fixed bottom-24 right-6 w-14 h-14 rounded-full shadow-xl flex items-center justify-center z-[9999] pointer-events-auto",
             styles.accentBtn,
             styles.accentGlow
           )}
@@ -679,11 +683,11 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
           <Plus className="w-6 h-6 text-white" />
         </motion.button>,
         document.body
-        )}
+      )}
 
-        {/* ─── Delete Confirmation ─── */}
-        <AnimatePresence>
-          {deleteConfirm && typeof document !== 'undefined' && createPortal(
+      {/* ─── Delete Confirmation ─── */}
+      <AnimatePresence>
+        {deleteConfirm && typeof document !== 'undefined' && createPortal(
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -717,13 +721,13 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                 </div>
               </motion.div>
             </motion.div>,
-            document.body
-          )}
-        </AnimatePresence>
+          document.body
+        )}
+      </AnimatePresence>
 
-        {/* ─── Log Entry Form ─── */}
-        <AnimatePresence>
-          {showForm && typeof document !== 'undefined' && createPortal(
+      {/* ─── Log Entry Form ─── */}
+      <AnimatePresence>
+        {showForm && typeof document !== 'undefined' && createPortal(
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -1023,11 +1027,9 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                 <div className="h-[env(safe-area-inset-bottom,0px)]" />
               </motion.div>
             </motion.div>,
-            document.body
-          )}
-        </AnimatePresence>
-
-      </div>
-    </div>
+        document.body
+      )}
+      </AnimatePresence>
+    </>
   );
 }
