@@ -1432,7 +1432,7 @@ export function WorkoutsPage() {
         animate={{ opacity: 1 }}
         className="min-h-screen bg-background"
       >
-        <div className="p-4 pb-32">
+        <div className="p-4 pb-6">
           {/* Header */}
           <div className="text-center py-6">
             <motion.div
@@ -1574,7 +1574,7 @@ export function WorkoutsPage() {
             </CardContent>
           </Card>
 
-          {/* Notes */}
+          {/* Notes + Actions */}
           <Card className="bg-card/50">
             <CardContent className="py-4">
               <p className="text-sm font-medium mb-2">{t('workouts.notes')}</p>
@@ -1585,25 +1585,23 @@ export function WorkoutsPage() {
                 className="w-full h-24 p-3 rounded-xl bg-muted resize-none border-none focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
               />
             </CardContent>
+            <CardContent className="pt-0">
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={handleDiscard} className="flex-1">
+                  {t('workouts.discard')}
+                </Button>
+                <Button onClick={handleSave} className="flex-1 bg-emerald-500 hover:bg-emerald-600">
+                  {t('workouts.save')}
+                </Button>
+              </div>
+              <div className="flex gap-2 mt-2">
+                <Button variant="ghost" onClick={handleExportGPX} className="flex-1 text-muted-foreground">
+                  <Download className="w-4 h-4 mr-2" />
+                  {t('workouts.exportGPX')}
+                </Button>
+              </div>
+            </CardContent>
           </Card>
-        </div>
-
-        {/* Bottom Actions */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background border-t border-border">
-          <div className="flex gap-3">
-            <Button variant="outline" onClick={handleDiscard} className="flex-1">
-              {t('workouts.discard')}
-            </Button>
-            <Button onClick={handleSave} className="flex-1 bg-emerald-500 hover:bg-emerald-600">
-              {t('workouts.save')}
-            </Button>
-          </div>
-          <div className="flex gap-2 mt-2">
-            <Button variant="ghost" onClick={handleExportGPX} className="flex-1 text-muted-foreground">
-              <Download className="w-4 h-4 mr-2" />
-              {t('workouts.exportGPX')}
-            </Button>
-          </div>
         </div>
 
         {/* Camera Modal */}
