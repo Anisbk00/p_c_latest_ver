@@ -481,7 +481,7 @@ function PostWorkoutSummary({
       {/* Gradient Overlay for readability - lighter */}
       <div className="absolute inset-0 z-[1] bg-gradient-to-b from-background/60 via-background/70 to-background/95" />
 
-      <div className="relative z-10 h-full overflow-y-auto pb-56">
+      <div className="relative z-10 h-full overflow-y-auto">
         {/* Header */}
         <div className="p-6 text-center">
           <motion.div
@@ -630,55 +630,49 @@ function PostWorkoutSummary({
             </CardContent>
           </Card>
         </div>
-      </div>
 
-      {/* Bottom Actions - positioned at bottom with safe area padding */}
-      <div 
-        className="fixed bottom-0 left-0 right-0 px-4 pt-5 pb-6 z-[201]"
-        style={{ 
-          backgroundColor: 'var(--background)',
-          paddingBottom: 'max(1.5rem, env(safe-area-inset-bottom, 0px) + 0.5rem)',
-        }}
-      >
-        <div className="flex gap-3">
+        {/* Bottom Actions - inline within scrollable content, always reachable */}
+        <div className="px-4 pt-5 pb-8 mt-4">
+          <div className="flex gap-3">
+            <Button
+              variant="outline"
+              onClick={onDiscard}
+              className="flex-1 h-14 text-base border-2"
+              style={{ borderColor: isGymbro ? '#EF4444' : isGymgirl ? '#FF6B9D' : undefined, color: isGymbro ? '#EF4444' : isGymgirl ? '#FF6B9D' : undefined }}
+              disabled={isSaving}
+            >
+              <X className="w-5 h-5 mr-2" />
+              Discard
+            </Button>
+            <Button
+              onClick={handleSave}
+              className="flex-1 h-14 text-base text-white"
+              style={{ backgroundColor: primaryColor }}
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  Save Workout
+                </>
+              )}
+            </Button>
+          </div>
           <Button
-            variant="outline"
-            onClick={onDiscard}
-            className="flex-1 h-14 text-base border-2"
-            style={{ borderColor: isGymbro ? '#EF4444' : isGymgirl ? '#FF6B9D' : undefined, color: isGymbro ? '#EF4444' : isGymgirl ? '#FF6B9D' : undefined }}
+            variant="ghost"
+            onClick={onShare}
+            className="w-full mt-3 h-12"
             disabled={isSaving}
           >
-            <X className="w-5 h-5 mr-2" />
-            Discard
-          </Button>
-          <Button
-            onClick={handleSave}
-            className="flex-1 h-14 text-base text-white"
-            style={{ backgroundColor: primaryColor }}
-            disabled={isSaving}
-          >
-            {isSaving ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                Saving...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="w-5 h-5 mr-2" />
-                Save Workout
-              </>
-            )}
+            <Share2 className="w-5 h-5 mr-2" />
+            Share
           </Button>
         </div>
-        <Button
-          variant="ghost"
-          onClick={onShare}
-          className="w-full mt-3 h-12"
-          disabled={isSaving}
-        >
-          <Share2 className="w-5 h-5 mr-2" />
-          Share
-        </Button>
       </div>
     </motion.div>
   );
