@@ -675,14 +675,7 @@ function CameraModal({
           )}
         </AnimatePresence>
 
-        {/* Close hint - shown after first photo */}
-        {photoCount > 0 && !showSaved && !captured && (
-          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10">
-            <div className="bg-black/40 backdrop-blur-sm rounded-full px-3 py-1">
-              <span className="text-white/70 text-xs">Tap ✕ when done</span>
-            </div>
-          </div>
-        )}
+
       </motion.div>
     </AnimatePresence>
   );
