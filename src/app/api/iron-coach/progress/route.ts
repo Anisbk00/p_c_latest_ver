@@ -135,15 +135,18 @@ export async function POST(request: NextRequest) {
     if (!exerciseName || exerciseName.length > 100) {
       return NextResponse.json({ error: 'Exercise name is required (max 100 chars)' }, { status: 400 });
     }
-    if (isNaN(weightKg) || weightKg < 0 || weightKg > 2000) {
-      return NextResponse.json({ error: 'Weight must be between 0 and 2000 kg' }, { status: 400 });
+    if (isNaN(weightKg) || weightKg <= 0) {
+      return NextResponse.json({ error: 'Weight must be greater than 0 kg' }, { status: 400 });
+    }
+    if (weightKg > 2000) {
+      return NextResponse.json({ error: 'Weight must be 2000 kg or less' }, { status: 400 });
     }
     if (muscleGroup && !VALID_MUSCLE_GROUPS.includes(muscleGroup)) {
       return NextResponse.json({ error: `Invalid muscle group. Valid: ${VALID_MUSCLE_GROUPS.join(', ')}` }, { status: 400 });
     }
 
-    const maxWeightKg = body.maxWeightKg !== undefined ? parseFloat(body.maxWeightKg) : null;
-    const minWeightKg = body.minWeightKg !== undefined ? parseFloat(body.minWeightKg) : null;
+    const maxWeightKg = body.maxWeightKg !== undefined && body.maxWeightKg !== '' ? parseFloat(body.maxWeightKg) : null;
+    const minWeightKg = body.minWeightKg !== undefined && body.minWeightKg !== '' ? parseFloat(body.minWeightKg) : null;
     const reps = Math.max(1, Math.min(parseInt(body.reps || '1') || 1, 100));
     const sets = Math.max(1, Math.min(parseInt(body.sets || '1') || 1, 50));
     const rpe = body.rpe ? Math.max(1, Math.min(parseInt(body.rpe), 10)) : null;
@@ -156,19 +159,45 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Invalid effort level. Valid: ${VALID_EFFORT_LEVELS.join(', ')}` }, { status: 400 });
     }
 
-    // Calculate estimated 1RM (Epley formula) if not provided
+    // Logical validations: max/min vs weight
+    if (maxWeightKg !== null && !isNaN(maxWeightKg) && maxWeightKg < weightKg) {
+      return NextResponse.json({ error: 'Max weight cannot be less than working weight', hint: 'Max weight is your heaviest single rep — it should be ≥ working weight' }, { status: 400 });
+    }
+    if (minWeightKg !== null && !isNaN(minWeightKg) && minWeightKg > weightKg) {
+      return NextResponse.json({ error: 'Min weight cannot be greater than working weight', hint: 'Min weight is your lightest warm-up — it should be ≤ working weight' }, { status: 400 });
+    }
+    if (maxWeightKg !== null && !isNaN(maxWeightKg) && minWeightKg !== null && !isNaN(minWeightKg) && minWeightKg > maxWeightKg) {
+      return NextResponse.json({ error: 'Min weight cannot be greater than max weight' }, { status: 400 });
+    }
+
+    // RPE vs effort level consistency warnings (not blocking, just informative)
+    if (rpe && effortLevel) {
+      if (rpe <= 3 && (effortLevel === 'hard' || effortLevel === 'max' || effortLevel === 'failure')) {
+        return NextResponse.json({ error: 'RPE and effort level conflict', hint: `RPE ${rpe} means "very easy" but effort is "${effortLevel}" — please adjust one of them` }, { status: 400 });
+      }
+      if (rpe >= 9 && (effortLevel === 'easy' || effortLevel === 'moderate')) {
+        return NextResponse.json({ error: 'RPE and effort level conflict', hint: `RPE ${rpe} means "near failure" but effort is "${effortLevel}" — please adjust one of them` }, { status: 400 });
+      }
+    }
+
+    // Calculate estimated 1RM (Epley formula)
     let estimated1rm = body.estimated1rm ? parseFloat(body.estimated1rm) : null;
     if (!estimated1rm && reps > 0 && reps <= 30 && weightKg > 0) {
       estimated1rm = parseFloat((weightKg * (1 + reps / 30)).toFixed(2));
     }
+
+    // Calculate week_number and year from loggedAt as fallback (in case trigger doesn't fire)
+    const logDate = new Date(loggedAt);
+    const weekNum = Math.ceil(((logDate.getTime() - new Date(logDate.getFullYear(), 0, 1).getTime()) / 86400000 + new Date(logDate.getFullYear(), 0, 1).getDay() + 1) / 7);
+    const yearNum = logDate.getFullYear();
 
     const insertData = {
       user_id: user.id,
       exercise_name: exerciseName,
       muscle_group: muscleGroup,
       weight_kg: weightKg,
-      max_weight_kg: maxWeightKg && !isNaN(maxWeightKg) ? maxWeightKg : null,
-      min_weight_kg: minWeightKg && !isNaN(minWeightKg) ? minWeightKg : null,
+      max_weight_kg: maxWeightKg !== null && !isNaN(maxWeightKg) ? maxWeightKg : null,
+      min_weight_kg: minWeightKg !== null && !isNaN(minWeightKg) ? minWeightKg : null,
       reps,
       sets,
       estimated_1rm: estimated1rm,
@@ -177,6 +206,8 @@ export async function POST(request: NextRequest) {
       rest_seconds: restSeconds,
       logged_at: loggedAt,
       notes: notes || null,
+      week_number: weekNum,
+      year: yearNum,
     };
 
     const { data: log, error } = await sb

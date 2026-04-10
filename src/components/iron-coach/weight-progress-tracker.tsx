@@ -255,24 +255,95 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
 
   // Save log
   const handleSave = async () => {
-    if (!form.exerciseName.trim()) {
+    const name = form.exerciseName.trim();
+    if (!name) {
       toast.error("Exercise name is required");
       return;
     }
-    const weight = parseFloat(form.weightKg);
-    if (isNaN(weight) || weight < 0) {
-      toast.error("Enter a valid weight");
+    if (name.length > 100) {
+      toast.error("Exercise name too long (max 100 chars)");
       return;
+    }
+
+    const weight = parseFloat(form.weightKg);
+    if (isNaN(weight) || weight <= 0) {
+      toast.error("Weight must be greater than 0 kg");
+      return;
+    }
+    if (weight > 2000) {
+      toast.error("Weight seems unrealistic (max 2000 kg)");
+      return;
+    }
+
+    const reps = parseInt(form.reps);
+    if (isNaN(reps) || reps < 1) {
+      toast.error("Reps must be at least 1");
+      return;
+    }
+    if (reps > 100) {
+      toast.error("Reps seem unrealistic (max 100)");
+      return;
+    }
+
+    const sets = parseInt(form.sets);
+    if (isNaN(sets) || sets < 1) {
+      toast.error("Sets must be at least 1");
+      return;
+    }
+    if (sets > 50) {
+      toast.error("Sets seem unrealistic (max 50)");
+      return;
+    }
+
+    // Max/min weight logical checks
+    if (form.maxWeightKg !== "" && form.maxWeightKg !== undefined) {
+      const maxW = parseFloat(form.maxWeightKg);
+      if (!isNaN(maxW)) {
+        if (maxW < weight) {
+          toast.error("Max weight can't be less than working weight", { description: "Max weight is your heaviest single rep" });
+          return;
+        }
+      }
+    }
+    if (form.minWeightKg !== "" && form.minWeightKg !== undefined) {
+      const minW = parseFloat(form.minWeightKg);
+      if (!isNaN(minW)) {
+        if (minW > weight) {
+          toast.error("Min weight can't be greater than working weight", { description: "Min weight is your lightest warm-up set" });
+          return;
+        }
+        if (form.maxWeightKg !== "" && form.maxWeightKg !== undefined) {
+          const maxW = parseFloat(form.maxWeightKg);
+          if (!isNaN(maxW) && minW > maxW) {
+            toast.error("Min weight can't be greater than max weight");
+            return;
+          }
+        }
+      }
+    }
+
+    // RPE vs effort level consistency
+    const rpe = form.rpe ? parseInt(form.rpe) : null;
+    const effort = form.effortLevel;
+    if (rpe && effort) {
+      if (rpe <= 3 && (effort === "hard" || effort === "max" || effort === "failure")) {
+        toast.error("RPE and effort conflict", { description: `RPE ${rpe} = very easy, but effort = ${effort}. Adjust one.` });
+        return;
+      }
+      if (rpe >= 9 && (effort === "easy" || effort === "moderate")) {
+        toast.error("RPE and effort conflict", { description: `RPE ${rpe} = near failure, but effort = ${effort}. Adjust one.` });
+        return;
+      }
     }
 
     setIsSaving(true);
     try {
       const body: any = {
-        exerciseName: form.exerciseName.trim(),
+        exerciseName: name,
         muscleGroup: form.muscleGroup,
         weightKg: weight,
-        reps: parseInt(form.reps) || 1,
-        sets: parseInt(form.sets) || 1,
+        reps: reps,
+        sets: sets,
         effortLevel: form.effortLevel,
         restSeconds: parseInt(form.restSeconds) || 90,
         notes: form.notes.trim() || undefined,
@@ -299,7 +370,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
 
       if (data.isNewPR) {
         toast.success("🎉 New Personal Record!", {
-          description: `${data.prType?.replace("_", " ")} PR on ${form.exerciseName}!`,
+          description: `${data.prType?.replace("_", " ")} PR on ${name}!`,
           duration: 4000,
         });
       } else {
@@ -310,7 +381,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
       setForm(DEFAULT_LOG);
       fetchLogs();
     } catch {
-      toast.error("Failed to save");
+      toast.error("Failed to save — check your connection");
     } finally {
       setIsSaving(false);
     }
