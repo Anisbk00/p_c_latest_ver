@@ -17,7 +17,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, X, Flame, Zap, Dumbbell, Target, Utensils, Cpu, Crown, Loader2, Trash2, MoreVertical, CalendarDays, MessageSquare, RefreshCw, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Send, X, Flame, Zap, Dumbbell, Target, Utensils, Cpu, Crown, Loader2, Trash2, MoreVertical, CalendarDays, MessageSquare, RefreshCw, AlertTriangle, TrendingUp, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sanitizeAIContent } from '@/lib/security-utils';
 import { apiFetch, getApiUrl } from '@/lib/mobile-api';
@@ -475,7 +475,8 @@ export function IronCoach({ className }: IronCoachProps) {
   const { t, locale } = useLocale();
   
   const [isOpen, setIsOpen] = useState(false);
-  const [activeTab, setActiveTab] = useState<'chat' | 'planner' | 'progress'>('chat');
+  const [activeTab, setActiveTab] = useState<'progress' | 'planner' | 'chat'>('progress');
+  const [showFeatureHint, setShowFeatureHint] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -996,13 +997,31 @@ export function IronCoach({ className }: IronCoachProps) {
     <>
       {/* Floating Action Button */}
       <motion.button
-        onClick={() => setIsOpen(true)}
+        onClick={() => {
+          setIsOpen(true);
+          // Show feature hint on first open
+          if (typeof window !== 'undefined' && !localStorage.getItem('ic_hint_dismissed')) {
+            setTimeout(() => setShowFeatureHint(true), 400);
+          }
+        }}
         className={cn("fixed bottom-20 right-4 z-40 w-14 h-14 rounded-full flex items-center justify-center", styles.avatar, styles.avatarGlow, isOpen && "hidden", className)}
         whileHover={{ scale: 1.1 }}
         whileTap={{ scale: 0.9 }}
         aria-label="Open Iron Coach"
       >
         <Flame className="w-7 h-7 text-white" />
+        {/* Subtle 3-dot indicator showing it has multiple features */}
+        <div className="absolute -top-0.5 -right-0.5 flex flex-col items-center gap-px">
+          <div className={cn("w-1.5 h-1.5 rounded-full",
+            theme === 'gymbro' ? 'bg-red-300' : theme === 'gymgirl' ? 'bg-pink-300' : 'bg-orange-300'
+          )} />
+          <div className={cn("w-1.5 h-1.5 rounded-full",
+            theme === 'gymbro' ? 'bg-yellow-300' : theme === 'gymgirl' ? 'bg-fuchsia-300' : 'bg-amber-300'
+          )} />
+          <div className={cn("w-1.5 h-1.5 rounded-full",
+            theme === 'gymbro' ? 'bg-orange-300' : theme === 'gymgirl' ? 'bg-rose-300' : 'bg-yellow-300'
+          )} />
+        </div>
         <motion.div className={cn("absolute inset-0 rounded-full border-2", theme === 'gymbro' ? 'border-red-400/50' : theme === 'gymgirl' ? 'border-pink-300/50' : 'border-orange-400/50')}
           animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0, 0.5] }}
           transition={{ duration: 2, repeat: Infinity }}
@@ -1124,21 +1143,71 @@ export function IronCoach({ className }: IronCoachProps) {
               </button>
             </header>
 
+            {/* Feature Hint — one-time onboarding tooltip */}
+            <AnimatePresence>
+              {showFeatureHint && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                  transition={{ duration: 0.3 }}
+                  className={cn(
+                    "mx-4 mt-2 rounded-xl px-3 py-2.5 flex items-center gap-2 relative overflow-hidden",
+                    theme === 'gymbro' ? 'bg-red-500/10 border border-red-500/20' :
+                    theme === 'gymgirl' ? 'bg-pink-500/10 border border-pink-300/20' :
+                    theme === 'light' ? 'bg-orange-50 border border-orange-200' :
+                    'bg-orange-500/10 border border-orange-500/20'
+                  )}
+                >
+                  <div className="flex items-center gap-1.5 flex-1">
+                    {[{ icon: TrendingUp, label: 'Progress' }, { icon: CalendarDays, label: 'Planner' }, { icon: MessageSquare, label: 'Chat' }].map((item, i) => (
+                      <React.Fragment key={item.label}>
+                        <div className={cn(
+                          "flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold",
+                          theme === 'gymbro' ? 'bg-red-500/15 text-red-300' :
+                          theme === 'gymgirl' ? 'bg-pink-400/15 text-pink-600' :
+                          theme === 'light' ? 'bg-orange-100 text-orange-600' :
+                          'bg-orange-500/15 text-orange-300'
+                        )}>
+                          <item.icon className="w-3 h-3" />
+                          {item.label}
+                        </div>
+                        {i < 2 && <ChevronUp className="w-2.5 h-2.5 rotate-90 opacity-30" />}
+                      </React.Fragment>
+                    ))}
+                  </div>
+                  <button onClick={() => { setShowFeatureHint(false); try { localStorage.setItem('ic_hint_dismissed', '1'); } catch {} }} className="opacity-40 hover:opacity-70 transition-opacity">
+                    <X className="w-3 h-3" />
+                  </button>
+                  {/* Auto-dismiss shimmer bar */}
+                  <motion.div
+                    className={cn("absolute bottom-0 left-0 h-0.5",
+                      theme === 'gymbro' ? 'bg-red-400' : theme === 'gymgirl' ? 'bg-pink-400' : 'bg-orange-400'
+                    )}
+                    initial={{ width: '100%' }}
+                    animate={{ width: '0%' }}
+                    transition={{ duration: 4, ease: 'linear' }}
+                    onAnimationComplete={() => { setShowFeatureHint(false); try { localStorage.setItem('ic_hint_dismissed', '1'); } catch {} }}
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
             {/* Tab Bar */}
             <div className={cn("relative z-10 flex border-b", styles.border)}>
               <button
-                onClick={() => setActiveTab('chat')}
+                onClick={() => setActiveTab('progress')}
                 className={cn(
                   "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-all",
-                  activeTab === 'chat' 
+                  activeTab === 'progress' 
                     ? cn(styles.accent === 'red' ? 'text-red-400 border-b-2 border-red-400' : 
                          styles.accent === 'pink' ? 'text-pink-400 border-b-2 border-pink-400' : 
                          'text-orange-400 border-b-2 border-orange-400')
                     : cn(styles.subtitle, "hover:opacity-80")
                 )}
               >
-                <MessageSquare className="w-4 h-4" />
-                Chat
+                <TrendingUp className="w-4 h-4" />
+                Progress
               </button>
               <button
                 onClick={() => setActiveTab('planner')}
@@ -1152,21 +1221,21 @@ export function IronCoach({ className }: IronCoachProps) {
                 )}
               >
                 <CalendarDays className="w-4 h-4" />
-                Weekly Plan
+                Planner
               </button>
               <button
-                onClick={() => setActiveTab('progress')}
+                onClick={() => setActiveTab('chat')}
                 className={cn(
-                  "flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-medium transition-all",
-                  activeTab === 'progress' 
+                  "flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-all",
+                  activeTab === 'chat' 
                     ? cn(styles.accent === 'red' ? 'text-red-400 border-b-2 border-red-400' : 
                          styles.accent === 'pink' ? 'text-pink-400 border-b-2 border-pink-400' : 
                          'text-orange-400 border-b-2 border-orange-400')
                     : cn(styles.subtitle, "hover:opacity-80")
                 )}
               >
-                <TrendingUp className="w-3.5 h-3.5" />
-                Progress
+                <MessageSquare className="w-4 h-4" />
+                Chat
               </button>
             </div>
 
