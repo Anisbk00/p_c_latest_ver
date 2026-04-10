@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Dumbbell, Utensils, Moon, Pill, 
-  Sparkles, Loader2, Target, Droplets, Brain,
+  Flame, Loader2, Target, Droplets, Brain,
   AlertCircle, Coffee, Sun, Sunset, Info, ChevronDown, ChevronUp,
   Zap, Activity
 } from 'lucide-react';
@@ -508,7 +508,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   if (isLoading) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full p-8", styles.container)}>
-        <Sparkles className={cn("w-10 h-10 mb-4 animate-pulse", styles.icon)} />
+        <Flame className={cn("w-10 h-10 mb-4 animate-pulse", styles.icon)} />
         <Loader2 className={cn("w-6 h-6 animate-spin mb-3", styles.icon)} />
         <div className={cn("text-lg font-semibold", styles.text)}>
           Building your plan...
@@ -538,7 +538,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       {/* Compact Header */}
       <div className={cn("shrink-0 px-4 py-3 border-b", styles.header)}>
         <div className="flex items-center gap-2">
-          <Sparkles className={cn("w-5 h-5", styles.icon)} />
+          <Flame className={cn("w-5 h-5", styles.icon)} />
           <span className={cn("font-bold", styles.text)}>Weekly Plan</span>
           <Badge variant="outline" className={cn("text-xs", styles.card)}>
             {Math.round((plan.plan_confidence || 0.7) * 100)}% match
