@@ -613,7 +613,7 @@ function PostWorkoutSummary({
           </Card>
         </div>
 
-        {/* Notes */}
+        {/* Notes + Actions in one card */}
         <div className="px-4 mt-4">
           <Card>
             <CardHeader className="pb-2">
@@ -628,50 +628,48 @@ function PostWorkoutSummary({
                 style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
               />
             </CardContent>
+            <CardContent className="pt-0">
+              <div className="flex gap-3">
+                <Button
+                  variant="outline"
+                  onClick={onDiscard}
+                  className="flex-1 h-14 text-base border-2"
+                  style={{ borderColor: isGymbro ? '#EF4444' : isGymgirl ? '#FF6B9D' : undefined, color: isGymbro ? '#EF4444' : isGymgirl ? '#FF6B9D' : undefined }}
+                  disabled={isSaving}
+                >
+                  <X className="w-5 h-5 mr-2" />
+                  Discard
+                </Button>
+                <Button
+                  onClick={handleSave}
+                  className="flex-1 h-14 text-base text-white"
+                  style={{ backgroundColor: primaryColor }}
+                  disabled={isSaving}
+                >
+                  {isSaving ? (
+                    <>
+                      <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-5 h-5 mr-2" />
+                      Save Workout
+                    </>
+                  )}
+                </Button>
+              </div>
+              <Button
+                variant="ghost"
+                onClick={onShare}
+                className="w-full mt-3 h-12"
+                disabled={isSaving}
+              >
+                <Share2 className="w-5 h-5 mr-2" />
+                Share
+              </Button>
+            </CardContent>
           </Card>
-        </div>
-
-        {/* Bottom Actions - right under Notes card */}
-        <div className="px-4 pt-2 pb-6">
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={onDiscard}
-              className="flex-1 h-14 text-base border-2"
-              style={{ borderColor: isGymbro ? '#EF4444' : isGymgirl ? '#FF6B9D' : undefined, color: isGymbro ? '#EF4444' : isGymgirl ? '#FF6B9D' : undefined }}
-              disabled={isSaving}
-            >
-              <X className="w-5 h-5 mr-2" />
-              Discard
-            </Button>
-            <Button
-              onClick={handleSave}
-              className="flex-1 h-14 text-base text-white"
-              style={{ backgroundColor: primaryColor }}
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-5 h-5 mr-2" />
-                  Save Workout
-                </>
-              )}
-            </Button>
-          </div>
-          <Button
-            variant="ghost"
-            onClick={onShare}
-            className="w-full mt-3 h-12"
-            disabled={isSaving}
-          >
-            <Share2 className="w-5 h-5 mr-2" />
-            Share
-          </Button>
         </div>
       </div>
     </motion.div>
