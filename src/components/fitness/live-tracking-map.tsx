@@ -439,25 +439,23 @@ function LiveHUD({
           </div>
         </div>
         
-        {/* Distance Card */}
-        <div 
+        {/* Elevation Card */}
+        <div
           className="flex-1 backdrop-blur-xl rounded-lg sm:rounded-xl border shadow-lg p-1.5 sm:p-2"
           style={{ backgroundColor: bgColor, borderColor: borderColor, maxWidth: '110px' }}
         >
           <div className="flex items-center gap-1 mb-0.5">
-            <div className="w-4 h-4 sm:w-5 sm:h-5 rounded flex items-center justify-center" style={{ backgroundColor: isGymbro ? `${goldColor}20` : `${accentColor}20` }}>
-              <Route className="w-2.5 h-2.5 sm:w-3 sm:h-3" style={{ color: isGymbro ? goldColor : accentColor }} />
+            <div className="w-4 h-4 sm:w-5 sm:h-5 rounded flex items-center justify-center" style={{ backgroundColor: isGymbro ? `${colors.accent}20` : '#06b6d420' }}>
+              <Mountain className="w-2.5 h-2.5 sm:w-3 sm:h-3" style={{ color: isGymbro ? colors.accent : '#06b6d4' }} />
             </div>
-            <span className="text-[8px] sm:text-[9px] font-medium uppercase" style={{ color: mutedColor }}>Dist</span>
+            <span className="text-[8px] sm:text-[9px] font-medium uppercase" style={{ color: mutedColor }}>Elev</span>
           </div>
           <div className="flex items-baseline gap-0.5">
-            <span className="text-base sm:text-lg font-bold" style={{ color: textColor }}>
-              {(distance / 1000).toFixed(2)}
-            </span>
-            <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>km</span>
+            <span className="text-base sm:text-lg font-bold" style={{ color: textColor }}>{elevation ? Math.round(elevation) : '--'}</span>
+            <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>m</span>
           </div>
         </div>
-        
+
         {/* Calories Card */}
         <div 
           className="flex-1 backdrop-blur-xl rounded-lg sm:rounded-xl border shadow-lg p-1.5 sm:p-2"
