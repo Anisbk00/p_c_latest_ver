@@ -725,7 +725,7 @@ function PostWorkoutSummary({
         animate={{ opacity: 1 }}
         className="fixed inset-0 z-50 bg-background overflow-y-auto"
       >
-        <div className="min-h-full pb-32">
+        <div className="min-h-full pb-6">
           {/* Header */}
           <div className="p-6 text-center">
             <motion.div
@@ -910,7 +910,7 @@ function PostWorkoutSummary({
             </Card>
           </motion.div>
 
-          {/* Notes */}
+          {/* Notes + Actions in one card */}
           <motion.div
             initial={prefersReducedMotion ? false : { opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -931,6 +931,55 @@ function PostWorkoutSummary({
                   placeholder="How was your workout? Any observations?"
                   className="w-full h-24 p-3 rounded-xl bg-muted resize-none border-none focus:ring-2 focus:ring-emerald-500 outline-none text-sm"
                 />
+              </CardContent>
+              <CardContent className="pt-0">
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={onDiscard}
+                    className="flex-1"
+                    disabled={isSaving}
+                  >
+                    Discard
+                  </Button>
+                  <Button
+                    onClick={handleSave}
+                    className="flex-1 bg-emerald-500 hover:bg-emerald-600"
+                    disabled={isSaving}
+                  >
+                    {isSaving ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        Save Workout
+                      </>
+                    )}
+                  </Button>
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <Button
+                    variant="ghost"
+                    onClick={onShare}
+                    className="flex-1 text-muted-foreground"
+                    disabled={isSaving}
+                  >
+                    <Share2 className="w-4 h-4 mr-2" />
+                    Share
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={onExportGPX}
+                    className="flex-1 text-muted-foreground"
+                    disabled={isSaving}
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export GPX
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </motion.div>
@@ -968,57 +1017,6 @@ function PostWorkoutSummary({
               </CardContent>
             </Card>
           </motion.div>
-        </div>
-
-        {/* Bottom Actions */}
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-background/95 backdrop-blur-sm border-t border-border">
-          <div className="flex gap-3">
-            <Button
-              variant="outline"
-              onClick={onDiscard}
-              className="flex-1"
-              disabled={isSaving}
-            >
-              Discard
-            </Button>
-            <Button
-              onClick={handleSave}
-              className="flex-1 bg-emerald-500 hover:bg-emerald-600"
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <CheckCircle className="w-4 h-4 mr-2" />
-                  Save Workout
-                </>
-              )}
-            </Button>
-          </div>
-          <div className="flex gap-2 mt-2">
-            <Button
-              variant="ghost"
-              onClick={onShare}
-              className="flex-1 text-muted-foreground"
-              disabled={isSaving}
-            >
-              <Share2 className="w-4 h-4 mr-2" />
-              Share
-            </Button>
-            <Button
-              variant="ghost"
-              onClick={onExportGPX}
-              className="flex-1 text-muted-foreground"
-              disabled={isSaving}
-            >
-              <Download className="w-4 h-4 mr-2" />
-              Export GPX
-            </Button>
-          </div>
         </div>
       </motion.div>
 
