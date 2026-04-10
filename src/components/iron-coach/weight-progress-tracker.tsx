@@ -464,8 +464,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
       {!showForm && typeof document !== 'undefined' && createPortal(
         <button
           type="button"
-          onClick={handleOpenForm}
-          onTouchEnd={(e) => { e.preventDefault(); handleOpenForm(); }}
+          onClick={(e) => { e.stopPropagation(); handleOpenForm(); }}
           style={{ touchAction: 'manipulation', WebkitTapHighlightColor: 'transparent' }}
           className={cn(
             'fixed bottom-24 right-4 z-[999999] w-14 h-14 rounded-full border-none cursor-pointer',
@@ -711,9 +710,11 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
       {/* ─── Floating Add Button is mounted via useEffect above ─── */}
 
       {/* ─── Delete Confirmation ─── */}
-      <AnimatePresence>
-        {deleteConfirm && typeof document !== 'undefined' && createPortal(
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {deleteConfirm && (
             <motion.div
+              key="delete-confirm"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -745,15 +746,18 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                   </button>
                 </div>
               </motion.div>
-            </motion.div>,
-          document.body
-        )}
-      </AnimatePresence>
+            </motion.div>
+          )}
+        </AnimatePresence>,
+        document.body
+      )}
 
       {/* ─── Log Entry Form ─── */}
-      <AnimatePresence>
-        {showForm && typeof document !== 'undefined' && createPortal(
+      {typeof document !== 'undefined' && createPortal(
+        <AnimatePresence>
+          {showForm && (
             <motion.div
+              key="weight-log-form"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -1051,10 +1055,11 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                 {/* Safe area */}
                 <div className="h-[env(safe-area-inset-bottom,0px)]" />
               </motion.div>
-            </motion.div>,
+            </motion.div>
+          )}
+        </AnimatePresence>,
         document.body
       )}
-      </AnimatePresence>
     </>
   );
 }
