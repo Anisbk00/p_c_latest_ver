@@ -311,6 +311,9 @@ function ProgressCompanionHome() {
   const [skipSplash, setSkipSplash] = useState(__splashHasBeenShown);
   const [splashVisible, setSplashVisible] = useState(!__splashHasBeenShown);
   const [minTimeElapsed, setMinTimeElapsed] = useState(false);
+  // Controls whether the main content is interactive after splash dismissal.
+  // Prevents the "frozen page" feel when React is still reconciling after data arrives.
+  const [interactive, setInteractive] = useState(__splashHasBeenShown); // Skip on back-nav
   
   // Ref-based splash skip guard — survives re-renders, double effects, and state reset.
   // Once set to true, NOTHING can re-enable the splash for this component lifecycle.
@@ -396,13 +399,13 @@ function ProgressCompanionHome() {
     }
   }, []); // Run once on mount
   
-  // Start minimum time timer (5 seconds — allows full data gathering before revealing app)
+  // Start minimum time timer (3 seconds — enough for core data + React render warmup)
   useEffect(() => {
     if (skipSplash || splashSkippedRef.current) return;
     
     const timer = setTimeout(() => {
       setMinTimeElapsed(true);
-    }, 5000); // 5 seconds minimum display
+    }, 3000); // 3 seconds minimum display
     
     return () => clearTimeout(timer);
   }, [skipSplash]);
@@ -1032,27 +1035,32 @@ function ProgressCompanionHome() {
     if (skipSplash || splashSkippedRef.current) return;
     
     // Wait until BOTH conditions are met
+    // After both met, delay 1100ms to let React finish rendering the heavy
+    // page tree behind the splash. Without this, the page appears visually
+    // but is unresponsive (frozen) for ~1-2s while React reconciles.
     if (isAppReady && minTimeElapsed && splashVisible) {
       const timer = setTimeout(() => {
         setSplashVisible(false);
+        setInteractive(true);
         __splashHasBeenShown = true;
         sessionStorage.setItem('splash-shown', 'true');
-      }, 900); // 900ms — matches inner splash exit animation (150ms + 700ms)
+      }, 1100); // 1100ms — covers inner exit (850ms) + React render settle
       
       return () => clearTimeout(timer);
     }
   }, [isAppReady, minTimeElapsed, splashVisible, skipSplash]);
   
-  // Safety timeout - max 15 seconds to prevent infinite splash
+  // Safety timeout - max 10 seconds to prevent infinite splash
   useEffect(() => {
     if (skipSplash || splashSkippedRef.current || !splashVisible) return;
     
     const timer = setTimeout(() => {
       setSplashVisible(false);
+      setInteractive(true);
       __splashHasBeenShown = true;
       splashSkippedRef.current = true;
       sessionStorage.setItem('splash-shown', 'true');
-    }, 15000);
+    }, 10000);
     
     return () => clearTimeout(timer);
   }, [skipSplash, splashVisible]);
@@ -1063,13 +1071,16 @@ function ProgressCompanionHome() {
   
   return (
     <>
-      {/* ═══ MAIN CONTENT LAYER (always renders) ═══ */}
+      {/* ═══ MAIN CONTENT LAYER (always renders behind splash) ═══ */}
       {!isAuthenticated ? (
-        // Auth screen
+        // Auth screen — never block interaction
         <SupabaseAuthScreen />
       ) : (
-        // Main app content
-        <div className="fixed inset-0 bg-background flex flex-col overflow-hidden">
+        // Main app content — block taps until React has finished rendering after splash
+        <div 
+          className="fixed inset-0 bg-background flex flex-col overflow-hidden"
+          style={!interactive ? { pointerEvents: 'none' } : undefined}
+        >
           {/* Skip Link for Keyboard Navigation */}
           <a
             href="#main-content"
