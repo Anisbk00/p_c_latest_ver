@@ -2212,61 +2212,11 @@ const ProgressMirrorPreview = React.memo(function ProgressMirrorPreview({
   weight?: number | null;
   weightUnit?: string;
 }) {
-  // Convert weight to kg for display, handling various input formats
-  // Reasonable human weight range: 30-300 kg (66-660 lbs)
+  // Display weight as-is from DB — the source already stores the correct value + unit
   const displayWeight = useMemo(() => {
     if (!weight || !Number.isFinite(weight)) return null;
-    
-    const unit = (weightUnit || '').toLowerCase().trim();
-    const isLbs = unit === 'lb' || unit === 'lbs' || unit === 'pound' || unit === 'pounds';
-    const isKg = unit === 'kg' || unit === 'kilogram' || unit === 'kilograms';
-    
-    // Case 1: Explicitly in lbs - convert to kg
-    if (isLbs) {
-      const kgValue = weight / 2.20462;
-      // Sanity check: if converted value is in reasonable range, use it
-      if (kgValue >= 30 && kgValue <= 300) {
-        return { value: kgValue, unit: 'kg' };
-      }
-      // Otherwise the input might be wrong
-      return null;
-    }
-    
-    // Case 2: Explicitly in kg - validate range
-    if (isKg) {
-      if (weight >= 30 && weight <= 300) {
-        return { value: weight, unit: 'kg' };
-      }
-      // Out of reasonable range - might be wrong unit
-      // Try treating as lbs
-      const kgValue = weight / 2.20462;
-      if (kgValue >= 30 && kgValue <= 300) {
-        return { value: kgValue, unit: 'kg' };
-      }
-      return null;
-    }
-    
-    // Case 3: No unit specified - try to infer
-    // If weight is in reasonable kg range (30-300), treat as kg
-    if (weight >= 30 && weight <= 300) {
-      return { value: weight, unit: 'kg' };
-    }
-    
-    // If weight looks like lbs (100-660), convert to kg
-    if (weight >= 100 && weight <= 660) {
-      const kgValue = weight / 2.20462;
-      if (kgValue >= 30 && kgValue <= 300) {
-        return { value: kgValue, unit: 'kg' };
-      }
-    }
-    
-    // If weight is very high, might be grams (30000-300000g = 30-300kg)
-    if (weight >= 30000 && weight <= 300000) {
-      return { value: weight / 1000, unit: 'kg' };
-    }
-    
-    // Cannot determine reasonable weight - return null to hide display
-    return null;
+    const unit = (weightUnit || 'kg').trim();
+    return { value: weight, unit };
   }, [weight, weightUnit]);
   
   return (
@@ -2318,19 +2268,19 @@ const ProgressMirrorPreview = React.memo(function ProgressMirrorPreview({
           </motion.div>
         </div>
         
-        {/* Trend Overlay */}
-        <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-          <div className="flex items-center gap-1.5">
-            <motion.div
-              className="w-2 h-2 rounded-full bg-emerald-500"
-              animate={{ scale: [1, 1.2, 1] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-            <span className="text-xs text-muted-foreground">Evolving</span>
-          </div>
+        {/* Trend Overlay — weight moved to top-right to avoid chat FAB overlap */}
+        <div className="absolute top-3 right-3">
           <span className="text-xs font-medium text-foreground">
             {displayWeight ? `${displayWeight.value.toFixed(1)} ${displayWeight.unit}` : '—'}
           </span>
+        </div>
+        <div className="absolute bottom-3 left-3 flex items-center gap-1.5">
+          <motion.div
+            className="w-2 h-2 rounded-full bg-emerald-500"
+            animate={{ scale: [1, 1.2, 1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
+          <span className="text-xs text-muted-foreground">Evolving</span>
         </div>
       </div>
     </motion.div>
