@@ -916,3 +916,33 @@ Stage Summary:
 - Zero UI/UX visual design changes (only functional improvements)
 - ZERO BREAKING CHANGES — works whether migration was run or not
 - Deployed to Vercel: https://my-project-nu-three-55.vercel.app
+---
+Task ID: 1
+Agent: Main Architect
+Task: Fix FAB + button in Progress tab not working (4th attempt)
+
+Work Log:
+- Deep investigation of full component hierarchy: page.tsx → IronCoach → WeightProgressTracker
+- Identified Iron Coach panel uses createPortal to document.body at z-[100] with Framer Motion transforms
+- Previous fix used raw document.body.appendChild(btn) with manual addEventListener - fragile approach
+- Root cause analysis: raw DOM manipulation bypasses React event system, cleanup was broken (removeEventListener with new anonymous function), no touch-action CSS
+
+Fix Applied (1 file: src/components/iron-coach/weight-progress-tracker.tsx):
+- REMOVED: Manual DOM FAB creation via useEffect + document.body.appendChild
+- REMOVED: fabRef and visibility useEffect
+- ADDED: Proper React JSX FAB button via createPortal to document.body
+- ADDED: onClick handler (standard) + onTouchEnd handler with preventDefault (mobile fallback)
+- ADDED: touch-action:manipulation CSS (removes 300ms delay on mobile)
+- ADDED: WebkitTapHighlightColor:transparent (removes tap highlight flash)
+- ADDED: z-[999999] to ensure FAB is above Iron Coach panel (z-[100])
+- ADDED: pointer-events-auto CSS class
+- ADDED: Plus icon from lucide-react
+- ADDED: handleOpenForm callback with useCallback for stable reference
+- ADDED: fabAccent useMemo for theme-aware button colors
+
+Stage Summary:
+- FAB completely rewritten from raw DOM to proper React portal
+- z-index:999999 ensures it's above ALL elements including Iron Coach panel
+- Touch-friendly with onTouchEnd fallback and touch-action:manipulation
+- 1 file changed: 37 insertions, 34 deletions
+- Pushed to GitHub (912334f), deployed to Vercel production
