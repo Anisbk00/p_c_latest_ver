@@ -1555,8 +1555,12 @@ export function WorkoutsPage() {
                   disabled={isCapturingPhoto}
                   className="flex-1"
                 >
-                  <Camera className="w-4 h-4 mr-2" />
-                  Take Photo
+                  {isCapturingPhoto ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Camera className="w-4 h-4 mr-2" />
+                  )}
+                  {isCapturingPhoto ? 'Processing...' : 'Take Photo'}
                 </Button>
                 <Button
                   variant="outline"
@@ -1565,8 +1569,12 @@ export function WorkoutsPage() {
                   disabled={isCapturingPhoto}
                   className="flex-1"
                 >
-                  <ImageIcon className="w-4 h-4 mr-2" />
-                  Upload Photo
+                  {isCapturingPhoto ? (
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <ImageIcon className="w-4 h-4 mr-2" />
+                  )}
+                  {isCapturingPhoto ? 'Processing...' : 'Upload Photo'}
                 </Button>
               </div>
               

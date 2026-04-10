@@ -355,7 +355,7 @@ function LiveHUD({
               <span className="text-[8px] sm:text-[9px] font-medium uppercase" style={{ color: mutedColor }}>Elev</span>
             </div>
             <div className="flex items-baseline gap-0.5">
-              <span className="text-sm sm:text-base font-bold" style={{ color: textColor }}>{elevationGain ? Math.round(elevationGain) : 0}</span>
+              <span className="text-sm sm:text-base font-bold" style={{ color: textColor }}>{elevation ? Math.round(elevation) : '--'}</span>
               <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>m</span>
             </div>
           </div>
@@ -1389,7 +1389,7 @@ export function LiveTrackingMap({
         <motion.div
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
-          className="absolute bottom-0 left-0 right-0 z-10 px-3 sm:px-4 pt-10 pb-8 sm:pt-6 sm:pb-6"
+          className="absolute bottom-0 left-0 right-0 z-10 px-3 sm:px-4 pt-10 pb-10 sm:pt-6 sm:pb-6"
           style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)' }}
         >
           <div className="max-w-md mx-auto">
