@@ -1594,12 +1594,7 @@ export function WorkoutsPage() {
                   {t('workouts.save')}
                 </Button>
               </div>
-              <div className="flex gap-2 mt-2">
-                <Button variant="ghost" onClick={handleExportGPX} className="flex-1 text-muted-foreground">
-                  <Download className="w-4 h-4 mr-2" />
-                  {t('workouts.exportGPX')}
-                </Button>
-              </div>
+
             </CardContent>
           </Card>
         </div>
