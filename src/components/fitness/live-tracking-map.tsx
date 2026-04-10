@@ -1389,10 +1389,10 @@ export function LiveTrackingMap({
         <motion.div
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
-          className="absolute bottom-0 left-0 right-0 z-10 px-4 pt-8"
-          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 40%, transparent 100%)' }}
+          className="absolute bottom-0 left-0 right-0 z-10 px-4 pt-20"
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.8) 60%, transparent 100%)' }}
         >
-          <div className="max-w-md mx-auto pb-8">
+          <div className="max-w-md mx-auto">
             {/* Primary Stats Summary */}
             <div className="flex justify-center gap-4 sm:gap-6 mb-3 sm:mb-4">
               <div className="text-center">
