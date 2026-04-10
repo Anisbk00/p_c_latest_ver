@@ -13,6 +13,7 @@
  */
 
 import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, X, Trophy, TrendingUp, ChevronLeft, ChevronRight,
@@ -660,27 +661,30 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
         )}
 
         {/* ─── Floating Add Button ─── */}
+        {typeof document !== 'undefined' && createPortal(
         <motion.button
           whileTap={{ scale: 0.9 }}
           onClick={() => { setShowForm(true); setEditingId(null); setForm(DEFAULT_LOG); }}
           className={cn(
-            "fixed bottom-24 right-6 w-14 h-14 rounded-full shadow-xl flex items-center justify-center z-50",
+            "fixed bottom-24 right-6 w-14 h-14 rounded-full shadow-xl flex items-center justify-center z-[250]",
             styles.accentBtn,
             styles.accentGlow
           )}
           style={{ boxShadow: `0 8px 25px -5px ${theme === "gymbro" ? "rgba(239,68,68,0.4)" : theme === "gymgirl" ? "rgba(236,72,153,0.4)" : "rgba(139,92,246,0.4)"}` }}
         >
           <Plus className="w-6 h-6 text-white" />
-        </motion.button>
+        </motion.button>,
+        document.body
+        )}
 
         {/* ─── Delete Confirmation ─── */}
         <AnimatePresence>
-          {deleteConfirm && (
+          {deleteConfirm && typeof document !== 'undefined' && createPortal(
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-end justify-center"
+              className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-sm flex items-end justify-center"
               onClick={() => setDeleteConfirm(null)}
             >
               <motion.div
@@ -708,18 +712,19 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                   </button>
                 </div>
               </motion.div>
-            </motion.div>
+            </motion.div>,
+            document.body
           )}
         </AnimatePresence>
 
         {/* ─── Log Entry Form ─── */}
         <AnimatePresence>
-          {showForm && (
+          {showForm && typeof document !== 'undefined' && createPortal(
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[200] bg-black/60 backdrop-blur-sm flex items-end justify-center"
+              className="fixed inset-0 z-[250] bg-black/60 backdrop-blur-sm flex items-end justify-center"
               onClick={() => setShowForm(false)}
             >
               <motion.div
@@ -985,7 +990,8 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                 {/* Safe area */}
                 <div className="h-[env(safe-area-inset-bottom,0px)]" />
               </motion.div>
-            </motion.div>
+            </motion.div>,
+            document.body
           )}
         </AnimatePresence>
 
