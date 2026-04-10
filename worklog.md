@@ -989,3 +989,32 @@ Stage Summary:
 - Tapping the ring opens a premium popup explaining what the ring means
 - Ring colors dynamically change based on score tier
 ---
+---
+Task ID: 1
+Agent: main
+Task: Production hardening — fix all blockers and serious issues
+
+Work Log:
+- Fixed .gitignore: uncommented .env, added .env.* pattern, removed .env and .env.vercel from git tracking
+- Added admin auth to /api/migrate-user-files (was publicly accessible DDL endpoint)
+- Added CSRF double-submit cookie seeding to proxy.ts (Next.js 16 middleware equivalent)
+- Created .github/workflows/ci.yml — lint, type-check, test, build on push/PR to main
+- Installed vitest + @testing-library/react + jest-dom + jsdom
+- Created 39 smoke tests across 3 test files: security-utils, api-security, health endpoint
+- Fixed hasRole(): added @deprecated warning (client metadata is not trustworthy for authorization)
+- Fixed progress-photos: removed RLS bypass via admin client (was masking RLS policy bugs)
+- Fixed CSRF: implemented double-submit cookie pattern with timing-safe comparison
+- Added Sentry integration: sentry.client.config.ts, sentry.server.config.ts, sentry.edge.config.ts
+- Enabled noImplicitAny: true in tsconfig.json
+- Enabled reactStrictMode: true in next.config.ts
+- Removed unused imports from page.tsx (Target, Scale, Sun, ChevronRight, Coffee, Apple, subDays, isToday, useIntervalWithRef)
+- Removed service config leak from /api/health endpoint
+- Merged session refresh + CSRF seeding into existing proxy.ts (removed conflicting middleware.ts for Next.js 16 compat)
+
+Stage Summary:
+- 23 files changed, 1241 insertions, 137 deletions
+- All 39 tests passing
+- Zero lint errors
+- Build compiles successfully
+- Deployed to Vercel: https://my-project-nu-three-55.vercel.app
+---
