@@ -1018,3 +1018,23 @@ Stage Summary:
 - Build compiles successfully
 - Deployed to Vercel: https://my-project-nu-three-55.vercel.app
 ---
+---
+Task ID: 1
+Agent: Main
+Task: Fix workout camera - allow taking multiple photos without closing
+
+Work Log:
+- Diagnosed issue: CameraModal called onClose() after every capture, forcing user to reopen camera for each photo
+- Updated CameraModal handleCapture to NOT call onClose() after capture
+- Added photoCount state to track photos taken in current session
+- Added showSaved state with animated "Saved · N photo(s)" confirmation badge
+- Added "Tap ✕ when done" hint that appears after first photo
+- Camera stays open and resets captured state after 400ms so user can take another photo
+- Added Check icon import from lucide-react
+- Verified: 0 lint errors (22 pre-existing warnings unchanged)
+
+Stage Summary:
+- Camera now stays open for continuous multi-photo capture during workout
+- After each capture: white flash → "Saved · 1 photo" badge → hint "Tap ✕ when done"
+- User manually closes camera via X button when done
+- 1 file changed: workouts-page-v2.tsx

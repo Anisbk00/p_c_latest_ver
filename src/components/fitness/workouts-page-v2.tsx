@@ -25,7 +25,7 @@ import {
   FileText, X, Loader2, WifiOff, Lock, Unlock, Trophy,
   Target, Coffee, Sunrise, Sunset, Moon, RefreshCw,
   Bluetooth, BluetoothOff, Battery, Image as ImageIcon, Trash2, Plus,
-  BluetoothSearching, AlertCircle, Calendar, Clock, Ruler,
+  BluetoothSearching, AlertCircle, Calendar, Clock, Ruler, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { apiFetch } from '@/lib/mobile-api';
@@ -543,9 +543,11 @@ function CameraModal({
 
   const [flash, setFlash] = useState(false);
   const [captured, setCaptured] = useState(false);
+  const [photoCount, setPhotoCount] = useState(0);
+  const [showSaved, setShowSaved] = useState(false);
 
   const handleCapture = useCallback(() => {
-    if (!videoRef.current || !stream) return;
+    if (!videoRef.current || !stream || captured) return;
 
     const video = videoRef.current;
     const canvas = document.createElement('canvas');
@@ -565,9 +567,16 @@ function CameraModal({
     setTimeout(() => {
       setFlash(false);
       onCapture(dataUrl);
-      onClose();
+      setPhotoCount(prev => prev + 1);
+      // Show saved confirmation briefly
+      setShowSaved(true);
+      setTimeout(() => {
+        setShowSaved(false);
+        // Reset captured state so user can take another photo
+        setCaptured(false);
+      }, 400);
     }, 200);
-  }, [stream, onCapture, onClose]);
+  }, [stream, onCapture, captured]);
 
   const toggleCamera = useCallback(() => {
     setFacingMode(prev => prev === 'user' ? 'environment' : 'user');
@@ -648,6 +657,32 @@ function CameraModal({
             <div className="w-[68px] h-[68px] rounded-full border-[3px] border-gray-300" />
           </button>
         </div>
+
+        {/* Photo Saved Indicator */}
+        <AnimatePresence>
+          {showSaved && (
+            <motion.div
+              initial={{ opacity: 0, y: 20, scale: 0.8 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -10, scale: 0.9 }}
+              className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10"
+            >
+              <div className="bg-black/60 backdrop-blur-md rounded-full px-4 py-2 flex items-center gap-2">
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span className="text-white text-sm font-medium">Saved · {photoCount} photo{photoCount !== 1 ? 's' : ''}</span>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Close hint - shown after first photo */}
+        {photoCount > 0 && !showSaved && !captured && (
+          <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-10">
+            <div className="bg-black/40 backdrop-blur-sm rounded-full px-3 py-1">
+              <span className="text-white/70 text-xs">Tap ✕ when done</span>
+            </div>
+          </div>
+        )}
       </motion.div>
     </AnimatePresence>
   );
