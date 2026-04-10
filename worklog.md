@@ -946,3 +946,24 @@ Stage Summary:
 - Touch-friendly with onTouchEnd fallback and touch-action:manipulation
 - 1 file changed: 37 insertions, 34 deletions
 - Pushed to GitHub (912334f), deployed to Vercel production
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix the + button in Progress tab not opening the log exercise form
+
+Work Log:
+- User reported: "when i click on it the plus sign disappears instead" — key new symptom
+- Read weight-progress-tracker.tsx and iron-coach-chat.tsx to understand component structure
+- Identified root cause: `AnimatePresence` wrapping `createPortal` — Framer Motion can't track portal children across portal boundaries
+- The form WAS rendering in the DOM but stuck at `opacity: 0` (initial animation state), making it invisible
+- Fix: Restructured portal pattern — portal is now always mounted (unconditional), `AnimatePresence` is placed INSIDE the portal
+- Applied same fix to delete confirmation modal
+- Removed `onTouchEnd` with `e.preventDefault()` from FAB button (potential mobile issue), replaced with `onClick` + `stopPropagation`
+- Committed, pushed to Git, deployed to Vercel
+
+Stage Summary:
+- Root cause: AnimatePresence + createPortal = broken enter animations (form renders invisible)
+- Fix: Always-render portal, AnimatePresence inside portal with keyed children
+- Files changed: src/components/iron-coach/weight-progress-tracker.tsx (17 insertions, 12 deletions)
+- Deployed: https://my-project-nu-three-55.vercel.app
