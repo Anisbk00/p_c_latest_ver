@@ -1474,20 +1474,6 @@ const IdentityHeader = React.memo(function IdentityHeader({
             aria-label={`Body Intelligence Score: ${Math.round(bodyScore)}`}
             variants={scaleIn}
           >
-            {/* Shimmer rotating glow (premium feel) */}
-            <motion.div
-              className="absolute -inset-1 rounded-full"
-              animate={{ rotate: 360 }}
-              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-            >
-              <div
-                className="w-full h-full rounded-full"
-                style={{
-                  background: `conic-gradient(from 0deg, transparent 0%, ${scoreColor.ring[0]}33 10%, transparent 20%, transparent 50%, ${scoreColor.ring[1]}33 60%, transparent 70%)`,
-                }}
-              />
-            </motion.div>
-
             {/* Animated Progress Ring */}
             <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
               <circle
