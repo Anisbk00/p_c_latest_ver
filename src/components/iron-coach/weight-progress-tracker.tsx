@@ -111,8 +111,8 @@ function getAccent(theme: string) {
   switch (theme) {
     case "gymbro": return { accent: "text-red-400", accentBg: "bg-red-500/10 border-red-500/20", accentBtn: "bg-red-500 hover:bg-red-600", accentGlow: "shadow-red-500/20" };
     case "gymgirl": return { accent: "text-pink-400", accentBg: "bg-pink-500/10 border-pink-500/20", accentBtn: "bg-pink-500 hover:bg-pink-600", accentGlow: "shadow-pink-500/20" };
-    case "light": return { accent: "text-orange-500", accentBg: "bg-orange-500/10 border-orange-500/20", accentBtn: "bg-orange-500 hover:bg-orange-600", accentGlow: "shadow-orange-500/20" };
-    default: return { accent: "text-orange-400", accentBg: "bg-orange-500/10 border-orange-500/20", accentBtn: "bg-orange-500 hover:bg-orange-600", accentGlow: "shadow-orange-500/20" };
+    case "light": return { accent: "text-violet-500", accentBg: "bg-violet-500/10 border-violet-500/20", accentBtn: "bg-violet-500 hover:bg-violet-600", accentGlow: "shadow-violet-500/20" };
+    default: return { accent: "text-violet-400", accentBg: "bg-violet-500/10 border-violet-500/20", accentBtn: "bg-violet-500 hover:bg-violet-600", accentGlow: "shadow-violet-500/20" };
   }
 }
 
@@ -442,7 +442,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
           <motion.div
             initial={{ opacity: 0, y: 5 }}
             animate={{ opacity: 1, y: 0 }}
-            className="p-3 rounded-xl bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/20"
+            className="p-3 rounded-xl bg-gradient-to-r from-violet-500/10 to-purple-500/10 border border-violet-500/20"
           >
             <div className="flex items-center gap-2 mb-2">
               <Trophy className="w-4 h-4 text-amber-400" />
@@ -521,7 +521,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                     </div>
                     {/* Mini sparkline */}
                     {histValues.length >= 2 && (
-                      <MiniSparkline values={histValues} color={theme === "gymbro" ? "#f87171" : theme === "gymgirl" ? "#f472b6" : "#f97316"} />
+                      <MiniSparkline values={histValues} color={theme === "gymbro" ? "#f87171" : theme === "gymgirl" ? "#f472b6" : "#a78bfa"} />
                     )}
                   </div>
 
@@ -597,7 +597,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
             styles.accentBtn,
             styles.accentGlow
           )}
-          style={{ boxShadow: `0 8px 25px -5px ${theme === "gymbro" ? "rgba(239,68,68,0.4)" : theme === "gymgirl" ? "rgba(236,72,153,0.4)" : "rgba(249,115,22,0.4)"}` }}
+          style={{ boxShadow: `0 8px 25px -5px ${theme === "gymbro" ? "rgba(239,68,68,0.4)" : theme === "gymgirl" ? "rgba(236,72,153,0.4)" : "rgba(139,92,246,0.4)"}` }}
         >
           <Plus className="w-6 h-6 text-white" />
         </motion.button>
@@ -689,7 +689,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                         "w-full px-4 py-3 rounded-xl text-sm font-medium outline-none transition-all",
                         isDark
                           ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 focus:border-red-500/40 focus:ring-1 focus:ring-red-500/20"
-                          : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:border-orange-400/40 focus:ring-1 focus:ring-orange-400/20"
+                          : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:border-violet-400/40 focus:ring-1 focus:ring-violet-400/20"
                       )}
                       autoFocus
                     />
@@ -731,7 +731,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                           "w-full px-3 py-3 rounded-xl text-sm font-bold text-center outline-none transition-all",
                           isDark
                             ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
-                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-orange-400/40"
+                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
                         )}
                       />
                     </div>
@@ -747,7 +747,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                           "w-full px-3 py-3 rounded-xl text-sm font-bold text-center outline-none transition-all",
                           isDark
                             ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
-                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-orange-400/40"
+                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
                         )}
                       />
                     </div>
@@ -763,7 +763,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                           "w-full px-3 py-3 rounded-xl text-sm font-bold text-center outline-none transition-all",
                           isDark
                             ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
-                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-orange-400/40"
+                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
                         )}
                       />
                     </div>
@@ -783,7 +783,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                           "w-full px-3 py-2.5 rounded-xl text-xs outline-none transition-all",
                           isDark
                             ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
-                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-orange-400/40"
+                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
                         )}
                       />
                     </div>
@@ -799,7 +799,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                           "w-full px-3 py-2.5 rounded-xl text-xs outline-none transition-all",
                           isDark
                             ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
-                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-orange-400/40"
+                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
                         )}
                       />
                     </div>
@@ -885,7 +885,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                         "w-full px-4 py-3 rounded-xl text-sm outline-none resize-none transition-all",
                         isDark
                           ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
-                          : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:border-orange-400/40"
+                          : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:border-violet-400/40"
                       )}
                     />
                   </div>
