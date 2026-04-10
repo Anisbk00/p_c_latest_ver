@@ -1027,91 +1027,134 @@ export function IronCoach({ className }: IronCoachProps) {
               <div className={cn("w-10 h-1 rounded-full", theme === 'gymgirl' ? 'bg-pink-300/50' : 'bg-zinc-700')} />
             </div>
 
-            {/* Header */}
+            {/* Header — dynamic per tab */}
             <header className={cn("relative z-10 flex items-center gap-3 px-4 py-3 border-b", styles.header, styles.headerBg)}>
-              <div className="relative">
-                <div className={cn("w-11 h-11 rounded-full flex items-center justify-center", styles.avatar, styles.avatarGlow)}>
-                  <Sparkles className="w-6 h-6 text-white" />
-                </div>
-                <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-transparent"
-                  style={{ borderColor: theme === 'gymgirl' ? '#FFE8F0' : theme === 'light' ? '#fff' : '#18181b' }}
-                />
-              </div>
-              
-              <div className="flex-1">
-                <h1 className={cn("font-bold text-lg", styles.title)}>Iron Coach</h1>
-                <div className="flex items-center gap-1">
-                  <Crown className={cn("w-3 h-3", theme === 'gymbro' ? 'text-amber-400' : theme === 'gymgirl' ? 'text-pink-400' : 'text-orange-400')} />
-                  <span className={cn("text-xs", styles.subtitle)}>{t('coach.fitnessFriend')} • {t('coach.remembersEverything')}</span>
-                </div>
-              </div>
+              {activeTab === 'chat' ? (
+                <>
+                  <div className="relative">
+                    <div className={cn("w-11 h-11 rounded-full flex items-center justify-center", styles.avatar, styles.avatarGlow)}>
+                      <Sparkles className="w-6 h-6 text-white" />
+                    </div>
+                    <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-transparent"
+                      style={{ borderColor: theme === 'gymgirl' ? '#FFE8F0' : theme === 'light' ? '#fff' : '#18181b' }}
+                    />
+                  </div>
+                  
+                  <div className="flex-1">
+                    <h1 className={cn("font-bold text-lg", styles.title)}>Iron Coach</h1>
+                    <div className="flex items-center gap-1">
+                      <Crown className={cn("w-3 h-3", theme === 'gymbro' ? 'text-amber-400' : theme === 'gymgirl' ? 'text-pink-400' : 'text-orange-400')} />
+                      <span className={cn("text-xs", styles.subtitle)}>{t('coach.fitnessFriend')} • {t('coach.remembersEverything')}</span>
+                    </div>
+                  </div>
 
-              {/* Menu button */}
-              <div ref={menuButtonRef} className="relative">
-                <button 
-                  onClick={() => setShowMenu(!showMenu)} 
-                  className={cn("w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-all", styles.closeButton)} 
-                  aria-label="Menu"
-                >
-                  <MoreVertical className="w-5 h-5" />
-                </button>
-                
-                {/* Dropdown menu - Portal to body to escape stacking context */}
-                {showMenu && typeof document !== 'undefined' && createPortal(
-                  <motion.div
-                    ref={dropdownRef}
-                    initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                    animate={{ opacity: 1, scale: 1, y: 0 }}
-                    exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                    className={cn("fixed w-48 rounded-xl border shadow-lg overflow-hidden z-[9999]",
-                      theme === 'gymgirl' ? 'bg-white border-pink-200' : 
-                      theme === 'light' ? 'bg-white border-zinc-200' : 
-                      'bg-zinc-900 border-zinc-700'
+                  {/* Menu button — chat only */}
+                  <div ref={menuButtonRef} className="relative">
+                    <button 
+                      onClick={() => setShowMenu(!showMenu)} 
+                      className={cn("w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-all", styles.closeButton)} 
+                      aria-label="Menu"
+                    >
+                      <MoreVertical className="w-5 h-5" />
+                    </button>
+                    
+                    {/* Dropdown menu */}
+                    {showMenu && typeof document !== 'undefined' && createPortal(
+                      <motion.div
+                        ref={dropdownRef}
+                        initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                        className={cn("fixed w-48 rounded-xl border shadow-lg overflow-hidden z-[9999]",
+                          theme === 'gymgirl' ? 'bg-white border-pink-200' : 
+                          theme === 'light' ? 'bg-white border-zinc-200' : 
+                          'bg-zinc-900 border-zinc-700'
+                        )}
+                        style={{
+                          top: menuPosition.top,
+                          right: menuPosition.right,
+                        }}
+                      >
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            requestClearChat();
+                          }}
+                          disabled={isClearing}
+                          className={cn(
+                            "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
+                            theme === 'gymgirl' ? 'hover:bg-pink-50 text-[#4A1A2C]' :
+                            theme === 'light' ? 'hover:bg-zinc-50 text-zinc-900' :
+                            'hover:bg-zinc-800 text-zinc-100'
+                          )}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-400" />
+                          <span>{isClearing && confirmModalType === 'clear' ? 'Clearing...' : 'Clear Chat History'}</span>
+                        </button>
+                      </motion.div>,
+                      document.body
                     )}
-                    style={{
-                      top: menuPosition.top,
-                      right: menuPosition.right,
-                    }}
-                  >
-                    {activeTab === 'chat' ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          requestClearChat();
-                        }}
-                        disabled={isClearing}
-                        className={cn(
-                          "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                          theme === 'gymgirl' ? 'hover:bg-pink-50 text-[#4A1A2C]' :
-                          theme === 'light' ? 'hover:bg-zinc-50 text-zinc-900' :
-                          'hover:bg-zinc-800 text-zinc-100'
-                        )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className={cn("w-9 h-9 rounded-full flex items-center justify-center", styles.avatar, styles.avatarGlow)}>
+                    {activeTab === 'progress' ? <TrendingUp className="w-5 h-5 text-white" /> : <CalendarDays className="w-5 h-5 text-white" />}
+                  </div>
+                  <div className="flex-1">
+                    <h1 className={cn("font-bold text-lg", styles.title)}>{activeTab === 'progress' ? 'Progress' : 'Planner'}</h1>
+                    <span className={cn("text-xs", styles.subtitle)}>{activeTab === 'progress' ? 'Track your strength gains' : 'Your weekly training plan'}</span>
+                  </div>
+
+                  {/* Menu button — planner: update plan */}
+                  {activeTab === 'planner' && (
+                    <div ref={menuButtonRef} className="relative">
+                      <button 
+                        onClick={() => setShowMenu(!showMenu)} 
+                        className={cn("w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-all", styles.closeButton)} 
+                        aria-label="Menu"
                       >
-                        <Trash2 className="w-4 h-4 text-red-400" />
-                        <span>{isClearing && confirmModalType === 'clear' ? 'Clearing...' : 'Clear Chat History'}</span>
+                        <MoreVertical className="w-5 h-5" />
                       </button>
-                    ) : activeTab === 'planner' ? (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          requestUpdatePlan();
-                        }}
-                        disabled={isClearing}
-                        className={cn(
-                          "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                          theme === 'gymgirl' ? 'hover:bg-pink-50 text-[#4A1A2C]' :
-                          theme === 'light' ? 'hover:bg-zinc-50 text-zinc-900' :
-                          'hover:bg-zinc-800 text-zinc-100'
-                        )}
-                      >
-                        <RefreshCw className={cn("w-4 h-4 text-amber-500", isClearing && confirmModalType === 'update' && "animate-spin")} />
-                        <span>{isClearing && confirmModalType === 'update' ? 'Updating...' : 'Update Plan'}</span>
-                      </button>
-                    ) : null}
-                  </motion.div>,
-                  document.body
-                )}
-              </div>
+                      {showMenu && typeof document !== 'undefined' && createPortal(
+                        <motion.div
+                          ref={dropdownRef}
+                          initial={{ opacity: 0, scale: 0.95, y: -10 }}
+                          animate={{ opacity: 1, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.95, y: -10 }}
+                          className={cn("fixed w-48 rounded-xl border shadow-lg overflow-hidden z-[9999]",
+                            theme === 'gymgirl' ? 'bg-white border-pink-200' : 
+                            theme === 'light' ? 'bg-white border-zinc-200' : 
+                            'bg-zinc-900 border-zinc-700'
+                          )}
+                          style={{
+                            top: menuPosition.top,
+                            right: menuPosition.right,
+                          }}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              requestUpdatePlan();
+                            }}
+                            disabled={isClearing}
+                            className={cn(
+                              "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
+                              theme === 'gymgirl' ? 'hover:bg-pink-50 text-[#4A1A2C]' :
+                              theme === 'light' ? 'hover:bg-zinc-50 text-zinc-900' :
+                              'hover:bg-zinc-800 text-zinc-100'
+                            )}
+                          >
+                            <RefreshCw className={cn("w-4 h-4 text-amber-500", isClearing && confirmModalType === 'update' && "animate-spin")} />
+                            <span>{isClearing && confirmModalType === 'update' ? 'Updating...' : 'Update Plan'}</span>
+                          </button>
+                        </motion.div>,
+                        document.body
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
 
               <button onClick={() => {
                 setIsOpen(false);
