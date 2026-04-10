@@ -27,6 +27,7 @@ import {
   Zap,
   Heart,
   TrendingUp,
+  TrendingDown,
   Coffee,
   Apple,
   Brain,
@@ -1399,13 +1400,30 @@ const IdentityHeader = React.memo(function IdentityHeader({
   scoreConfidence?: number;
   isDefaultGoal?: boolean;
 }) {
-  // Unique ID for gradient to avoid SVG ID collisions
   const gradientId = useId();
   const { t } = useLocale();
-  
+  const [showScorePopup, setShowScorePopup] = React.useState(false);
+  const popupTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleRingPress = useCallback(() => {
+    setShowScorePopup(prev => !prev);
+    if (popupTimeout.current) clearTimeout(popupTimeout.current);
+  }, []);
+
+  const handleDismiss = useCallback(() => {
+    popupTimeout.current = setTimeout(() => setShowScorePopup(false), 150);
+  }, []);
+
+  // Score color tier
+  const scoreColor = useMemo(() => {
+    if (bodyScore >= 80) return { ring: ['#10b981', '#14b8a6'], bg: 'from-emerald-500 to-teal-500', label: 'text-emerald-500', desc: 'Excellent' };
+    if (bodyScore >= 50) return { ring: ['#f59e0b', '#eab308'], bg: 'from-amber-500 to-yellow-500', label: 'text-amber-500', desc: 'Good' };
+    if (bodyScore > 0)   return { ring: ['#f97316', '#fb923c'], bg: 'from-orange-500 to-amber-400', label: 'text-orange-500', desc: 'Getting Started' };
+    return { ring: ['#71717a', '#a1a1aa'], bg: 'from-zinc-400 to-zinc-300', label: 'text-muted-foreground', desc: 'No Data Yet' };
+  }, [bodyScore]);
+
   // Generate intelligent insight - prioritize non-streak insights since streak is shown elsewhere
   const insight = useMemo(() => {
-    // Only show streak insight for very impressive streaks (>= 14 days)
     if (streak >= 14) return `🔥 ${streak}${t('home.insight.incredibleStreak')}`;
     if (bodyScore >= 80) return t('home.insight.peakState');
     if (bodyScore >= 50) return t('home.insight.solidProgress');
@@ -1413,7 +1431,7 @@ const IdentityHeader = React.memo(function IdentityHeader({
     if (bodyScore > 0) return t('home.insight.startSmall');
     return t('home.insight.ready');
   }, [bodyScore, streak, t]);
-  
+
   return (
     <motion.div
       variants={staggerContainer}
@@ -1437,7 +1455,6 @@ const IdentityHeader = React.memo(function IdentityHeader({
           >
             {insight}
           </motion.p>
-          {/* Goal warning indicator */}
           {isDefaultGoal && (
             <motion.p
               className="text-xs text-amber-600 dark:text-amber-400 mt-1"
@@ -1447,68 +1464,153 @@ const IdentityHeader = React.memo(function IdentityHeader({
             </motion.p>
           )}
         </div>
-        
-        {/* Right: Progress Halo */}
-        <motion.div
-          className="relative w-14 h-14"
-          variants={scaleIn}
-        >
-          {/* Animated Progress Ring */}
-          <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
-            <circle
-              cx="28"
-              cy="28"
-              r="24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className="text-muted/20"
-            />
-            <motion.circle
-              cx="28"
-              cy="28"
-              r="24"
-              fill="none"
-              stroke={`url(#${gradientId})`}
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeDasharray={150.8}
-              initial={{ strokeDashoffset: 150.8 }}
-              animate={{ strokeDashoffset: 150.8 - (150.8 * bodyScore) / 100 }}
-              transition={{ duration: 1, ease: "easeOut" }}
-            />
-            <defs>
-              <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#10b981" />
-                <stop offset="100%" stopColor="#14b8a6" />
-              </linearGradient>
-            </defs>
-          </svg>
-          
-          {/* Center Avatar */}
-          <div className="absolute inset-0 flex items-center justify-center">
+
+        {/* Right: Premium Progress Halo (Tappable) */}
+        <div className="relative" style={{ zIndex: showScorePopup ? 200 : undefined }}>
+          <motion.button
+            type="button"
+            onClick={handleRingPress}
+            className="relative w-14 h-14 focus:outline-none active:scale-95 transition-transform"
+            aria-label={`Body Intelligence Score: ${Math.round(bodyScore)}`}
+            variants={scaleIn}
+          >
+            {/* Shimmer rotating glow (premium feel) */}
             <motion.div
-              className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-semibold"
-              animate={{ scale: [1, 1.02, 1] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              className="absolute -inset-1 rounded-full"
+              animate={{ rotate: 360 }}
+              transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
             >
-              {avatarUrl ? (
-                <img src={sanitizeUrl(avatarUrl)} alt={name} className="w-full h-full object-cover" />
-              ) : (
-                <div className="w-full h-full bg-linear-to-br from-emerald-400 to-teal-500 flex items-center justify-center">
-                  {name.charAt(0).toUpperCase()}
-                </div>
-              )}
+              <div
+                className="w-full h-full rounded-full"
+                style={{
+                  background: `conic-gradient(from 0deg, transparent 0%, ${scoreColor.ring[0]}33 10%, transparent 20%, transparent 50%, ${scoreColor.ring[1]}33 60%, transparent 70%)`,
+                }}
+              />
             </motion.div>
-          </div>
-          
+
+            {/* Animated Progress Ring */}
+            <svg className="w-14 h-14 -rotate-90" viewBox="0 0 56 56">
+              <circle
+                cx="28" cy="28" r="24"
+                fill="none" stroke="currentColor" strokeWidth="2"
+                className="text-muted/20"
+              />
+              <motion.circle
+                cx="28" cy="28" r="24"
+                fill="none"
+                stroke={`url(#${gradientId})`}
+                strokeWidth="2.5" strokeLinecap="round"
+                strokeDasharray={150.8}
+                initial={{ strokeDashoffset: 150.8 }}
+                animate={{ strokeDashoffset: 150.8 - (150.8 * bodyScore) / 100 }}
+                transition={{ duration: 1.2, ease: "easeOut" }}
+              />
+              <defs>
+                <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor={scoreColor.ring[0]} />
+                  <stop offset="100%" stopColor={scoreColor.ring[1]} />
+                </linearGradient>
+              </defs>
+            </svg>
+
+            {/* Center Avatar */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <motion.div
+                className="w-10 h-10 rounded-full overflow-hidden flex items-center justify-center text-white text-sm font-semibold ring-2 ring-background"
+                animate={{ scale: [1, 1.02, 1] }}
+                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+              >
+                {avatarUrl ? (
+                  <img src={sanitizeUrl(avatarUrl)} alt={name} className="w-full h-full object-cover" />
+                ) : (
+                  <div className={`w-full h-full bg-linear-to-br ${scoreColor.bg} flex items-center justify-center`}>
+                    {name.charAt(0).toUpperCase()}
+                  </div>
+                )}
+              </motion.div>
+            </div>
+          </motion.button>
+
           {/* Breathing Glow */}
           <motion.div
-            className="absolute inset-0 rounded-full bg-emerald-500/20 blur-xl"
+            className="absolute inset-0 rounded-full blur-xl pointer-events-none"
+            style={{ background: `${scoreColor.ring[0]}33` }}
             animate={{ scale: [1, 1.3, 1], opacity: [0.3, 0.5, 0.3] }}
             transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
           />
-        </motion.div>
+
+          {/* Score Badge (always visible) */}
+          <motion.div
+            className="absolute -bottom-1 -right-1 min-w-[20px] h-5 rounded-full flex items-center justify-center px-1 text-[10px] font-bold text-white shadow-lg"
+            style={{ background: `linear-gradient(135deg, ${scoreColor.ring[0]}, ${scoreColor.ring[1]})` }}
+            initial={{ scale: 0 }}
+            animate={{ scale: 1 }}
+            transition={{ delay: 0.8, type: "spring", stiffness: 300, damping: 20 }}
+          >
+            {Math.round(bodyScore)}
+          </motion.div>
+
+          {/* ── Tap-to-reveal Score Popup ── */}
+          <AnimatePresence>
+            {showScorePopup && (
+              <>
+                {/* Backdrop */}
+                <motion.div
+                  className="fixed inset-0 z-[199]"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={handleDismiss}
+                />
+                <motion.div
+                  className="absolute top-full right-0 mt-3 z-[200] w-56 rounded-2xl bg-popover border shadow-2xl overflow-hidden"
+                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                  transition={{ type: "spring", stiffness: 400, damping: 25 }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* Score Header */}
+                  <div className={`px-4 pt-4 pb-3 bg-linear-to-br ${scoreColor.bg} text-white`}>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-[10px] uppercase tracking-wider opacity-80 font-medium">Body Intelligence</p>
+                        <p className="text-3xl font-bold leading-tight">{Math.round(bodyScore)}<span className="text-base font-normal opacity-80">/100</span></p>
+                      </div>
+                      <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center">
+                        {trend === 'up' && <TrendingUp className="w-5 h-5" />}
+                        {trend === 'down' && <TrendingDown className="w-5 h-5" />}
+                        {trend === 'stable' && <Minus className="w-5 h-5" />}
+                      </div>
+                    </div>
+                    <p className="text-xs opacity-90 mt-1">{scoreColor.desc}{streak > 0 ? ` · ${streak} day streak` : ''}</p>
+                  </div>
+
+                  {/* Breakdown */}
+                  <div className="px-4 py-3 space-y-2">
+                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">What this ring means</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Your ring fills up as you log meals, workouts, and water. The fuller the ring, the better you&apos;re supporting your body today.
+                    </p>
+                    <div className="flex items-center gap-1.5 pt-1">
+                      <div className="w-2 h-2 rounded-full bg-amber-500" />
+                      <span className="text-[11px] text-muted-foreground">Nutrition</span>
+                      <div className="w-2 h-2 rounded-full bg-cyan-500 ml-2" />
+                      <span className="text-[11px] text-muted-foreground">Hydration</span>
+                      <div className="w-2 h-2 rounded-full bg-orange-500 ml-2" />
+                      <span className="text-[11px] text-muted-foreground">Activity</span>
+                    </div>
+                  </div>
+
+                  {/* Tap outside hint */}
+                  <div className="px-4 py-2 border-t bg-muted/30">
+                    <p className="text-[10px] text-center text-muted-foreground">Tap outside to close</p>
+                  </div>
+                </motion.div>
+              </>
+            )}
+          </AnimatePresence>
+        </div>
       </div>
     </motion.div>
   );

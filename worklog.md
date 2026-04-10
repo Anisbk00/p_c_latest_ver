@@ -967,3 +967,25 @@ Stage Summary:
 - Fix: Always-render portal, AnimatePresence inside portal with keyed children
 - Files changed: src/components/iron-coach/weight-progress-tracker.tsx (17 insertions, 12 deletions)
 - Deployed: https://my-project-nu-three-55.vercel.app
+---
+Task ID: 1
+Agent: main
+Task: Make avatar progress ring premium + tappable with info popup
+
+Work Log:
+- Read IdentityHeader component in src/app/page.tsx (lines 1383-1515)
+- Identified the green partial circle as an SVG progress ring representing Body Intelligence Score (0-100)
+- Upgraded the ring to be a tappable button with:
+  - Rotating shimmer glow effect (conic-gradient animation)
+  - Dynamic color tiers: green (80+), amber (50+), orange (0+), gray (no data)
+  - Small score badge always visible at bottom-right of avatar
+  - Beautiful animated popup on tap showing: score/100, trend arrow, streak, color-coded factor breakdown
+  - Backdrop dismiss on tap outside
+- Added TrendingDown import
+
+Stage Summary:
+- The progress ring is now interactive and self-explanatory
+- Users see their score number at all times via the badge
+- Tapping the ring opens a premium popup explaining what the ring means
+- Ring colors dynamically change based on score tier
+---
