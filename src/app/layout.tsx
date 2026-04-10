@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
+import { Toaster as SonnerToaster } from "@/components/ui/sonner";
 import { ThemeProvider, ThemeSync } from "@/components/theme-provider-wrapper";
 import { SupabaseAuthProvider } from "@/lib/supabase/auth-context";
 import { AppProvider } from "@/contexts/app-context";
@@ -159,6 +160,7 @@ export default function RootLayout({
             </SupabaseAuthProvider>
           </AuthErrorBoundary>
           <Toaster />
+          <SonnerToaster position="top-center" richColors closeButton duration={4000} />
           <CapacitorInit />
         </ThemeProvider>
       </body>

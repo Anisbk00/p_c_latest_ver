@@ -22,17 +22,165 @@ function checkRateLimit(userId: string, limit = 60, windowMs = 60000) {
   return true;
 }
 
+// Track auto-migration so we only attempt it once per cold boot
+let migrationAttempted = false;
+let migrationSuccess = false;
+
+/**
+ * Auto-create the weight_progress_logs table if it doesn't exist.
+ * Uses direct PostgreSQL connection via DATABASE_URL.
+ * Returns true if the table is now available.
+ */
+async function ensureTableExists(): Promise<boolean> {
+  if (migrationSuccess) return true;
+  if (migrationAttempted) return false;
+
+  const dbUrl = process.env.DATABASE_URL;
+  if (!dbUrl) {
+    console.error('[weight-progress] No DATABASE_URL configured for auto-migration');
+    return false;
+  }
+
+  migrationAttempted = true;
+
+  try {
+    // Dynamic import to avoid loading pg in edge runtime
+    const { default: pg } = await import('pg');
+    const pool = new pg.Pool({
+      connectionString: dbUrl,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: 5000,
+      statement_timeout: 10000,
+    });
+
+    const migrationSQL = `
+      CREATE TABLE IF NOT EXISTS weight_progress_logs (
+        id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+        exercise_name   TEXT NOT NULL,
+        muscle_group    TEXT NOT NULL DEFAULT 'other',
+        weight_kg       NUMERIC(6,2) NOT NULL DEFAULT 0,
+        max_weight_kg   NUMERIC(6,2),
+        min_weight_kg   NUMERIC(6,2),
+        reps            INTEGER NOT NULL DEFAULT 1,
+        sets            INTEGER NOT NULL DEFAULT 1,
+        estimated_1rm   NUMERIC(6,2),
+        rpe             INTEGER CHECK (rpe BETWEEN 1 AND 10),
+        effort_level    TEXT CHECK (effort_level IN ('easy','moderate','hard','max','failure')),
+        rest_seconds    INTEGER DEFAULT 90,
+        logged_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+        notes           TEXT,
+        week_number     INTEGER,
+        year            INTEGER,
+        is_pr           BOOLEAN NOT NULL DEFAULT FALSE,
+        pr_type         TEXT CHECK (pr_type IN ('weight','volume','reps','sets','est_1rm')),
+        created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+        updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_wpl_user_date ON weight_progress_logs(user_id, logged_at DESC);
+      CREATE INDEX IF NOT EXISTS idx_wpl_user_week ON weight_progress_logs(user_id, year, week_number);
+      CREATE INDEX IF NOT EXISTS idx_wpl_user_pr ON weight_progress_logs(user_id, is_pr) WHERE is_pr = TRUE;
+
+      ALTER TABLE weight_progress_logs ENABLE ROW LEVEL SECURITY;
+
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'weight_progress_logs' AND policyname = 'wpl_users_select_own') THEN
+          CREATE POLICY "wpl_users_select_own" ON weight_progress_logs FOR SELECT USING (auth.uid() = user_id);
+          CREATE POLICY "wpl_users_insert_own" ON weight_progress_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
+          CREATE POLICY "wpl_users_update_own" ON weight_progress_logs FOR UPDATE USING (auth.uid() = user_id) WITH CHECK (auth.uid() = user_id);
+          CREATE POLICY "wpl_users_delete_own" ON weight_progress_logs FOR DELETE USING (auth.uid() = user_id);
+        END IF;
+      END $$;
+
+      CREATE OR REPLACE FUNCTION fill_wpl_week_year()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.week_number := EXTRACT(WEEK FROM NEW.logged_at)::INTEGER;
+        NEW.year := EXTRACT(YEAR FROM NEW.logged_at)::INTEGER;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_wpl_fill_week_year ON weight_progress_logs;
+      CREATE TRIGGER trg_wpl_fill_week_year
+        BEFORE INSERT OR UPDATE ON weight_progress_logs
+        FOR EACH ROW EXECUTE FUNCTION fill_wpl_week_year();
+
+      CREATE OR REPLACE FUNCTION update_wpl_updated_at()
+      RETURNS TRIGGER AS $$
+      BEGIN
+        NEW.updated_at = now();
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_wpl_updated_at ON weight_progress_logs;
+      CREATE TRIGGER trg_wpl_updated_at
+        BEFORE UPDATE ON weight_progress_logs
+        FOR EACH ROW EXECUTE FUNCTION update_wpl_updated_at();
+
+      CREATE OR REPLACE FUNCTION detect_wpl_pr()
+      RETURNS TRIGGER AS $$
+      DECLARE
+        prev_max_weight NUMERIC;
+        prev_max_volume NUMERIC;
+        prev_max_reps   INTEGER;
+        prev_max_1rm    NUMERIC;
+        new_volume      NUMERIC;
+      BEGIN
+        IF TG_OP <> 'INSERT' THEN RETURN NEW; END IF;
+        new_volume := (NEW.sets::NUMERIC * NEW.reps::NUMERIC * NEW.weight_kg);
+        SELECT MAX(max_weight_kg), MAX(sets::NUMERIC * reps::NUMERIC * weight_kg), MAX(reps), MAX(estimated_1rm)
+        INTO prev_max_weight, prev_max_volume, prev_max_reps, prev_max_1rm
+        FROM weight_progress_logs WHERE user_id = NEW.user_id AND exercise_name = NEW.exercise_name AND id != NEW.id;
+        NEW.is_pr := FALSE;
+        NEW.pr_type := NULL;
+        IF NEW.max_weight_kg IS NOT NULL AND (prev_max_weight IS NULL OR NEW.max_weight_kg > prev_max_weight) THEN
+          NEW.is_pr := TRUE; NEW.pr_type := 'weight';
+        END IF;
+        IF prev_max_volume IS NULL OR new_volume > prev_max_volume THEN
+          IF NOT NEW.is_pr OR (prev_max_weight IS NOT NULL AND NEW.max_weight_kg IS NOT NULL AND NEW.max_weight_kg <= prev_max_weight) THEN
+            NEW.is_pr := TRUE; NEW.pr_type := 'volume';
+          END IF;
+        END IF;
+        IF prev_max_reps IS NULL OR NEW.reps > prev_max_reps THEN
+          IF NOT NEW.is_pr THEN NEW.is_pr := TRUE; NEW.pr_type := 'reps'; END IF;
+        END IF;
+        IF NEW.estimated_1rm IS NOT NULL AND (prev_max_1rm IS NULL OR NEW.estimated_1rm > prev_max_1rm) THEN
+          NEW.is_pr := TRUE; NEW.pr_type := 'est_1rm';
+        END IF;
+        IF NEW.estimated_1rm IS NULL AND NEW.reps > 0 AND NEW.reps <= 30 AND NEW.weight_kg > 0 THEN
+          NEW.estimated_1rm := ROUND((NEW.weight_kg * (1 + NEW.reps::NUMERIC / 30))::NUMERIC, 2);
+          IF prev_max_1rm IS NULL OR NEW.estimated_1rm > prev_max_1rm THEN
+            NEW.is_pr := TRUE; NEW.pr_type := 'est_1rm';
+          END IF;
+        END IF;
+        RETURN NEW;
+      END;
+      $$ LANGUAGE plpgsql;
+
+      DROP TRIGGER IF EXISTS trg_wpl_detect_pr ON weight_progress_logs;
+      CREATE TRIGGER trg_wpl_detect_pr
+        BEFORE INSERT ON weight_progress_logs
+        FOR EACH ROW EXECUTE FUNCTION detect_wpl_pr();
+    `;
+
+    await pool.query(migrationSQL);
+    await pool.end();
+
+    migrationSuccess = true;
+    console.log('[weight-progress] Auto-migration completed successfully');
+    return true;
+  } catch (err: any) {
+    console.error('[weight-progress] Auto-migration failed:', err?.message || err);
+    return false;
+  }
+}
+
 /**
  * GET /api/iron-coach/progress
  * Fetch weight progress logs with optional filters
- * 
- * Query params:
- *   - week: ISO week number (1-53)
- *   - year: year (e.g. 2025)
- *   - exercise: filter by exercise name
- *   - muscleGroup: filter by muscle group
- *   - limit: max records (default 100, max 200)
- *   - offset: pagination offset
  */
 export async function GET(request: NextRequest) {
   try {
@@ -72,15 +220,27 @@ export async function GET(request: NextRequest) {
       query = query.eq('muscle_group', muscleGroup);
     }
 
-    const { data: logs, error } = await query;
+    let { data: logs, error } = await query;
 
     if (error) {
-      // Table might not exist yet (migration not run)
+      // Table might not exist yet — attempt auto-migration
       if (error.message?.includes('does not exist') || error.code === '42P01') {
+        const migrated = await ensureTableExists();
+        if (migrated) {
+          // Retry the query after migration
+          const retry = await sb
+            .from('weight_progress_logs')
+            .select('*')
+            .eq('user_id', user.id)
+            .order('logged_at', { ascending: false })
+            .range(offset, offset + limit - 1);
+          logs = retry.data;
+          error = retry.error;
+        }
+      }
+      if (error) {
         return NextResponse.json({ logs: [], stats: null, prs: [] });
       }
-      console.error('Error fetching weight progress:', error);
-      return NextResponse.json({ error: 'Failed to fetch progress' }, { status: 500 });
     }
 
     // Calculate aggregate stats
@@ -170,7 +330,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Min weight cannot be greater than max weight' }, { status: 400 });
     }
 
-    // RPE vs effort level consistency warnings (not blocking, just informative)
+    // RPE vs effort level consistency
     if (rpe && effortLevel) {
       if (rpe <= 3 && (effortLevel === 'hard' || effortLevel === 'max' || effortLevel === 'failure')) {
         return NextResponse.json({ error: 'RPE and effort level conflict', hint: `RPE ${rpe} means "very easy" but effort is "${effortLevel}" — please adjust one of them` }, { status: 400 });
@@ -186,9 +346,11 @@ export async function POST(request: NextRequest) {
       estimated1rm = parseFloat((weightKg * (1 + reps / 30)).toFixed(2));
     }
 
-    // Calculate week_number and year from loggedAt as fallback (in case trigger doesn't fire)
+    // Calculate week_number and year from loggedAt as fallback
     const logDate = new Date(loggedAt);
-    const weekNum = Math.ceil(((logDate.getTime() - new Date(logDate.getFullYear(), 0, 1).getTime()) / 86400000 + new Date(logDate.getFullYear(), 0, 1).getDay() + 1) / 7);
+    const startOfYear = new Date(logDate.getFullYear(), 0, 1);
+    const dayOfYear = Math.floor((logDate.getTime() - startOfYear.getTime()) / 86400000);
+    const weekNum = Math.ceil((dayOfYear + startOfYear.getDay() + 1) / 7);
     const yearNum = logDate.getFullYear();
 
     const insertData = {
@@ -210,19 +372,29 @@ export async function POST(request: NextRequest) {
       year: yearNum,
     };
 
-    const { data: log, error } = await sb
+    let { data: log, error } = await sb
       .from('weight_progress_logs')
       .insert(insertData)
       .select()
       .single();
 
-    if (error) {
-      if (error.message?.includes('does not exist') || error.code === '42P01') {
-        return NextResponse.json(
-          { error: 'Weight progress table not found. Please run the migration SQL.', hint: 'supabase/migrations/20260626_weight_progress_logs.sql' },
-          { status: 503 }
-        );
+    // Auto-migrate if table doesn't exist
+    if (error && (error.message?.includes('does not exist') || error.code === '42P01')) {
+      console.log('[weight-progress] Table missing, attempting auto-migration...');
+      const migrated = await ensureTableExists();
+      if (migrated) {
+        // Retry insert after successful migration
+        const retry = await sb
+          .from('weight_progress_logs')
+          .insert(insertData)
+          .select()
+          .single();
+        log = retry.data;
+        error = retry.error;
       }
+    }
+
+    if (error) {
       console.error('Error inserting weight progress:', error);
       return NextResponse.json({ error: 'Failed to save progress' }, { status: 500 });
     }
@@ -264,6 +436,10 @@ export async function DELETE(request: NextRequest) {
       .eq('user_id', user.id);
 
     if (error) {
+      // Silently handle if table doesn't exist (user has nothing to delete)
+      if (error.message?.includes('does not exist') || error.code === '42P01') {
+        return NextResponse.json({ success: true });
+      }
       console.error('Error deleting weight progress:', error);
       return NextResponse.json({ error: 'Failed to delete' }, { status: 500 });
     }

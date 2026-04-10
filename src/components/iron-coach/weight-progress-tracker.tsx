@@ -221,6 +221,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
   const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
   const [activeMuscleFilter, setActiveMuscleFilter] = useState<string | null>(null);
   const [showMusclePicker, setShowMusclePicker] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<Record<string, string>>({});
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const currentWeek = getISOWeek(currentWeekStart);
@@ -256,69 +257,63 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
 
   // Save log
   const handleSave = async () => {
+    const errors: Record<string, string> = {};
     const name = form.exerciseName.trim();
+
     if (!name) {
+      errors.exerciseName = "Exercise name is required";
       toast.error("Exercise name is required");
-      return;
-    }
-    if (name.length > 100) {
+    } else if (name.length > 100) {
+      errors.exerciseName = "Max 100 characters";
       toast.error("Exercise name too long (max 100 chars)");
-      return;
     }
 
     const weight = parseFloat(form.weightKg);
     if (isNaN(weight) || weight <= 0) {
+      errors.weightKg = "Must be > 0 kg";
       toast.error("Weight must be greater than 0 kg");
-      return;
-    }
-    if (weight > 2000) {
+    } else if (weight > 2000) {
+      errors.weightKg = "Max 2000 kg";
       toast.error("Weight seems unrealistic (max 2000 kg)");
-      return;
     }
 
     const reps = parseInt(form.reps);
     if (isNaN(reps) || reps < 1) {
+      errors.reps = "At least 1";
       toast.error("Reps must be at least 1");
-      return;
-    }
-    if (reps > 100) {
+    } else if (reps > 100) {
+      errors.reps = "Max 100";
       toast.error("Reps seem unrealistic (max 100)");
-      return;
     }
 
     const sets = parseInt(form.sets);
     if (isNaN(sets) || sets < 1) {
+      errors.sets = "At least 1";
       toast.error("Sets must be at least 1");
-      return;
-    }
-    if (sets > 50) {
+    } else if (sets > 50) {
+      errors.sets = "Max 50";
       toast.error("Sets seem unrealistic (max 50)");
-      return;
     }
 
     // Max/min weight logical checks
     if (form.maxWeightKg !== "" && form.maxWeightKg !== undefined) {
       const maxW = parseFloat(form.maxWeightKg);
-      if (!isNaN(maxW)) {
-        if (maxW < weight) {
-          toast.error("Max weight can't be less than working weight", { description: "Max weight is your heaviest single rep" });
-          return;
-        }
+      if (!isNaN(maxW) && !isNaN(weight) && weight > 0 && maxW < weight) {
+        errors.maxWeightKg = "Can't be less than working weight";
+        toast.error("Max weight can't be less than working weight", { description: "Max weight is your heaviest single rep" });
       }
     }
     if (form.minWeightKg !== "" && form.minWeightKg !== undefined) {
       const minW = parseFloat(form.minWeightKg);
-      if (!isNaN(minW)) {
-        if (minW > weight) {
-          toast.error("Min weight can't be greater than working weight", { description: "Min weight is your lightest warm-up set" });
-          return;
-        }
-        if (form.maxWeightKg !== "" && form.maxWeightKg !== undefined) {
-          const maxW = parseFloat(form.maxWeightKg);
-          if (!isNaN(maxW) && minW > maxW) {
-            toast.error("Min weight can't be greater than max weight");
-            return;
-          }
+      if (!isNaN(minW) && !isNaN(weight) && weight > 0 && minW > weight) {
+        errors.minWeightKg = "Can't be greater than working weight";
+        toast.error("Min weight can't be greater than working weight", { description: "Min weight is your lightest warm-up set" });
+      }
+      if (form.maxWeightKg !== "" && form.maxWeightKg !== undefined) {
+        const maxW = parseFloat(form.maxWeightKg);
+        if (!isNaN(maxW) && !isNaN(minW) && minW > maxW) {
+          errors.minWeightKg = "Can't be greater than max weight";
+          toast.error("Min weight can't be greater than max weight");
         }
       }
     }
@@ -328,16 +323,20 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
     const effort = form.effortLevel;
     if (rpe && effort) {
       if (rpe <= 3 && (effort === "hard" || effort === "max" || effort === "failure")) {
+        errors.rpe = "Conflicts with effort level";
         toast.error("RPE and effort conflict", { description: `RPE ${rpe} = very easy, but effort = ${effort}. Adjust one.` });
-        return;
       }
       if (rpe >= 9 && (effort === "easy" || effort === "moderate")) {
+        errors.rpe = "Conflicts with effort level";
         toast.error("RPE and effort conflict", { description: `RPE ${rpe} = near failure, but effort = ${effort}. Adjust one.` });
-        return;
       }
     }
 
+    setValidationErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+
     setIsSaving(true);
+    setValidationErrors({});
     try {
       const body: any = {
         exerciseName: name,
@@ -381,7 +380,8 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
       setShowForm(false);
       setForm(DEFAULT_LOG);
       fetchLogs();
-    } catch {
+    } catch (err) {
+      console.error("[weight-progress] Save failed:", err);
       toast.error("Failed to save — check your connection");
     } finally {
       setIsSaving(false);
@@ -396,9 +396,13 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
         toast.success("Deleted");
         setDeleteConfirm(null);
         fetchLogs();
+      } else {
+        const data = await res.json().catch(() => null);
+        toast.error(data?.error || "Failed to delete");
       }
-    } catch {
-      toast.error("Failed to delete");
+    } catch (err) {
+      console.error("[weight-progress] Delete failed:", err);
+      toast.error("Failed to delete — check your connection");
     }
   };
 
@@ -664,7 +668,7 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
         {typeof document !== 'undefined' && createPortal(
         <motion.button
           whileTap={{ scale: 0.9 }}
-          onClick={() => { setShowForm(true); setEditingId(null); setForm(DEFAULT_LOG); }}
+          onClick={() => { setShowForm(true); setEditingId(null); setForm(DEFAULT_LOG); setValidationErrors({}); }}
           className={cn(
             "fixed bottom-24 right-6 w-14 h-14 rounded-full shadow-xl flex items-center justify-center z-[250]",
             styles.accentBtn,
@@ -759,16 +763,23 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                     <input
                       type="text"
                       value={form.exerciseName}
-                      onChange={(e) => setForm((f) => ({ ...f, exerciseName: e.target.value }))}
+                      onChange={(e) => { setForm((f) => ({ ...f, exerciseName: e.target.value })); setValidationErrors((v) => { const n = { ...v }; delete n.exerciseName; return n; }); }}
                       placeholder="e.g. Bench Press, Deadlift..."
                       className={cn(
                         "w-full px-4 py-3 rounded-xl text-sm font-medium outline-none transition-all",
                         isDark
-                          ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 focus:border-red-500/40 focus:ring-1 focus:ring-red-500/20"
-                          : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:border-violet-400/40 focus:ring-1 focus:ring-violet-400/20"
+                          ? validationErrors.exerciseName
+                            ? "bg-red-500/5 border border-red-500/40 text-white placeholder:text-zinc-500 focus:border-red-500/60 focus:ring-1 focus:ring-red-500/20"
+                            : "bg-white/5 border border-white/10 text-white placeholder:text-zinc-500 focus:border-red-500/40 focus:ring-1 focus:ring-red-500/20"
+                          : validationErrors.exerciseName
+                            ? "bg-red-50 border border-red-300 text-zinc-900 placeholder:text-zinc-400 focus:border-red-400/60 focus:ring-1 focus:ring-red-400/20"
+                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:border-violet-400/40 focus:ring-1 focus:ring-violet-400/20"
                       )}
                       autoFocus
                     />
+                    {validationErrors.exerciseName && (
+                      <p className="text-[10px] text-red-400 mt-1 font-medium">{validationErrors.exerciseName}</p>
+                    )}
                   </div>
 
                   {/* Muscle Group */}
@@ -801,15 +812,22 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                         type="number"
                         inputMode="decimal"
                         value={form.weightKg}
-                        onChange={(e) => setForm((f) => ({ ...f, weightKg: e.target.value }))}
+                        onChange={(e) => { setForm((f) => ({ ...f, weightKg: e.target.value })); setValidationErrors((v) => { const n = { ...v }; delete n.weightKg; return n; }); }}
                         placeholder="60"
                         className={cn(
                           "w-full px-3 py-3 rounded-xl text-sm font-bold text-center outline-none transition-all",
                           isDark
-                            ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
-                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
+                            ? validationErrors.weightKg
+                              ? "bg-red-500/5 border border-red-500/40 text-white placeholder:text-zinc-600 focus:border-red-500/60"
+                              : "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
+                            : validationErrors.weightKg
+                              ? "bg-red-50 border border-red-300 text-zinc-900 placeholder:text-zinc-300 focus:border-red-400/60"
+                              : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
                         )}
                       />
+                      {validationErrors.weightKg && (
+                        <p className="text-[9px] text-red-400 mt-1 font-medium text-center">{validationErrors.weightKg}</p>
+                      )}
                     </div>
                     <div>
                       <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Sets</label>
@@ -817,15 +835,22 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                         type="number"
                         inputMode="numeric"
                         value={form.sets}
-                        onChange={(e) => setForm((f) => ({ ...f, sets: e.target.value }))}
+                        onChange={(e) => { setForm((f) => ({ ...f, sets: e.target.value })); setValidationErrors((v) => { const n = { ...v }; delete n.sets; return n; }); }}
                         placeholder="3"
                         className={cn(
                           "w-full px-3 py-3 rounded-xl text-sm font-bold text-center outline-none transition-all",
                           isDark
-                            ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
-                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
+                            ? validationErrors.sets
+                              ? "bg-red-500/5 border border-red-500/40 text-white placeholder:text-zinc-600 focus:border-red-500/60"
+                              : "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
+                            : validationErrors.sets
+                              ? "bg-red-50 border border-red-300 text-zinc-900 placeholder:text-zinc-300 focus:border-red-400/60"
+                              : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
                         )}
                       />
+                      {validationErrors.sets && (
+                        <p className="text-[9px] text-red-400 mt-1 font-medium text-center">{validationErrors.sets}</p>
+                      )}
                     </div>
                     <div>
                       <label className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 block">Reps</label>
@@ -833,15 +858,22 @@ export function WeightProgressTracker({ theme }: WeightProgressTrackerProps) {
                         type="number"
                         inputMode="numeric"
                         value={form.reps}
-                        onChange={(e) => setForm((f) => ({ ...f, reps: e.target.value }))}
+                        onChange={(e) => { setForm((f) => ({ ...f, reps: e.target.value })); setValidationErrors((v) => { const n = { ...v }; delete n.reps; return n; }); }}
                         placeholder="10"
                         className={cn(
                           "w-full px-3 py-3 rounded-xl text-sm font-bold text-center outline-none transition-all",
                           isDark
-                            ? "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
-                            : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
+                            ? validationErrors.reps
+                              ? "bg-red-500/5 border border-red-500/40 text-white placeholder:text-zinc-600 focus:border-red-500/60"
+                              : "bg-white/5 border border-white/10 text-white placeholder:text-zinc-600 focus:border-red-500/40"
+                            : validationErrors.reps
+                              ? "bg-red-50 border border-red-300 text-zinc-900 placeholder:text-zinc-300 focus:border-red-400/60"
+                              : "bg-zinc-100 border border-zinc-200 text-zinc-900 placeholder:text-zinc-300 focus:border-violet-400/40"
                         )}
                       />
+                      {validationErrors.reps && (
+                        <p className="text-[9px] text-red-400 mt-1 font-medium text-center">{validationErrors.reps}</p>
+                      )}
                     </div>
                   </div>
 
