@@ -2062,17 +2062,16 @@ const DailyActionStrip = React.memo(function DailyActionStrip({
 
   return (
     <motion.section
-      className="px-3 py-2"
+      className="px-4 py-2"
       variants={staggerContainer}
       initial="hidden"
       animate="show"
       aria-label="Daily action modules"
     >
-      {/* Wrapper for centering on mobile */}
-      <div className="flex justify-center sm:justify-start">
-        {/* Scrollable container with iOS momentum scrolling */}
+      {/* Centered responsive grid */}
+      <div className="flex justify-center">
         <ul 
-          className="horizontal-scroll-touch inline-flex gap-2 sm:gap-3 overflow-x-auto pb-2 pt-1 snap-x snap-mandatory"
+          className="grid grid-cols-4 sm:flex sm:flex-row sm:gap-3 gap-3 w-full max-w-md sm:max-w-none sm:w-auto"
         >
         {modules.map((module) => {
           const safeValue = Math.max(0, toFiniteNumber(module.value, 0));
@@ -2098,7 +2097,7 @@ const DailyActionStrip = React.memo(function DailyActionStrip({
                   : `${module.label}: ${safeValue}% progress. Tap to view details.`
                 }
                 className={cn(
-                  "shrink-0 w-[72px] sm:w-20 p-2 sm:p-3 rounded-xl sm:rounded-2xl flex flex-col items-center gap-1.5 sm:gap-2 relative",
+                  "shrink-0 w-full sm:w-20 p-3 sm:p-3 rounded-2xl flex flex-col items-center gap-2 relative",
                   "border transition-all duration-300",
                   showWarning
                     ? "bg-red-50 dark:bg-red-950/30 border-red-400 dark:border-red-600 shadow-lg shadow-red-500/20"
@@ -2136,8 +2135,8 @@ const DailyActionStrip = React.memo(function DailyActionStrip({
               )}
               
               {/* Progress Ring with gradient */}
-              <div className="relative w-8 h-8 sm:w-10 sm:h-10" aria-hidden="true">
-                <svg className="w-8 h-8 sm:w-10 sm:h-10 -rotate-90" viewBox="0 0 40 40">
+              <div className="relative w-12 h-12 sm:w-10 sm:h-10" aria-hidden="true">
+                <svg className="w-12 h-12 sm:w-10 sm:h-10 -rotate-90" viewBox="0 0 40 40">
                   <circle
                     cx="20"
                     cy="20"
@@ -2171,7 +2170,7 @@ const DailyActionStrip = React.memo(function DailyActionStrip({
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
                   <Icon className={cn(
-                    "w-3.5 h-3.5 sm:w-4 sm:h-4",
+                    "w-5 h-5 sm:w-4 sm:h-4",
                     isComingSoon ? "text-muted-foreground/50" : showWarning ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400"
                   )} />
                 </div>
@@ -2179,14 +2178,14 @@ const DailyActionStrip = React.memo(function DailyActionStrip({
               
               <div className="text-center">
                 <p className={cn(
-                  "text-[10px] sm:text-xs font-semibold",
+                  "text-xs sm:text-xs font-semibold",
                   isComingSoon && "text-muted-foreground",
                   showWarning && !isComingSoon && "text-red-600 dark:text-red-400"
                 )}>
                   {module.label}
                 </p>
                 <p className={cn(
-                  "text-[9px] sm:text-[10px] font-medium mt-0.5",
+                  "text-[11px] sm:text-[10px] font-medium mt-0.5",
                   isComingSoon 
                     ? "text-muted-foreground" 
                     : showWarning 
