@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * Iron Coach Chat — Theme-Aware with Flame Animation & Persistent Memory
+ * Iron Coach Chat — Premium Theme-Aware AI Coach with Persistent Memory
  * 
  * A clean, mobile-first AI coaching chat with:
  * - Theme-aware styling (gymbro, gymgirl, light, dark)
@@ -17,7 +17,7 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, X, Flame, Zap, Dumbbell, Target, Utensils, Cpu, Crown, Loader2, Trash2, MoreVertical, CalendarDays, MessageSquare, RefreshCw, AlertTriangle, TrendingUp, ChevronUp } from 'lucide-react';
+import { Send, X, Sparkles, Zap, Dumbbell, Target, Utensils, Cpu, Crown, Loader2, Trash2, MoreVertical, CalendarDays, MessageSquare, RefreshCw, AlertTriangle, TrendingUp, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { sanitizeAIContent } from '@/lib/security-utils';
 import { apiFetch, getApiUrl } from '@/lib/mobile-api';
@@ -235,44 +235,35 @@ function ConfirmModal({
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Flame Particle Component
+// Subtle Sparkle Ambient Effect
 // ═══════════════════════════════════════════════════════════════
 
-function FlameParticles({ theme }: { theme: string }) {
-  const particles = useMemo(() => {
-    return Array.from({ length: 20 }, (_, i) => ({
+function SubtleSparkles({ theme }: { theme: string }) {
+  const sparkles = useMemo(() => {
+    return Array.from({ length: 8 }, (_, i) => ({
       id: i,
-      left: `${Math.random() * 100}%`,
-      delay: Math.random() * 5,
-      duration: 3 + Math.random() * 4,
-      size: 4 + Math.random() * 8,
-      opacity: 0.2 + Math.random() * 0.4,
+      left: `${10 + Math.random() * 80}%`,
+      top: `${5 + Math.random() * 90}%`,
+      delay: Math.random() * 6,
+      duration: 2 + Math.random() * 3,
+      size: 2 + Math.random() * 3,
     }));
   }, []);
 
-  const getFlameColor = (index: number) => {
-    if (theme === 'gymbro') {
-      const colors = ['from-red-500 to-orange-400', 'from-orange-500 to-amber-400', 'from-amber-500 to-yellow-400', 'from-red-600 to-red-400'];
-      return colors[index % colors.length];
-    } else if (theme === 'gymgirl') {
-      const colors = ['from-pink-400 to-rose-300', 'from-rose-400 to-pink-300', 'from-pink-500 to-fuchsia-300', 'from-fuchsia-400 to-pink-300'];
-      return colors[index % colors.length];
-    } else {
-      const colors = ['from-orange-500 to-amber-400', 'from-amber-500 to-yellow-400', 'from-orange-400 to-orange-300', 'from-yellow-500 to-amber-400'];
-      return colors[index % colors.length];
-    }
-  };
+  const color = theme === 'gymbro' ? 'text-red-400/60' : theme === 'gymgirl' ? 'text-pink-400/60' : theme === 'light' ? 'text-orange-400/40' : 'text-orange-400/50';
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {particles.map((particle) => (
+      {sparkles.map((s) => (
         <motion.div
-          key={particle.id}
-          className={cn("absolute rounded-full blur-[1px]", `bg-gradient-to-t ${getFlameColor(particle.id)}`)}
-          style={{ left: particle.left, width: particle.size, height: particle.size * 1.5, opacity: particle.opacity, bottom: '-20px' }}
-          animate={{ y: [0, -700], x: [0, Math.sin(particle.id) * 30, 0], scale: [1, 0.5, 0], opacity: [particle.opacity, particle.opacity * 0.8, 0] }}
-          transition={{ duration: particle.duration, delay: particle.delay, repeat: Infinity, ease: 'easeOut' }}
-        />
+          key={s.id}
+          className={cn("absolute", color)}
+          style={{ left: s.left, top: s.top, width: s.size, height: s.size }}
+          animate={{ opacity: [0, 0.6, 0], scale: [0.5, 1, 0.5] }}
+          transition={{ duration: s.duration, delay: s.delay, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          <Sparkles className="w-full h-full" />
+        </motion.div>
       ))}
     </div>
   );
@@ -1009,23 +1000,11 @@ export function IronCoach({ className }: IronCoachProps) {
         whileTap={{ scale: 0.9 }}
         aria-label="Open Iron Coach"
       >
-        <Flame className="w-7 h-7 text-white" />
-        {/* Subtle 3-dot indicator showing it has multiple features */}
-        <div className="absolute -top-0.5 -right-0.5 flex flex-col items-center gap-px">
-          <div className={cn("w-1.5 h-1.5 rounded-full",
-            theme === 'gymbro' ? 'bg-red-300' : theme === 'gymgirl' ? 'bg-pink-300' : 'bg-orange-300'
-          )} />
-          <div className={cn("w-1.5 h-1.5 rounded-full",
-            theme === 'gymbro' ? 'bg-yellow-300' : theme === 'gymgirl' ? 'bg-fuchsia-300' : 'bg-amber-300'
-          )} />
-          <div className={cn("w-1.5 h-1.5 rounded-full",
-            theme === 'gymbro' ? 'bg-orange-300' : theme === 'gymgirl' ? 'bg-rose-300' : 'bg-yellow-300'
-          )} />
-        </div>
-        <motion.div className={cn("absolute inset-0 rounded-full border-2", theme === 'gymbro' ? 'border-red-400/50' : theme === 'gymgirl' ? 'border-pink-300/50' : 'border-orange-400/50')}
-          animate={{ scale: [1, 1.4, 1], opacity: [0.5, 0, 0.5] }}
-          transition={{ duration: 2, repeat: Infinity }}
-        />
+        <Sparkles className="w-6 h-6 text-white" />
+        {/* Subtle indicator dot */}
+        <div className={cn("absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2",
+          theme === 'gymbro' ? 'bg-red-500 border-[#050607]' : theme === 'gymgirl' ? 'bg-pink-500 border-[#FFE4EE]' : theme === 'light' ? 'bg-orange-500 border-white' : 'bg-orange-500 border-zinc-900'
+        )} />
       </motion.button>
 
       {/* Chat Panel - Portal to body to prevent z-index issues */}
@@ -1041,7 +1020,7 @@ export function IronCoach({ className }: IronCoachProps) {
               ref={panelRef}
               className={cn("fixed inset-0 z-[100] flex flex-col touch-pan-x overflow-hidden", styles.container)}
             >
-              <FlameParticles theme={theme} />
+              <SubtleSparkles theme={theme} />
 
             {/* Pull indicator */}
             <div className="flex justify-center pt-2 pb-1 md:hidden relative z-10">
@@ -1052,7 +1031,7 @@ export function IronCoach({ className }: IronCoachProps) {
             <header className={cn("relative z-10 flex items-center gap-3 px-4 py-3 border-b", styles.header, styles.headerBg)}>
               <div className="relative">
                 <div className={cn("w-11 h-11 rounded-full flex items-center justify-center", styles.avatar, styles.avatarGlow)}>
-                  <Flame className="w-6 h-6 text-white" />
+                  <Sparkles className="w-6 h-6 text-white" />
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-green-500 border-2 border-transparent"
                   style={{ borderColor: theme === 'gymgirl' ? '#FFE8F0' : theme === 'light' ? '#fff' : '#18181b' }}
@@ -1299,7 +1278,7 @@ export function IronCoach({ className }: IronCoachProps) {
                     >
                       {message.role === 'assistant' && (
                         <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1", theme === 'gymgirl' ? 'bg-pink-100' : theme === 'light' ? 'bg-orange-50' : 'bg-gradient-to-br from-orange-500/20 to-red-500/20')}>
-                          <Flame className={cn("w-4 h-4", styles.quickActionIcon)} />
+                          <Sparkles className={cn("w-4 h-4", styles.quickActionIcon)} />
                         </div>
                       )}
 

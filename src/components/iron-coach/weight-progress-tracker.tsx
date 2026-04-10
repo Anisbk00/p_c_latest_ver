@@ -16,7 +16,7 @@ import React, { useState, useCallback, useEffect, useMemo, useRef } from "react"
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus, X, Trophy, TrendingUp, ChevronLeft, ChevronRight,
-  Flame, Dumbbell, Loader2, Trash2, AlertTriangle,
+  Dumbbell, Loader2, Trash2, AlertTriangle,
   Zap, Target, Award, CalendarDays, ChevronDown, Edit3, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";

@@ -11,7 +11,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calendar, Dumbbell, Utensils, Moon, Pill, Bell, 
-  ChevronLeft, ChevronRight, RefreshCw, Flame, 
+  ChevronLeft, ChevronRight, RefreshCw, Sparkles, 
   Loader2, Target, Zap, Clock, CheckCircle2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -436,7 +436,7 @@ export function IronCoachPlanner({ theme = 'dark' }: IronCoachPlannerProps) {
   if (isLoading) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full p-8", styles.container)}>
-        <Flame className={cn("w-12 h-12 mb-4 animate-pulse", styles.accent)} />
+        <Sparkles className={cn("w-12 h-12 mb-4 animate-pulse", styles.accent)} />
         <Loader2 className={cn("w-8 h-8 animate-spin mb-4", styles.accent)} />
         <div className={cn("text-lg font-semibold", styles.header)}>Iron Coach is building your plan...</div>
         <div className={cn("text-sm", styles.subtext)}>Analyzing your data and crafting the perfect week</div>
@@ -470,7 +470,7 @@ export function IronCoachPlanner({ theme = 'dark' }: IronCoachPlannerProps) {
       <div className={cn("p-4 border-b", styles.border)}>
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
-            <Flame className={cn("w-6 h-6", styles.accent)} />
+            <Sparkles className={cn("w-6 h-6", styles.accent)} />
             <span className={cn("text-lg font-bold", styles.header)}>Weekly Plan</span>
           </div>
           <button
@@ -529,7 +529,7 @@ export function IronCoachPlanner({ theme = 'dark' }: IronCoachPlannerProps) {
             {/* Coach Message */}
             <div className={cn("p-4 rounded-xl border-l-4 border-l-orange-500", styles.card, styles.border)}>
               <div className="flex items-start gap-3">
-                <Flame className={cn("w-5 h-5 shrink-0 mt-0.5", styles.accent)} />
+                <Sparkles className={cn("w-5 h-5 shrink-0 mt-0.5", styles.accent)} />
                 <div>
                   <div className={cn("font-semibold mb-1", styles.header)}>Iron Coach Says:</div>
                   <div className={cn("text-sm", styles.header)}>{currentDay.coach_message}</div>
