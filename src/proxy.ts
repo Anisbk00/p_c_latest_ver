@@ -59,6 +59,21 @@ export async function proxy(request: NextRequest) {
     // getUser() can throw if cookies are malformed — treat as unauthenticated
   }
 
+  // ── CSRF: seed double-submit cookie from client header ───────
+  // The client generates a token in sessionStorage and sends it as
+  // X-CSRF-Token. We mirror it into a csrf-token cookie so the
+  // double-submit pattern works: header value must match cookie value.
+  const csrfHeader = request.headers.get('X-CSRF-Token')
+  if (csrfHeader && /^[a-f0-9]{64}$/i.test(csrfHeader)) {
+    supabaseResponse.cookies.set('csrf-token', csrfHeader, {
+      path: '/',
+      httpOnly: false, // Client needs to read it to send as header
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 86400, // 24 hours
+    })
+  }
+
   // Protected routes - redirect to home if not authenticated
   // Allow: / (auth screen), /auth/* (callbacks), /api/* (returns 401 itself)
   if (
