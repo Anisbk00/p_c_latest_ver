@@ -334,65 +334,15 @@ function LiveHUD({
         animate={{ opacity: 1, y: 0 }}
         className="absolute top-2 left-2 right-2 z-10 sm:top-3 sm:left-3 sm:right-3"
       >
-        {/* Compact 3-card stats row - responsive */}
+        {/* Compact stats row - responsive */}
         <div className="flex gap-1.5 sm:gap-2 justify-center">
-          {/* Speed Card */}
-          <div 
-            className="flex-1 backdrop-blur-xl rounded-lg sm:rounded-xl border shadow-lg p-1.5 sm:p-2"
-            style={{ 
-              backgroundColor: bgColor,
-              borderColor: borderColor,
-              maxWidth: 'calc(33.333% - 4px)'
-            }}
-          >
-            <div className="flex items-center gap-1 mb-0.5">
-              <div 
-                className="w-4 h-4 sm:w-5 sm:h-5 rounded flex items-center justify-center"
-                style={{ backgroundColor: `${primaryColor}20` }}
-              >
-                <Gauge className="w-2.5 h-2.5 sm:w-3 sm:h-3" style={{ color: primaryColor }} />
-              </div>
-              <span className="text-[8px] sm:text-[9px] font-medium uppercase" style={{ color: mutedColor }}>Speed</span>
-            </div>
-            <div className="flex items-baseline gap-0.5">
-              <span className="text-sm sm:text-base font-bold" style={{ color: textColor }}>{speedKmh}</span>
-              <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>km/h</span>
-            </div>
-          </div>
-          
-          {/* Distance Card */}
-          <div 
-            className="flex-1 backdrop-blur-xl rounded-lg sm:rounded-xl border shadow-lg p-1.5 sm:p-2"
-            style={{ 
-              backgroundColor: bgColor,
-              borderColor: borderColor,
-              maxWidth: 'calc(33.333% - 4px)'
-            }}
-          >
-            <div className="flex items-center gap-1 mb-0.5">
-              <div 
-                className="w-4 h-4 sm:w-5 sm:h-5 rounded flex items-center justify-center"
-                style={{ backgroundColor: isGymbro ? `${goldColor}20` : `${accentColor}20` }}
-              >
-                <Route className="w-2.5 h-2.5 sm:w-3 sm:h-3" style={{ color: isGymbro ? goldColor : accentColor }} />
-              </div>
-              <span className="text-[8px] sm:text-[9px] font-medium uppercase" style={{ color: mutedColor }}>Dist</span>
-            </div>
-            <div className="flex items-baseline gap-0.5">
-              <span className="text-sm sm:text-base font-bold" style={{ color: textColor }}>
-                {distance >= 1000 ? (distance / 1000).toFixed(2) : Math.round(distance)}
-              </span>
-              <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>{distance >= 1000 ? 'km' : 'm'}</span>
-            </div>
-          </div>
-          
           {/* Elevation Card */}
           <div 
             className="flex-1 backdrop-blur-xl rounded-lg sm:rounded-xl border shadow-lg p-1.5 sm:p-2"
             style={{ 
               backgroundColor: bgColor,
               borderColor: borderColor,
-              maxWidth: 'calc(33.333% - 4px)'
+              maxWidth: 'calc(50% - 3px)'
             }}
           >
             <div className="flex items-center gap-1 mb-0.5">
