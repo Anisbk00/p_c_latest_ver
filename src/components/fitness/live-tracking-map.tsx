@@ -37,6 +37,7 @@ import {
   Play,
   Pause,
   Square,
+  Flame,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { cn } from "@/lib/utils";
@@ -80,6 +81,7 @@ interface LiveTrackingMapProps {
   totalDistance?: number;
   totalDuration?: number;
   elevationGain?: number;
+  calories?: number;
   // Fullscreen callback
   onFullscreenChange?: (isFullscreen: boolean) => void;
   // Embedded controls for fullscreen mode
@@ -290,6 +292,7 @@ function LiveHUD({
   distance,
   duration,
   elevationGain,
+  calories,
   heading,
   isTracking,
   isPaused,
@@ -298,6 +301,7 @@ function LiveHUD({
 }: {
   speed?: number;
   elevation?: number;
+  calories?: number;
   distance: number;
   duration: number;
   elevationGain?: number;
@@ -448,43 +452,26 @@ function LiveHUD({
           </div>
           <div className="flex items-baseline gap-0.5">
             <span className="text-base sm:text-lg font-bold" style={{ color: textColor }}>
-              {distance >= 1000 ? (distance / 1000).toFixed(2) : Math.round(distance)}
+              {(distance / 1000).toFixed(2)}
             </span>
-            <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>{distance >= 1000 ? 'km' : 'm'}</span>
+            <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>km</span>
           </div>
         </div>
         
-        {/* Elevation Card */}
+        {/* Calories Card */}
         <div 
           className="flex-1 backdrop-blur-xl rounded-lg sm:rounded-xl border shadow-lg p-1.5 sm:p-2"
           style={{ backgroundColor: bgColor, borderColor: borderColor, maxWidth: '110px' }}
         >
           <div className="flex items-center gap-1 mb-0.5">
-            <div className="w-4 h-4 sm:w-5 sm:h-5 rounded flex items-center justify-center" style={{ backgroundColor: isGymbro ? `${colors.accent}20` : '#06b6d420' }}>
-              <Mountain className="w-2.5 h-2.5 sm:w-3 sm:h-3" style={{ color: isGymbro ? colors.accent : '#06b6d4' }} />
+            <div className="w-4 h-4 sm:w-5 sm:h-5 rounded flex items-center justify-center" style={{ backgroundColor: '#f9731620' }}>
+              <Flame className="w-2.5 h-2.5 sm:w-3 sm:h-3" style={{ color: '#f97316' }} />
             </div>
-            <span className="text-[8px] sm:text-[9px] font-medium uppercase" style={{ color: mutedColor }}>Elev</span>
+            <span className="text-[8px] sm:text-[9px] font-medium uppercase" style={{ color: mutedColor }}>Calories</span>
           </div>
           <div className="flex items-baseline gap-0.5">
-            <span className="text-base sm:text-lg font-bold" style={{ color: textColor }}>{elevation ? Math.round(elevation) : '--'}</span>
-            <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>m</span>
-          </div>
-        </div>
-        
-        {/* Gain Card */}
-        <div 
-          className="flex-1 backdrop-blur-xl rounded-lg sm:rounded-xl border shadow-lg p-1.5 sm:p-2"
-          style={{ backgroundColor: bgColor, borderColor: borderColor, maxWidth: '110px' }}
-        >
-          <div className="flex items-center gap-1 mb-0.5">
-            <div className="w-4 h-4 sm:w-5 sm:h-5 rounded flex items-center justify-center" style={{ backgroundColor: isGymbro ? `${goldColor}20` : '#22c55e20' }}>
-              <TrendingUp className="w-2.5 h-2.5 sm:w-3 sm:h-3" style={{ color: isGymbro ? goldColor : '#22c55e' }} />
-            </div>
-            <span className="text-[8px] sm:text-[9px] font-medium uppercase" style={{ color: mutedColor }}>Gain</span>
-          </div>
-          <div className="flex items-baseline gap-0.5">
-            <span className="text-base sm:text-lg font-bold" style={{ color: textColor }}>{elevationGain ? Math.round(elevationGain) : 0}</span>
-            <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>m</span>
+            <span className="text-base sm:text-lg font-bold" style={{ color: textColor }}>{calories ? Math.round(calories) : 0}</span>
+            <span className="text-[8px] sm:text-[9px]" style={{ color: mutedColor }}>kcal</span>
           </div>
         </div>
       </div>
@@ -510,6 +497,7 @@ export function LiveTrackingMap({
   totalDistance = 0,
   totalDuration = 0,
   elevationGain = 0,
+  calories = 0,
   onFullscreenChange,
   isPaused = false,
   onPause,
@@ -587,6 +575,31 @@ export function LiveTrackingMap({
   const [zoom, setZoom] = useState(defaultZoom);
   const [center, setCenter] = useState<[number, number] | null>(null);
   const [userPosition, setUserPosition] = useState<GeoPoint | null>(null);
+
+  // Local timer for fullscreen mode - keeps time ticking even when parent doesn't re-render
+  const [localDuration, setLocalDuration] = useState(totalDuration);
+  const trackingStartRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isTracking && !isPaused && totalDuration > 0) {
+      setLocalDuration(totalDuration);
+      trackingStartRef.current = Date.now() - (totalDuration * 1000);
+    } else if (!isTracking || isPaused) {
+      trackingStartRef.current = null;
+      setLocalDuration(totalDuration);
+    }
+  }, [isTracking, isPaused, totalDuration]);
+
+  useEffect(() => {
+    if (!isTracking || isPaused || !trackingStartRef.current || !isFullscreen) return;
+    const startRef = trackingStartRef.current; // capture for closure
+    const interval = setInterval(() => {
+      const elapsed = (Date.now() - startRef) / 1000;
+      setLocalDuration(Math.max(0, elapsed));
+    }, 1000);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTracking, isPaused, isFullscreen]);
 
   const route = routeProp;
   const points = route?.points || [];
@@ -1347,6 +1360,7 @@ export function LiveTrackingMap({
           distance={totalDistance}
           duration={totalDuration}
           elevationGain={elevationGain}
+          calories={calories}
           heading={userPosition?.heading}
           isTracking={isTracking}
           isPaused={isPaused}
@@ -1427,20 +1441,19 @@ export function LiveTrackingMap({
         <motion.div
           initial={{ opacity: 0, y: 50 }}
           animate={{ opacity: 1, y: 0 }}
-          className="absolute bottom-0 left-0 right-0 z-10 p-3 sm:p-4 pb-6 sm:pb-8"
+          className="absolute bottom-0 left-0 right-0 z-10 px-3 sm:px-4 pt-10 pb-8 sm:pt-6 sm:pb-6"
+          style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.75) 0%, transparent 100%)' }}
         >
           <div className="max-w-md mx-auto">
             {/* Primary Stats Summary */}
             <div className="flex justify-center gap-4 sm:gap-6 mb-3 sm:mb-4">
               <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold" style={{ color: colors.text }}>{formatDuration(totalDuration)}</div>
-                <div className="text-[10px] sm:text-xs" style={{ color: colors.textMuted }}>TIME</div>
+                <div className="text-2xl sm:text-3xl font-bold text-white">{formatDuration(localDuration)}</div>
+                <div className="text-[10px] sm:text-xs text-white/60">TIME</div>
               </div>
               <div className="text-center">
-                <div className="text-2xl sm:text-3xl font-bold" style={{ color: colors.text }}>
-                  {totalDistance >= 1000 ? (totalDistance / 1000).toFixed(2) : Math.round(totalDistance)}
-                </div>
-                <div className="text-[10px] sm:text-xs" style={{ color: colors.textMuted }}>{totalDistance >= 1000 ? 'KM' : 'M'}</div>
+                <div className="text-2xl sm:text-3xl font-bold text-white">{(totalDistance / 1000).toFixed(2)}km</div>
+                <div className="text-[10px] sm:text-xs text-white/60">DIST</div>
               </div>
             </div>
             

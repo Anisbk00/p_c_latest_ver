@@ -1677,6 +1677,7 @@ export function WorkoutsPage() {
             totalDistance={session?.totalDistance || metrics?.distance || 0}
             totalDuration={session?.totalDuration || metrics?.duration || elapsedTime || 0}
             elevationGain={session?.elevationGain || metrics?.elevationGain || 0}
+            calories={metrics?.calories || 0}
             fusionEngineRef={fusionEngineRef}
             onPause={pauseTracking}
             onResume={resumeTracking}
