@@ -631,8 +631,8 @@ function PostWorkoutSummary({
           </Card>
         </div>
 
-        {/* Bottom Actions - inline within scrollable content, always reachable */}
-        <div className="px-4 pt-5 pb-8 mt-4">
+        {/* Bottom Actions - right under Notes card */}
+        <div className="px-4 pt-2 pb-6">
           <div className="flex gap-3">
             <Button
               variant="outline"
