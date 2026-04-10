@@ -39,7 +39,7 @@ const WeeklyPlanner = dynamic(() => import('./weekly-planner').then(m => ({ defa
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full">
-      <Loader2 className="w-6 h-6 animate-spin text-orange-400" />
+      <Loader2 className="w-6 h-6 animate-spin text-violet-400" />
     </div>
   ),
 });
@@ -49,7 +49,7 @@ const WeightProgressTracker = dynamic(() => import('./weight-progress-tracker').
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-full">
-      <Loader2 className="w-6 h-6 animate-spin text-orange-400" />
+      <Loader2 className="w-6 h-6 animate-spin text-violet-400" />
     </div>
   ),
 });
@@ -250,7 +250,7 @@ function SubtleSparkles({ theme }: { theme: string }) {
     }));
   }, []);
 
-  const color = theme === 'gymbro' ? 'text-red-400/60' : theme === 'gymgirl' ? 'text-pink-400/60' : theme === 'light' ? 'text-orange-400/40' : 'text-orange-400/50';
+  const color = theme === 'gymbro' ? 'text-red-400/60' : theme === 'gymgirl' ? 'text-pink-400/60' : theme === 'light' ? 'text-violet-400/40' : 'text-violet-400/50';
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -357,46 +357,46 @@ function getThemeStyles(theme: string) {
         container: 'bg-white',
         header: 'border-zinc-200',
         headerBg: 'bg-white',
-        avatar: 'bg-gradient-to-br from-orange-400 to-orange-600',
-        avatarGlow: 'shadow-lg shadow-orange-400/30',
+        avatar: 'bg-gradient-to-br from-violet-500 to-purple-600',
+        avatarGlow: 'shadow-lg shadow-violet-400/30',
         title: 'text-zinc-900',
         subtitle: 'text-zinc-500',
         closeButton: 'bg-zinc-100 text-zinc-500 hover:text-zinc-700',
-        input: 'bg-zinc-100 border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:ring-orange-400/30',
-        sendButton: 'bg-gradient-to-r from-orange-400 to-orange-500 shadow-lg shadow-orange-400/30',
+        input: 'bg-zinc-100 border-zinc-200 text-zinc-900 placeholder:text-zinc-400 focus:ring-violet-400/30',
+        sendButton: 'bg-gradient-to-r from-violet-500 to-purple-500 shadow-lg shadow-violet-400/30',
         sendButtonDisabled: 'bg-zinc-100 text-zinc-400',
-        userBubble: 'bg-gradient-to-r from-orange-400 to-orange-500 text-white',
+        userBubble: 'bg-gradient-to-r from-violet-500 to-purple-500 text-white',
         assistantBubble: 'bg-zinc-100 border border-zinc-200 text-zinc-900',
         quickAction: 'bg-zinc-100 border-zinc-200 text-zinc-700',
-        quickActionIcon: 'text-orange-500',
-        typingDot: 'bg-orange-400',
+        quickActionIcon: 'text-violet-500',
+        typingDot: 'bg-violet-400',
         sourceCloud: 'bg-blue-400',
         sourceLocal: 'bg-green-500',
         border: 'border-zinc-200',
-        accent: 'orange',
+        accent: 'violet',
       };
     default:
       return {
         container: 'bg-zinc-900',
         header: 'border-zinc-800',
         headerBg: 'bg-zinc-900',
-        avatar: 'bg-gradient-to-br from-orange-500 to-red-600',
-        avatarGlow: 'shadow-lg shadow-orange-500/30',
+        avatar: 'bg-gradient-to-br from-violet-500 to-purple-600',
+        avatarGlow: 'shadow-lg shadow-violet-500/30',
         title: 'text-white',
         subtitle: 'text-zinc-400',
         closeButton: 'bg-zinc-800 text-zinc-400 hover:text-white',
-        input: 'bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500 focus:ring-orange-500/30',
-        sendButton: 'bg-gradient-to-r from-orange-500 to-red-500 shadow-lg shadow-orange-500/30',
+        input: 'bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500 focus:ring-violet-500/30',
+        sendButton: 'bg-gradient-to-r from-violet-500 to-purple-500 shadow-lg shadow-violet-500/30',
         sendButtonDisabled: 'bg-zinc-800 text-zinc-500',
-        userBubble: 'bg-gradient-to-r from-orange-500 to-red-500 text-white',
+        userBubble: 'bg-gradient-to-r from-violet-500 to-purple-500 text-white',
         assistantBubble: 'bg-zinc-800 border border-zinc-700 text-zinc-100',
         quickAction: 'bg-zinc-800 border-zinc-700 text-zinc-300',
-        quickActionIcon: 'text-orange-400',
-        typingDot: 'bg-orange-400',
+        quickActionIcon: 'text-violet-400',
+        typingDot: 'bg-violet-400',
         sourceCloud: 'bg-blue-400',
         sourceLocal: 'bg-green-400',
         border: 'border-zinc-800',
-        accent: 'orange',
+        accent: 'violet',
       };
   }
 }
@@ -409,7 +409,7 @@ function renderContent(text: string, accent: string): React.ReactNode {
   const sanitized = sanitizeAIContent(text, 8000);
   const lines = sanitized.split('\n');
   
-  const accentColor = accent === 'red' ? 'text-red-400' : accent === 'pink' ? 'text-pink-400' : 'text-orange-400';
+  const accentColor = accent === 'red' ? 'text-red-400' : accent === 'pink' ? 'text-pink-400' : 'text-violet-400';
   
   return lines.map((line, i) => {
     if (/^\s*[-•]\s/.test(line)) {
@@ -435,8 +435,8 @@ function renderContent(text: string, accent: string): React.ReactNode {
 }
 
 function formatInline(text: string, accent: string): React.ReactNode {
-  const accentBold = accent === 'red' ? 'text-red-300' : accent === 'pink' ? 'text-pink-300' : 'text-orange-300';
-  const accentCode = accent === 'red' ? 'text-red-300 bg-red-900/30' : accent === 'pink' ? 'text-pink-300 bg-pink-100/50' : 'text-orange-300 bg-orange-900/30';
+  const accentBold = accent === 'red' ? 'text-red-300' : accent === 'pink' ? 'text-pink-300' : 'text-violet-300';
+  const accentCode = accent === 'red' ? 'text-red-300 bg-red-900/30' : accent === 'pink' ? 'text-pink-300 bg-pink-100/50' : 'text-violet-300 bg-violet-900/30';
   
   const parts: React.ReactNode[] = [];
   const regex = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
@@ -1003,7 +1003,7 @@ export function IronCoach({ className }: IronCoachProps) {
         <Sparkles className="w-6 h-6 text-white" />
         {/* Subtle indicator dot */}
         <div className={cn("absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2",
-          theme === 'gymbro' ? 'bg-red-500 border-[#050607]' : theme === 'gymgirl' ? 'bg-pink-500 border-[#FFE4EE]' : theme === 'light' ? 'bg-orange-500 border-white' : 'bg-orange-500 border-zinc-900'
+          theme === 'gymbro' ? 'bg-red-500 border-[#050607]' : theme === 'gymgirl' ? 'bg-pink-500 border-[#FFE4EE]' : theme === 'light' ? 'bg-violet-500 border-white' : 'bg-violet-500 border-zinc-900'
         )} />
       </motion.button>
 
@@ -1043,7 +1043,7 @@ export function IronCoach({ className }: IronCoachProps) {
                   <div className="flex-1">
                     <h1 className={cn("font-bold text-lg", styles.title)}>Iron Coach</h1>
                     <div className="flex items-center gap-1">
-                      <Crown className={cn("w-3 h-3", theme === 'gymbro' ? 'text-amber-400' : theme === 'gymgirl' ? 'text-pink-400' : 'text-orange-400')} />
+                      <Crown className={cn("w-3 h-3", theme === 'gymbro' ? 'text-amber-400' : theme === 'gymgirl' ? 'text-pink-400' : 'text-violet-400')} />
                       <span className={cn("text-xs", styles.subtitle)}>{t('coach.fitnessFriend')} • {t('coach.remembersEverything')}</span>
                     </div>
                   </div>
@@ -1177,8 +1177,8 @@ export function IronCoach({ className }: IronCoachProps) {
                     "mx-4 mt-2 rounded-xl px-3 py-2.5 flex items-center gap-2 relative overflow-hidden",
                     theme === 'gymbro' ? 'bg-red-500/10 border border-red-500/20' :
                     theme === 'gymgirl' ? 'bg-pink-500/10 border border-pink-300/20' :
-                    theme === 'light' ? 'bg-orange-50 border border-orange-200' :
-                    'bg-orange-500/10 border border-orange-500/20'
+                    theme === 'light' ? 'bg-violet-50 border border-violet-200' :
+                    'bg-violet-500/10 border border-violet-500/20'
                   )}
                 >
                   <div className="flex items-center gap-1.5 flex-1">
@@ -1188,8 +1188,8 @@ export function IronCoach({ className }: IronCoachProps) {
                           "flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-semibold",
                           theme === 'gymbro' ? 'bg-red-500/15 text-red-300' :
                           theme === 'gymgirl' ? 'bg-pink-400/15 text-pink-600' :
-                          theme === 'light' ? 'bg-orange-100 text-orange-600' :
-                          'bg-orange-500/15 text-orange-300'
+                          theme === 'light' ? 'bg-violet-100 text-violet-600' :
+                          'bg-violet-500/15 text-violet-300'
                         )}>
                           <item.icon className="w-3 h-3" />
                           {item.label}
@@ -1204,7 +1204,7 @@ export function IronCoach({ className }: IronCoachProps) {
                   {/* Auto-dismiss shimmer bar */}
                   <motion.div
                     className={cn("absolute bottom-0 left-0 h-0.5",
-                      theme === 'gymbro' ? 'bg-red-400' : theme === 'gymgirl' ? 'bg-pink-400' : 'bg-orange-400'
+                      theme === 'gymbro' ? 'bg-red-400' : theme === 'gymgirl' ? 'bg-pink-400' : 'bg-violet-400'
                     )}
                     initial={{ width: '100%' }}
                     animate={{ width: '0%' }}
@@ -1224,7 +1224,7 @@ export function IronCoach({ className }: IronCoachProps) {
                   activeTab === 'progress' 
                     ? cn(styles.accent === 'red' ? 'text-red-400 border-b-2 border-red-400' : 
                          styles.accent === 'pink' ? 'text-pink-400 border-b-2 border-pink-400' : 
-                         'text-orange-400 border-b-2 border-orange-400')
+                         'text-violet-400 border-b-2 border-violet-400')
                     : cn(styles.subtitle, "hover:opacity-80")
                 )}
               >
@@ -1238,7 +1238,7 @@ export function IronCoach({ className }: IronCoachProps) {
                   activeTab === 'planner' 
                     ? cn(styles.accent === 'red' ? 'text-red-400 border-b-2 border-red-400' : 
                          styles.accent === 'pink' ? 'text-pink-400 border-b-2 border-pink-400' : 
-                         'text-orange-400 border-b-2 border-orange-400')
+                         'text-violet-400 border-b-2 border-violet-400')
                     : cn(styles.subtitle, "hover:opacity-80")
                 )}
               >
@@ -1252,7 +1252,7 @@ export function IronCoach({ className }: IronCoachProps) {
                   activeTab === 'chat' 
                     ? cn(styles.accent === 'red' ? 'text-red-400 border-b-2 border-red-400' : 
                          styles.accent === 'pink' ? 'text-pink-400 border-b-2 border-pink-400' : 
-                         'text-orange-400 border-b-2 border-orange-400')
+                         'text-violet-400 border-b-2 border-violet-400')
                     : cn(styles.subtitle, "hover:opacity-80")
                 )}
               >
@@ -1320,7 +1320,7 @@ export function IronCoach({ className }: IronCoachProps) {
                       className={cn("flex gap-2", message.role === 'user' ? "justify-end" : "justify-start")}
                     >
                       {message.role === 'assistant' && (
-                        <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1", theme === 'gymgirl' ? 'bg-pink-100' : theme === 'light' ? 'bg-orange-50' : 'bg-gradient-to-br from-orange-500/20 to-red-500/20')}>
+                        <div className={cn("w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1", theme === 'gymgirl' ? 'bg-pink-100' : theme === 'light' ? 'bg-violet-50' : 'bg-gradient-to-br from-violet-500/20 to-purple-500/20')}>
                           <Sparkles className={cn("w-4 h-4", styles.quickActionIcon)} />
                         </div>
                       )}
