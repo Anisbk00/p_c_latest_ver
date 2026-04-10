@@ -541,6 +541,9 @@ function CameraModal({
     };
   }, [isOpen, facingMode]);
 
+  const [flash, setFlash] = useState(false);
+  const [captured, setCaptured] = useState(false);
+
   const handleCapture = useCallback(() => {
     if (!videoRef.current || !stream) return;
 
@@ -552,11 +555,18 @@ function CameraModal({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
+    // Flash effect
+    setFlash(true);
+    setCaptured(true);
+
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     const dataUrl = canvas.toDataURL('image/jpeg', 0.8);
     
-    onCapture(dataUrl);
-    onClose();
+    setTimeout(() => {
+      setFlash(false);
+      onCapture(dataUrl);
+      onClose();
+    }, 200);
   }, [stream, onCapture, onClose]);
 
   const toggleCamera = useCallback(() => {
@@ -582,9 +592,17 @@ function CameraModal({
           className="w-full h-full object-cover"
         />
 
+        {/* Camera Flash Effect */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: flash ? 1 : 0 }}
+          transition={{ duration: 0.15 }}
+          className="absolute inset-0 bg-white z-30 pointer-events-none"
+        />
+
         {/* Loading Overlay */}
         {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/50 z-20">
             <div className="text-center">
               <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
               <p className="text-white">Starting camera...</p>
@@ -594,7 +612,7 @@ function CameraModal({
 
         {/* Error Overlay */}
         {error && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/80">
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 z-20">
             <div className="text-center p-6">
               <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-4" />
               <p className="text-white mb-4">{error}</p>
@@ -604,30 +622,30 @@ function CameraModal({
         )}
 
         {/* Top Controls */}
-        <div className="absolute top-4 left-0 right-0 flex justify-between px-4">
+        <div className="absolute top-4 left-0 right-0 flex justify-between px-4 z-10">
           <button
             onClick={onClose}
-            className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center"
+            className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
           >
             <X className="w-6 h-6 text-white" />
           </button>
           
           <button
             onClick={toggleCamera}
-            className="w-10 h-10 rounded-full bg-black/50 flex items-center justify-center"
+            className="w-12 h-12 rounded-full bg-black/40 backdrop-blur-sm flex items-center justify-center"
           >
             <RefreshCw className="w-5 h-5 text-white" />
           </button>
         </div>
 
         {/* Bottom Controls */}
-        <div className="absolute bottom-8 left-0 right-0 flex justify-center">
+        <div className="absolute bottom-10 left-0 right-0 flex justify-center z-10">
           <button
             onClick={handleCapture}
-            disabled={isLoading || !!error}
-            className="w-20 h-20 rounded-full bg-white flex items-center justify-center shadow-lg disabled:opacity-50"
+            disabled={isLoading || !!error || captured}
+            className="w-20 h-20 rounded-full bg-white flex items-center justify-center shadow-lg disabled:opacity-50 active:scale-90 transition-transform"
           >
-            <div className="w-16 h-16 rounded-full border-4 border-gray-300" />
+            <div className="w-[68px] h-[68px] rounded-full border-[3px] border-gray-300" />
           </button>
         </div>
       </motion.div>
@@ -1701,7 +1719,7 @@ export function WorkoutsPage() {
               <PhotoGallery
                 photos={photos}
                 isCapturing={isCapturingPhoto}
-                onCapture={() => captureFromCamera({ includeLocation: true })}
+                onCapture={() => setShowCamera(true)}
                 onRemove={removePhoto}
               />
             </CardContent>
@@ -1788,6 +1806,15 @@ export function WorkoutsPage() {
             {isLocked ? t('workouts.controlsLocked') : t('workouts.tapToLock')}
           </button>
         </div>
+
+        {/* Camera Modal - premium camera viewfinder */}
+        <CameraModal
+          isOpen={showCamera}
+          onClose={() => setShowCamera(false)}
+          onCapture={(dataUrl) => {
+            addPhoto(dataUrl);
+          }}
+        />
       </div>
     );
   }
