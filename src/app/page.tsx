@@ -1031,18 +1031,19 @@ function ProgressCompanionHome() {
   // ═══════════════════════════════════════════════════════════════
   
   // Hide splash when BOTH: app is ready AND minimum time (5s) has elapsed
+  // The inner SplashScreen handles its own exit animation (150ms delay + 700ms CSS = 850ms).
+  // We wait 900ms after signaling it to exit, THEN remove from DOM — no cutting animation short.
   useEffect(() => {
     // If splash was skipped (back nav, return from settings), never show it
     if (skipSplash || splashSkippedRef.current) return;
     
     // Wait until BOTH conditions are met
     if (isAppReady && minTimeElapsed && splashVisible) {
-      // Small delay for smooth transition
       const timer = setTimeout(() => {
         setSplashVisible(false);
         __splashHasBeenShown = true;
         sessionStorage.setItem('splash-shown', 'true');
-      }, 300); // 300ms delay for smooth fade
+      }, 900); // 900ms — matches inner splash exit animation (150ms + 700ms)
       
       return () => clearTimeout(timer);
     }
@@ -1053,12 +1054,10 @@ function ProgressCompanionHome() {
     if (skipSplash || splashSkippedRef.current || !splashVisible) return;
     
     const timer = setTimeout(() => {
-      if (splashVisible) {
-        setSplashVisible(false);
-        __splashHasBeenShown = true;
-        splashSkippedRef.current = true;
-        sessionStorage.setItem('splash-shown', 'true');
-      }
+      setSplashVisible(false);
+      __splashHasBeenShown = true;
+      splashSkippedRef.current = true;
+      sessionStorage.setItem('splash-shown', 'true');
     }, 15000);
     
     return () => clearTimeout(timer);
@@ -1367,12 +1366,15 @@ function ProgressCompanionHome() {
         </Sheet>
       </Suspense>
 
-      {/* ═══ SPLASH SCREEN OVERLAY - Waits until app ready, skips on back nav ═══ */}
-      {splashVisible && (
-        <div data-splash-overlay className="fixed inset-0 z-50 transition-opacity duration-500 ease-out">
-          <SplashScreen isLoading={!isAppReady} />
-        </div>
-      )}
+      {/* ═══ SPLASH SCREEN OVERLAY - Waits until app ready, fades out smoothly ═══ */}
+      <div
+        data-splash-overlay
+        className="fixed inset-0 z-50 transition-opacity duration-700 ease-out"
+        style={{ opacity: splashVisible ? 1 : 0, pointerEvents: splashVisible ? 'auto' : 'none' }}
+        aria-hidden={!splashVisible}
+      >
+        <SplashScreen isLoading={!isAppReady} />
+      </div>
     </>
   );
 }

@@ -18,12 +18,15 @@ export function CapacitorInit() {
     let cleanupFns: Array<() => void> = [];
 
     async function bootstrap() {
-      // ── Hide splash screen after a brief delay ─────────────
+      // ── Hide native splash AFTER React splash is visible ─────
+      // Wait for React to render its own splash screen before hiding native one.
+      // This prevents the visual "double splash" flash on mobile.
+      await new Promise(resolve => setTimeout(resolve, 300));
       try {
         const { SplashScreen } = await import('@capacitor/splash-screen');
-        await SplashScreen.hide({ fadeOutDuration: 300 });
+        await SplashScreen.hide({ fadeOutDuration: 0 }); // Instant swap — React splash is underneath
       } catch (e) {
-        console.warn('[Cap] SplashScreen hide failed', e);
+        // Silently ignore on web
       }
 
       // ── Configure status bar ───────────────────────────────
