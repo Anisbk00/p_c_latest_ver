@@ -55,8 +55,8 @@ function sleep(ms: number): Promise<void> {
 
 let rateLimitedUntil = 0;
 let consecutiveRateLimits = 0;
-const MAX_RETRIES = 3;
-const BASE_RETRY_DELAY_MS = 3000;
+const MAX_RETRIES = 4;
+const BASE_RETRY_DELAY_MS = 4000;
 
 function isRateLimited(): boolean {
   return Date.now() < rateLimitedUntil;
@@ -519,7 +519,7 @@ export async function* streamText(prompt: string, systemPrompt?: string): AsyncG
 
   try {
     const response = await withTimeout(
-      callGroqAPI(messages, MODEL_NAME, 0.35, 1024, true),
+      callGroqAPI(messages, MODEL_NAME, 0.35, 300, true),
       AI_TIMEOUT_MS,
       'AI stream timed out.'
     );
