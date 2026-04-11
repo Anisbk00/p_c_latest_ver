@@ -32,6 +32,14 @@ export function getApiBaseUrl(): string {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL;
     if (!apiUrl) {
       console.error('[Mobile API] NEXT_PUBLIC_API_URL not set. Mobile app cannot connect to backend.');
+      // Show a persistent error banner so the user knows something is wrong
+      if (typeof document !== 'undefined' && !document.getElementById('mobile-api-error')) {
+        const banner = document.createElement('div');
+        banner.id = 'mobile-api-error';
+        banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#dc2626;color:#fff;text-align:center;padding:12px 16px;font-size:14px;font-weight:500;';
+        banner.textContent = '⚠️ Configuration error: API URL not set. Please rebuild with NEXT_PUBLIC_API_URL.';
+        document.body.appendChild(banner);
+      }
       return '';
     }
     return apiUrl;

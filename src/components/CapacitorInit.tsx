@@ -11,6 +11,33 @@
 import { useEffect } from 'react';
 import { isNative, isAndroid, isIOS } from '@/lib/capacitor';
 
+/**
+ * Determine if the current theme has a light background.
+ * Used to switch StatusBar between dark/light icons accordingly.
+ */
+function isLightTheme(): boolean {
+  if (typeof document === 'undefined') return false;
+  const html = document.documentElement;
+  const theme = html.getAttribute('data-theme') || html.className;
+  return ['light', 'gymgirl', 'white'].some(t => theme.includes(t));
+}
+
+/**
+ * Update StatusBar style and background color to match the active theme.
+ */
+async function syncStatusBar(): Promise<void> {
+  try {
+    const { StatusBar, Style } = await import('@capacitor/status-bar');
+    const light = isLightTheme();
+    await StatusBar.setStyle({ style: light ? Style.Light : Style.Dark });
+    if (isAndroid) {
+      await StatusBar.setBackgroundColor({ color: light ? '#ffffff' : '#0a0a0a' });
+    }
+  } catch {
+    // StatusBar not available (web)
+  }
+}
+
 export function CapacitorInit() {
   useEffect(() => {
     if (!isNative) return;
@@ -29,16 +56,19 @@ export function CapacitorInit() {
         // Silently ignore on web
       }
 
-      // ── Configure status bar ───────────────────────────────
+      // ── Configure status bar (dynamic — adapts to theme changes) ──
+      await syncStatusBar();
+
+      // Watch for theme changes (class mutations on <html>) to update StatusBar
       try {
-        const { StatusBar, Style } = await import('@capacitor/status-bar');
-        await StatusBar.setStyle({ style: Style.Dark });
-        if (isAndroid) {
-          await StatusBar.setBackgroundColor({ color: '#0a0a0a' });
-          await StatusBar.setOverlaysWebView({ overlay: false });
-        }
-      } catch (e) {
-        console.warn('[Cap] StatusBar config failed', e);
+        const observer = new MutationObserver(() => syncStatusBar());
+        observer.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['class', 'data-theme'],
+        });
+        cleanupFns.push(() => observer.disconnect());
+      } catch {
+        // MutationObserver not available
       }
 
       // ── Handle Android hardware back button ────────────────
@@ -54,6 +84,27 @@ export function CapacitorInit() {
         cleanupFns.push(() => listener.remove());
       } catch (e) {
         console.warn('[Cap] App back-button handler failed', e);
+      }
+
+      // ── Handle incoming deep links (email confirmations, magic links) ──
+      try {
+        const { App } = await import('@capacitor/app');
+        const deepLinkListener = await App.addListener('appUrlOpen', ({ url }) => {
+          console.log('[Cap] Deep link received:', url);
+          // Parse the URL and extract the path + query to route within the app
+          try {
+            const parsed = new URL(url);
+            const path = parsed.pathname + parsed.search + parsed.hash;
+            // Use history API so Next.js router picks it up
+            window.history.pushState({}, '', path);
+            window.dispatchEvent(new PopStateEvent('popstate'));
+          } catch {
+            console.warn('[Cap] Failed to parse deep link:', url);
+          }
+        });
+        cleanupFns.push(() => deepLinkListener.remove());
+      } catch (e) {
+        console.warn('[Cap] Deep link handler failed', e);
       }
 
       // ── Register for push notifications ────────────────────

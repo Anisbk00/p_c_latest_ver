@@ -8,6 +8,7 @@
  */
 
 import { useState, useCallback, useEffect } from 'react';
+import { isNative } from '@/lib/capacitor';
 
 // ═══════════════════════════════════════════════════════════════
 // Types
@@ -59,7 +60,18 @@ const MAX_FAILED_ATTEMPTS = 5;
 const LOCKOUT_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 
 // WebAuthn configuration
-const WEBAUTHN_RP_ID = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+// On Capacitor native, window.location.hostname is 'localhost' (embedded WebView).
+// WebAuthn requires RP ID to match the domain the credential was registered on,
+// so we use the deployed backend domain for native builds.
+let WEBAUTHN_RP_ID: string;
+if (typeof window !== 'undefined' && isNative) {
+  // Native: use the deployed backend domain (from env) or fall back to hostname
+  WEBAUTHN_RP_ID = process.env.NEXT_PUBLIC_API_URL
+    ? (() => { try { return new URL(process.env.NEXT_PUBLIC_API_URL).hostname; } catch { return window.location.hostname; } })()
+    : window.location.hostname;
+} else {
+  WEBAUTHN_RP_ID = typeof window !== 'undefined' ? window.location.hostname : 'localhost';
+}
 const WEBAUTHN_RP_NAME = 'Progress Companion';
 const WEBAUTHN_USER_ID = new TextEncoder().encode('progress-companion-user');
 
