@@ -378,9 +378,9 @@ function ControlButtons({
         whileTap={prefersReducedMotion ? {} : { scale: 0.95 }}
         onClick={onStop}
         className={cn(
-          "w-16 h-16 rounded-2xl bg-red-500",
+          "w-16 h-16 rounded-2xl bg-amber-500",
           "flex items-center justify-center",
-          "shadow-lg shadow-red-500/30"
+          "shadow-lg shadow-amber-500/30"
         )}
       >
         <Square className="w-6 h-6 text-white" fill="currentColor" />
