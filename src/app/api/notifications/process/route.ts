@@ -499,31 +499,31 @@ export async function GET(request: Request) {
           if (prefs.workout_reminders_enabled) {
             const mTime = prefs.preferred_morning_time || '08:00';
             const [mH] = mTime.split(':').map(Number);
-            upcomingSlots.push({ type: 'workout_reminder', title: "Time to Workout! 💪", body: "Don't break your streak! Your workout is waiting.", deep_link: '/workouts', throttle_key: `workout_reminder:${prefs.user_id}:${date}`, scheduledHour: mH || 8 });
+            upcomingSlots.push({ type: 'workout_reminder', title: "Time to Workout! 💪", body: "Don't break your streak! Your workout is waiting.", deep_link: '/workouts', throttle_key: `workout_reminder:${prefs.user_id}:${todayStr}`, scheduledHour: mH || 8 });
           }
 
           // Meal reminders
           if (prefs.meal_reminders_enabled) {
-            upcomingSlots.push({ type: 'meal_reminder', title: 'Log Your Breakfast 🍽️', body: "Don't forget to track your breakfast.", deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:breakfast:${date}`, scheduledHour: 8 });
-            upcomingSlots.push({ type: 'meal_reminder', title: 'Log Your Lunch 🍽️', body: "Don't forget to track your lunch.", deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:lunch:${date}`, scheduledHour: 12 });
-            upcomingSlots.push({ type: 'meal_reminder', title: 'Log Your Dinner 🍽️', body: "Don't forget to track your dinner.", deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:dinner:${date}`, scheduledHour: 19 });
+            upcomingSlots.push({ type: 'meal_reminder', title: 'Log Your Breakfast 🍽️', body: "Don't forget to track your breakfast.", deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:breakfast:${todayStr}`, scheduledHour: 8 });
+            upcomingSlots.push({ type: 'meal_reminder', title: 'Log Your Lunch 🍽️', body: "Don't forget to track your lunch.", deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:lunch:${todayStr}`, scheduledHour: 12 });
+            upcomingSlots.push({ type: 'meal_reminder', title: 'Log Your Dinner 🍽️', body: "Don't forget to track your dinner.", deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:dinner:${todayStr}`, scheduledHour: 19 });
           }
 
           // Hydration reminders (every 2h from 09-19)
           if (prefs.hydration_reminders_enabled) {
             for (const h of [9, 11, 13, 15, 17, 19]) {
-              upcomingSlots.push({ type: 'hydration_reminder', title: 'Stay Hydrated! 💧', body: "Time for a glass of water. You're doing great!", deep_link: '/', throttle_key: `hydration_reminder:${prefs.user_id}:${date}:${Math.floor(h / 2)}`, scheduledHour: h });
+              upcomingSlots.push({ type: 'hydration_reminder', title: 'Stay Hydrated! 💧', body: "Time for a glass of water. You're doing great!", deep_link: '/', throttle_key: `hydration_reminder:${prefs.user_id}:${todayStr}:${Math.floor(h / 2)}`, scheduledHour: h });
             }
           }
 
           // Streak protection
           if (prefs.streak_protection_enabled) {
-            upcomingSlots.push({ type: 'streak_protection', title: 'Streak at Risk! 🔥', body: 'Log an activity now to protect your streak!', deep_link: '/workouts', throttle_key: `streak_protection:${prefs.user_id}:${date}`, scheduledHour: 20 });
+            upcomingSlots.push({ type: 'streak_protection', title: 'Streak at Risk! 🔥', body: 'Log an activity now to protect your streak!', deep_link: '/workouts', throttle_key: `streak_protection:${prefs.user_id}:${todayStr}`, scheduledHour: 20 });
           }
 
           // Daily summary
           if (prefs.daily_summary_enabled) {
-            upcomingSlots.push({ type: 'daily_summary', title: 'Daily Summary 📊', body: 'Check out your progress for today!', deep_link: '/', throttle_key: `daily_summary:${prefs.user_id}:${date}`, scheduledHour: 21 });
+            upcomingSlots.push({ type: 'daily_summary', title: 'Daily Summary 📊', body: 'Check out your progress for today!', deep_link: '/', throttle_key: `daily_summary:${prefs.user_id}:${todayStr}`, scheduledHour: 21 });
           }
 
           // Motivational (once per day at deterministic time)
@@ -537,7 +537,7 @@ export async function GET(request: Request) {
               "You're one workout away from a good mood! 😊",
             ];
             const msgIdx = (parseInt(prefs.user_id.slice(8, 16), 16) + now.getDate()) % messages.length;
-            upcomingSlots.push({ type: 'motivational', title: 'Daily Motivation 💪', body: messages[msgIdx], deep_link: '/', throttle_key: `motivational:${prefs.user_id}:${date}`, scheduledHour: 10 + dayHash });
+            upcomingSlots.push({ type: 'motivational', title: 'Daily Motivation 💪', body: messages[msgIdx], deep_link: '/', throttle_key: `motivational:${prefs.user_id}:${todayStr}`, scheduledHour: 10 + dayHash });
           }
 
           // Insert all upcoming slots with proper scheduled_for times

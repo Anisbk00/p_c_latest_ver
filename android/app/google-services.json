@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "826702228911",
+    "project_id": "progresscompanion",
+    "storage_bucket": "progresscompanion.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:826702228911:android:8c2f5193215bc5727b935a",
+        "android_client_info": {
+          "package_name": "com.progresscompanion.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAfJfk2fbNb45_C0MfxUfIaRMs7LJzpe3Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

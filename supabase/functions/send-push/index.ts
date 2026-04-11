@@ -1,18 +1,18 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // Supabase Edge Function: send-push
-// Expo Push Notifications - Works for iOS & Android (No Firebase Required!)
-// ═══════════════════════════════════════════════════════════════════════════════
+// 
+// Supports:
+// 1. FCM HTTP v1 API (Capacitor Android) - PRIMARY for Android
+// 2. FCM Legacy API (fallback for Android)
+// 3. APNs (Apple Push Notification service) for iOS
+// 4. Expo Push (if using Expo tokens)
+// 5. Web Push (in-app via Supabase Realtime)
 //
-// This function supports:
-// 1. Expo Push Notifications (iOS + Android) - PRIMARY METHOD
-// 2. APNs (Apple Push Notification service) for iOS - OPTIONAL
-// 3. Web Push (VAPID) for browsers - OPTIONAL
-//
-// Environment Variables (set in Supabase Dashboard):
-//   For Expo Push: No additional config needed!
-//   For APNs (optional):
-//     - APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY, APNS_BUNDLE_ID, APNS_PRODUCTION
-//
+// Environment Variables (set in Supabase Dashboard → Edge Functions → Secrets):
+//   FCM_SERVICE_ACCOUNT_JSON - Google service account JSON for FCM HTTP v1
+//   FCM_SERVER_KEY - Legacy FCM server key (fallback)
+//   SUPABASE_SERVICE_ROLE_KEY - For authorization
+//   APNS_KEY_ID, APNS_TEAM_ID, APNS_PRIVATE_KEY, APNS_BUNDLE_ID - Optional for iOS
 // ═══════════════════════════════════════════════════════════════════════════════
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
@@ -35,164 +35,263 @@ interface PushResult {
   success: boolean;
   error?: string;
   messageId?: string;
+  method?: string;
+}
+
+interface ServiceAccountJson {
+  type: string;
+  project_id: string;
+  private_key_id: string;
+  private_key: string;
+  client_email: string;
+  client_id: string;
+  auth_uri: string;
+  token_uri: string;
+  auth_provider_x509_cert_url: string;
+  client_x509_cert_url: string;
+  universe_domain: string;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// Expo Push Notifications - Works for iOS & Android!
+// FCM HTTP v1 API (Modern - uses service account JSON)
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if the token is an Expo Push Token
- * Format: ExponentPushToken[xxxxxxx] or ExponentPushToken[xxxxxxxxxxxxxx]
- */
-function isExpoPushToken(token: string): boolean {
-  return token.startsWith("ExponentPushToken[") || 
-         token.startsWith("ExpoPushToken[") ||
-         /^[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}$/i.test(token);
+function isFCMv1Configured(): boolean {
+  return !!Deno.env.get("FCM_SERVICE_ACCOUNT_JSON");
+}
+
+function getServiceAccount(): ServiceAccountJson | null {
+  try {
+    const saJson = Deno.env.get("FCM_SERVICE_ACCOUNT_JSON");
+    if (!saJson) return null;
+    return JSON.parse(saJson) as ServiceAccountJson;
+  } catch {
+    console.error("[FCM v1] Failed to parse FCM_SERVICE_ACCOUNT_JSON");
+    return null;
+  }
 }
 
 /**
- * Normalize Expo Push Token to standard format
+ * Create a JWT for Google OAuth2 authentication
+ * Uses RS256 signing with the service account private key
  */
-function normalizeExpoToken(token: string): string {
-  // If already in correct format, return as-is
-  if (token.startsWith("ExponentPushToken[")) {
-    return token;
+async function createGoogleJWT(serviceAccount: ServiceAccountJson): Promise<string> {
+  const header = { alg: "RS256", typ: "JWT" };
+  const now = Math.floor(Date.now() / 1000);
+  
+  const payload = {
+    iss: serviceAccount.client_email,
+    scope: "https://www.googleapis.com/auth/firebase.messaging",
+    aud: serviceAccount.token_uri,
+    iat: now,
+    exp: now + 3600, // 1 hour
+  };
+
+  const encoder = new TextEncoder();
+  const headerB64 = btoa(JSON.stringify(header));
+  const payloadB64 = btoa(JSON.stringify(payload));
+  const unsignedToken = `${headerB64}.${payloadB64}`;
+
+  // Import the RSA private key
+  const pemContents = serviceAccount.private_key
+    .replace(/-----BEGIN PRIVATE KEY-----/g, "")
+    .replace(/-----END PRIVATE KEY-----/g, "")
+    .replace(/\s/g, "");
+
+  const binaryKey = atob(pemContents);
+  const keyBytes = new Uint8Array(binaryKey.length);
+  for (let i = 0; i < binaryKey.length; i++) {
+    keyBytes[i] = binaryKey.charCodeAt(i);
   }
-  // If it's a UUID format, wrap it
-  if (/^[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}$/i.test(token)) {
-    return `ExponentPushToken[${token}]`;
-  }
-  // If it has ExpoPushToken[...] format (without 'nt'), fix it
-  if (token.startsWith("ExpoPushToken[")) {
-    return token.replace("ExpoPushToken[", "ExponentPushToken[");
-  }
-  return token;
+
+  const privateKey = await crypto.subtle.importKey(
+    "pkcs8",
+    keyBytes.buffer,
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+
+  const signature = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5",
+    privateKey,
+    encoder.encode(unsignedToken)
+  );
+
+  const signatureB64 = btoa(String.fromCharCode(...new Uint8Array(signature)));
+  return `${unsignedToken}.${signatureB64}`;
 }
 
 /**
- * Send push notification via Expo Push Service
- * Works for both iOS and Android devices!
- * 
- * @param expoToken - Expo Push Token (e.g., ExponentPushToken[xxxxxxx])
- * @param notification - The notification payload
- * @returns Push result with success status
+ * Get OAuth2 access token using service account JWT
  */
-async function sendExpoPush(
-  expoToken: string,
-  notification: { title: string; body: string; data?: Record<string, unknown> }
+async function getGoogleAccessToken(serviceAccount: ServiceAccountJson): Promise<string> {
+  const jwt = await createGoogleJWT(serviceAccount);
+
+  const response = await fetch(serviceAccount.token_uri, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: `grant_type=urn:ietf:params:oauth:grant-type:jwt-bearer&assertion=${jwt}`,
+  });
+
+  if (!response.ok) {
+    const error = await response.text();
+    console.error("[FCM v1] Token request failed:", error);
+    throw new Error(`Failed to get access token: ${response.status}`);
+  }
+
+  const data = await response.json() as { access_token: string; expires_in: number };
+  return data.access_token;
+}
+
+/**
+ * Send push notification via FCM HTTP v1 API
+ * This is the modern, recommended way to send FCM messages
+ */
+async function sendFCMv1Push(
+  deviceToken: string,
+  notification: { title: string; body: string; data?: Record<string, unknown> },
+  serviceAccount: ServiceAccountJson
 ): Promise<PushResult> {
   try {
-    const normalizedToken = normalizeExpoToken(expoToken);
-    
-    console.log(`[Expo] Sending push to: ${normalizedToken.substring(0, 30)}...`);
-    console.log(`[Expo] Title: ${notification.title}`);
-    
-    const response = await fetch("https://exp.host/--/api/v2/push/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Accept-Encoding": "gzip, deflate",
-      },
-      body: JSON.stringify([{
-        to: normalizedToken,
-        title: notification.title,
-        body: notification.body,
-        data: {
-          ...notification.data,
-          _displayInForeground: true,
+    const accessToken = await getGoogleAccessToken(serviceAccount);
+    const projectId = serviceAccount.project_id;
+
+    const notifType = notification.data?.type as string || "default";
+    const channelId = [
+      "workout_reminder", "meal_reminder", "streak_protection",
+      "achievement", "daily_summary", "motivational", "hydration_reminder"
+    ].includes(notifType) ? notifType : "default";
+
+    const fcmMessage = {
+      message: {
+        token: deviceToken,
+        notification: {
+          title: notification.title,
+          body: notification.body,
         },
-        sound: "default",
-        priority: "high",
-        channelId: "default",
-      }]),
-    });
+        data: {
+          ...(notification.data || {}),
+          deepLink: String(notification.data?.deepLink || ""),
+        },
+        android: {
+          priority: "HIGH" as const,
+          notification: {
+            channel_id: channelId,
+            sound: "default",
+            default_vibrate_timings: true,
+          },
+        },
+        apns: {
+          payload: {
+            aps: {
+              sound: "default",
+              badge: 1,
+            },
+          },
+        },
+      },
+    };
+
+    console.log(`[FCM v1] Sending to project: ${projectId}, channel: ${channelId}`);
+
+    const response = await fetch(
+      `https://fcm.googleapis.com/v1/projects/${projectId}/messages:send`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify(fcmMessage),
+      }
+    );
 
     const result = await response.json();
-    console.log("[Expo] Response:", JSON.stringify(result));
 
-    // Check if push was successful
-    if (result.data && Array.isArray(result.data)) {
-      const pushResult = result.data[0];
+    if (response.ok && result.name) {
+      // Result name format: projects/{project}/messages/{messageId}
+      const messageId = result.name.split("/").pop();
+      console.log(`[FCM v1] Success! Message ID: ${messageId}`);
+      return { success: true, messageId };
+    } else {
+      console.error("[FCM v1] Error:", JSON.stringify(result));
       
-      if (pushResult.status === "ok") {
-        return { 
-          success: true, 
-          messageId: pushResult.id || crypto.randomUUID() 
-        };
-      } else if (pushResult.status === "error") {
-        // Handle specific Expo errors
-        const errorMessage = pushResult.message || "Unknown Expo error";
-        console.error("[Expo] Push error:", errorMessage);
-        
-        // Check for device not registered
-        if (errorMessage.includes("DeviceNotRegistered") || 
-            errorMessage.includes("invalid")) {
-          return { 
-            success: false, 
-            error: "DeviceNotRegistered" 
-          };
-        }
-        
-        return { 
-          success: false, 
-          error: errorMessage 
-        };
+      const errorInfo = result.error;
+      if (errorInfo?.status === "UNREGISTERED" || errorInfo?.code === 404) {
+        return { success: false, error: "DeviceNotRegistered" };
       }
+      return { 
+        success: false, 
+        error: errorInfo?.message || `HTTP ${response.status}` 
+      };
     }
-
-    // Fallback - assume success if we got a response
-    return { success: true, messageId: crypto.randomUUID() };
-    
   } catch (error) {
-    console.error("[Expo] Error:", error);
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Expo push error",
+    console.error("[FCM v1] Exception:", error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : "FCM v1 error" 
     };
   }
 }
 
-/**
- * Get Expo push receipt to verify delivery
- * Call this a few seconds after sending push
- */
-async function getExpoPushReceipt(receiptId: string): Promise<{
-  status: "ok" | "error";
-  message?: string;
-  details?: { error?: string };
-}> {
+// ═══════════════════════════════════════════════════════════════════════════════
+// FCM Legacy API (Fallback)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function isLegacyFCMConfigured(): boolean {
+  return !!Deno.env.get("FCM_SERVER_KEY");
+}
+
+async function sendFCMLegacyPush(
+  deviceToken: string,
+  notification: { title: string; body: string; data?: Record<string, unknown> },
+  channelId: string = "default"
+): Promise<PushResult> {
+  const serverKey = Deno.env.get("FCM_SERVER_KEY");
+  if (!serverKey) {
+    return { success: false, error: "FCM_SERVER_KEY not configured" };
+  }
+
   try {
-    const response = await fetch("https://exp.host/--/api/v2/push/getReceipts", {
+    const response = await fetch("https://fcm.googleapis.com/fcm/send", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Accept": "application/json",
+        "Authorization": `key=${serverKey}`,
       },
-      body: JSON.stringify({ ids: [receiptId] }),
+      body: JSON.stringify({
+        to: deviceToken,
+        notification: { title: notification.title, body: notification.body, sound: "default" },
+        data: { ...notification.data, deepLink: notification.data?.deepLink || "" },
+        android: {
+          priority: "high",
+          notification: { channel_id: channelId, sound: "default", default_vibrate_timings: true },
+        },
+      }),
     });
 
     const result = await response.json();
-    
-    if (result.data && result.data[receiptId]) {
-      return result.data[receiptId];
+
+    if (response.ok && result.success === 1) {
+      return { success: true, messageId: String(result.message_id || result.multicast_id || "") };
+    } else {
+      console.error("[FCM Legacy] Error:", JSON.stringify(result));
+      if (result.results?.[0]?.error === "NotRegistered" || result.error === "NotRegistered") {
+        return { success: false, error: "DeviceNotRegistered" };
+      }
+      return { success: false, error: result.results?.[0]?.error || result.error || "FCM delivery failed" };
     }
-    
-    return { status: "ok" };
   } catch (error) {
-    console.error("[Expo] Receipt error:", error);
-    return { status: "ok" }; // Assume success on error
+    console.error("[FCM Legacy] Exception:", error);
+    return { success: false, error: error instanceof Error ? error.message : "FCM error" };
   }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// APNs (Apple Push Notification service) - Optional fallback for iOS
+// APNs (Apple Push Notification service) - Optional for iOS
 // ═══════════════════════════════════════════════════════════════════════════════
 
-/**
- * Check if APNs is configured
- */
 function isAPNsConfigured(): boolean {
   return !!(
     Deno.env.get("APNS_KEY_ID") &&
@@ -202,9 +301,6 @@ function isAPNsConfigured(): boolean {
   );
 }
 
-/**
- * Create JWT token for APNs authentication
- */
 async function createAPNSToken(): Promise<string> {
   const keyId = Deno.env.get("APNS_KEY_ID")!;
   const teamId = Deno.env.get("APNS_TEAM_ID")!;
@@ -227,9 +323,6 @@ async function createAPNSToken(): Promise<string> {
   return `${header}.${payload}.${signatureBase64}`;
 }
 
-/**
- * Import PKCS#8 private key
- */
 async function importPKCS8(pem: string): Promise<CryptoKey> {
   const pemContents = pem
     .replace(/-----BEGIN PRIVATE KEY-----/g, "")
@@ -253,9 +346,6 @@ async function importPKCS8(pem: string): Promise<CryptoKey> {
   );
 }
 
-/**
- * Send push via APNs (for native iOS without Expo)
- */
 async function sendAPNsPush(
   deviceToken: string,
   notification: { title: string; body: string; data?: Record<string, unknown> }
@@ -309,80 +399,69 @@ async function sendAPNsPush(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-// FCM (Firebase Cloud Messaging) - For Capacitor Android
+// Expo Push Notifications - For Expo-managed projects
 // ═══════════════════════════════════════════════════════════════════════════════
 
-function isFCMConfigured(): boolean {
-  return !!Deno.env.get("FCM_SERVER_KEY");
+function isExpoPushToken(token: string): boolean {
+  return token.startsWith("ExponentPushToken[") || 
+         token.startsWith("ExpoPushToken[") ||
+         /^[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}$/i.test(token);
 }
 
-async function sendFCMPush(
-  deviceToken: string,
-  notification: { title: string; body: string; data?: Record<string, unknown> },
-  channelId: string = "default"
-): Promise<PushResult> {
-  const serverKey = Deno.env.get("FCM_SERVER_KEY");
-  if (!serverKey) {
-    return { success: false, error: "FCM_SERVER_KEY not configured" };
-  }
-
-  try {
-    const response = await fetch("https://fcm.googleapis.com/fcm/send", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `key=${serverKey}`,
-      },
-      body: JSON.stringify({
-        to: deviceToken,
-        notification: { title: notification.title, body: notification.body, sound: "default" },
-        data: { ...notification.data, deepLink: notification.data?.deepLink || "" },
-        android: {
-          priority: "high",
-          notification: { channel_id: channelId, sound: "default", default_vibrate_timings: true },
-        },
-      }),
-    });
-
-    const result = await response.json();
-
-    if (response.ok && result.success === 1) {
-      return { success: true, messageId: String(result.message_id || result.multicast_id || "") };
-    } else {
-      console.error("[FCM] Error:", JSON.stringify(result));
-      if (result.results?.[0]?.error === "NotRegistered" || result.error === "NotRegistered") {
-        return { success: false, error: "DeviceNotRegistered" };
-      }
-      return { success: false, error: result.results?.[0]?.error || result.error || "FCM delivery failed" };
-    }
-  } catch (error) {
-    console.error("[FCM] Exception:", error);
-    return { success: false, error: error instanceof Error ? error.message : "FCM error" };
-  }
-}
-
-// ═══════════════════════════════════════════════════════════════════════════════
-// Web Push (VAPID) - Optional for browsers
-// ═══════════════════════════════════════════════════════════════════════════════
-
-async function sendWebPush(
-  subscriptionJson: string,
+async function sendExpoPush(
+  expoToken: string,
   notification: { title: string; body: string; data?: Record<string, unknown> }
 ): Promise<PushResult> {
   try {
-    const subscription = JSON.parse(subscriptionJson);
-    console.log("[WebPush] Endpoint:", subscription.endpoint);
-    console.log("[WebPush] Title:", notification.title);
-    
-    // Web Push implementation would go here
-    // For now, mark as success - notifications shown via Supabase Realtime
+    let normalizedToken = expoToken;
+    if (expoToken.startsWith("ExpoPushToken[")) {
+      normalizedToken = expoToken.replace("ExpoPushToken[", "ExponentPushToken[");
+    }
+
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Accept-Encoding": "gzip, deflate",
+      },
+      body: JSON.stringify([{
+        to: normalizedToken,
+        title: notification.title,
+        body: notification.body,
+        data: { ...notification.data, _displayInForeground: true },
+        sound: "default",
+        priority: "high",
+        channelId: "default",
+      }]),
+    });
+
+    const result = await response.json();
+    if (result.data?.[0]?.status === "ok") {
+      return { success: true, messageId: result.data[0].id || crypto.randomUUID() };
+    } else if (result.data?.[0]?.status === "error") {
+      const errorMessage = result.data[0].message || "Unknown Expo error";
+      if (errorMessage.includes("DeviceNotRegistered")) {
+        return { success: false, error: "DeviceNotRegistered" };
+      }
+      return { success: false, error: errorMessage };
+    }
     return { success: true, messageId: crypto.randomUUID() };
   } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : "Web push error",
-    };
+    return { success: false, error: error instanceof Error ? error.message : "Expo push error" };
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Web Push (in-app delivery via Supabase Realtime)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+async function sendWebPush(
+  _subscriptionJson: string,
+  _notification: { title: string; body: string; data?: Record<string, unknown> }
+): Promise<PushResult> {
+  // Web notifications are delivered via Supabase Realtime
+  return { success: true, messageId: crypto.randomUUID(), method: "in-app" };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -402,7 +481,6 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Only allow POST requests
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "Method not allowed" }), {
       status: 405,
@@ -410,16 +488,13 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // P0 FIX: Strict authorization - only accept exact service role key match
-  // Previously accepted any JWT starting with "eyJ" which was a security vulnerability
+  // Authorization - only accept service role key
   const authHeader = req.headers.get("authorization");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  
-  // Only accept the service role key - no arbitrary JWTs
   const isAuthorized = serviceKey && authHeader === `Bearer ${serviceKey}`;
 
   if (!isAuthorized) {
-    console.error("[Push] Unauthorized request - invalid or missing service key");
+    console.error("[Push] Unauthorized request");
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
       status: 401,
       headers: { "Content-Type": "application/json" },
@@ -432,74 +507,81 @@ Deno.serve(async (req: Request) => {
 
     if (!deviceToken || !deviceType || !notification) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
+        JSON.stringify({ error: "Missing required fields: deviceToken, deviceType, notification" }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // PRIORITY 1: Check if it's an Expo Push Token (works for BOTH iOS & Android)
-    // ══════════════════════════════════════════════════════════════════
+    console.log(`[Push] Incoming: ${deviceType} | Token: ${deviceToken.substring(0, 20)}... | Title: ${notification.title}`);
+
+    // ══════════════════════════════════════════════════════
+    // PRIORITY 1: Expo Push Tokens (work for iOS + Android)
+    // ══════════════════════════════════════════════════════
     if (isExpoPushToken(deviceToken)) {
-      console.log(`[Push] Detected Expo token for ${deviceType}`);
+      console.log("[Push] Detected Expo token, using Expo Push");
       const result = await sendExpoPush(deviceToken, notification);
-      
-      return new Response(JSON.stringify({
-        ...result,
-        method: "expo",
-        platform: deviceType,
-      }), {
+      return new Response(JSON.stringify({ ...result, method: "expo", platform: deviceType }), {
         status: result.success ? 200 : 500,
-        headers: { 
-          "Content-Type": "application/json",
-          "Access-Control-Allow-Origin": "*",
-        },
+        headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
       });
     }
 
-    // ══════════════════════════════════════════════════════════════════
-    // FALLBACK: Platform-specific push methods
-    // ══════════════════════════════════════════════════════════════════
+    // ══════════════════════════════════════════════════════
+    // PRIORITY 2: Platform-specific push
+    // ══════════════════════════════════════════════════════
     let result: PushResult;
     let method = "unknown";
 
     switch (deviceType) {
+      case "android": {
+        // Try FCM HTTP v1 first (modern, recommended)
+        if (isFCMv1Configured()) {
+          const serviceAccount = getServiceAccount();
+          if (serviceAccount) {
+            console.log("[Push] Using FCM HTTP v1 API");
+            method = "fcm-v1";
+            result = await sendFCMv1Push(deviceToken, notification, serviceAccount);
+            break;
+          }
+        }
+        
+        // Fallback to legacy FCM
+        if (isLegacyFCMConfigured()) {
+          console.log("[Push] Using FCM Legacy API");
+          method = "fcm-legacy";
+          const notifType = notification.data?.type as string || "default";
+          const channel = [
+            "workout_reminder", "meal_reminder", "streak_protection",
+            "achievement", "daily_summary", "motivational", "hydration_reminder"
+          ].includes(notifType) ? notifType : "default";
+          result = await sendFCMLegacyPush(deviceToken, notification, channel);
+          break;
+        }
+
+        // No FCM configured - store for in-app delivery
+        method = "in-app";
+        result = { success: true, error: "No FCM configured. Notification stored for in-app delivery via Realtime." };
+        break;
+      }
+
       case "ios": {
         // Try APNs for native iOS
         if (isAPNsConfigured()) {
           method = "apns";
           result = await sendAPNsPush(deviceToken, notification);
         } else {
-          // No APNs config - store for in-app via Realtime
           method = "in-app";
-          result = { success: true, error: "Stored for in-app delivery (configure Expo or APNs for push)" };
+          result = { success: true, error: "APNs not configured. Notification stored for in-app delivery via Realtime." };
         }
         break;
       }
-      
-      case "android": {
-        if (isFCMConfigured()) {
-          // Use FCM for Capacitor Android
-          const notifType = notification.data?.type as string || "default";
-          const channel = ["workout_reminder", "meal_reminder", "streak_protection", "achievement", "daily_summary", "motivational", "hydration_reminder"].includes(notifType) ? notifType : "default";
-          method = "fcm";
-          result = await sendFCMPush(deviceToken, notification, channel);
-        } else if (isExpoPushToken(deviceToken)) {
-          method = "expo";
-          result = await sendExpoPush(deviceToken, notification);
-        } else {
-          method = "in-app";
-          result = { success: true, error: "Configure FCM_SERVER_KEY in Supabase for Android push. Notification stored for in-app delivery." };
-        }
-        break;
-      }
-      
+
       case "web": {
         method = "web";
         result = await sendWebPush(deviceToken, notification);
         break;
       }
-      
+
       default:
         result = { success: false, error: `Unknown device type: ${deviceType}` };
     }
@@ -510,19 +592,13 @@ Deno.serve(async (req: Request) => {
       platform: deviceType,
     }), {
       status: result.success ? 200 : 500,
-      headers: { 
-        "Content-Type": "application/json",
-        "Access-Control-Allow-Origin": "*",
-      },
+      headers: { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" },
     });
-    
+
   } catch (error) {
     console.error("[send-push] Error:", error);
     return new Response(
-      JSON.stringify({
-        success: false,
-        error: error instanceof Error ? error.message : "Unknown error",
-      }),
+      JSON.stringify({ success: false, error: error instanceof Error ? error.message : "Unknown error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }

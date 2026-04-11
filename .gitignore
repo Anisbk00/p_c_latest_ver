@@ -28,10 +28,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# environment variables - NEVER COMMIT
-.env
+# environment variables
+# .env committed to private repo
+# .env
 .env.*
 !.env.example
+!.env
 # .env.development.local
 # .env.test.local
 # .env.production.local
