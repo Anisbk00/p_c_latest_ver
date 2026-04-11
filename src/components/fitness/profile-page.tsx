@@ -3327,7 +3327,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
   const [isGeneratingExperiments, setIsGeneratingExperiments] = useState(false);
 
   // Generate AI-powered experiments
-  const handleGenerateExperiments = useCallback(async (silent = false) => {
+  const handleGenerateExperiments = useCallback(async (silent = false, count = 4) => {
     console.log('[experiments] handleGenerateExperiments called, silent=', silent);
     setIsGeneratingExperiments(true);
     try {
@@ -3335,7 +3335,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
       const response = await apiFetch('/api/experiments/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ count: 4 }),
+        body: JSON.stringify({ count }),
       });
 
       console.log('[experiments] Response status:', response.status, response.statusText);
@@ -3464,7 +3464,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
       
       // Generate new experiments after completing one
       setTimeout(() => {
-        handleGenerateExperiments(true);
+        handleGenerateExperiments(true, 1);
       }, 500);
     } catch (error) {
       console.error('Error completing experiment:', error);
