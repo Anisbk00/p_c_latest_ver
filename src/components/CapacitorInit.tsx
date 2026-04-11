@@ -165,6 +165,153 @@ export function CapacitorInit() {
           console.warn('[Cap] Keyboard config failed', e);
         }
       }
+
+      // ── iOS Local Notifications (lock-screen without APNs) ──
+      if (isIOS) {
+        try {
+          const { LocalNotifications } = await import('@capacitor/local-notifications');
+          const { notificationService } = await import('@/lib/notifications/service');
+
+          // Request local notification permission
+          await LocalNotifications.requestPermissions();
+
+          // Fetch user preferences to know what to schedule
+          const prefs = await notificationService.getPreferences();
+          const p = prefs.preferences;
+
+          const notificationsToSchedule: Array<{
+            id: string;
+            title: string;
+            body: string;
+            schedule: { at: Date };
+            extra?: Record<string, string>;
+          }> = [];
+
+          if (p && p.notifications_enabled) {
+            const now = new Date();
+
+            // Workout reminder
+            if (p.workout_reminders_enabled) {
+              const h = parseInt((p.preferred_morning_time || '08:00').split(':')[0], 10) || 8;
+              const scheduled = new Date(now); scheduled.setHours(h, 0, 0, 0);
+              if (scheduled > now) {
+                notificationsToSchedule.push({
+                  id: `local-workout-${now.toISOString().split('T')[0]}`,
+                  title: 'Time to Workout! 💪',
+                  body: "Don't break your streak! Your workout is waiting.",
+                  schedule: { at: scheduled },
+                  extra: { deepLink: '/workouts' },
+                });
+              }
+            }
+
+            // Meal reminders
+            if (p.meal_reminders_enabled) {
+              const meals = [
+                { id: 'breakfast', title: 'Log Your Breakfast 🍽️', body: "Don't forget to track your breakfast.", hour: 8, link: '/foods' },
+                { id: 'lunch', title: 'Log Your Lunch 🍽️', body: "Don't forget to track your lunch.", hour: 12, link: '/foods' },
+                { id: 'dinner', title: 'Log Your Dinner 🍽️', body: "Don't forget to track your dinner.", hour: 19, link: '/foods' },
+              ];
+              for (const meal of meals) {
+                const scheduled = new Date(now); scheduled.setHours(meal.hour, 0, 0, 0);
+                if (scheduled > now) {
+                  notificationsToSchedule.push({
+                    id: `local-meal-${meal.id}-${now.toISOString().split('T')[0]}`,
+                    title: meal.title,
+                    body: meal.body,
+                    schedule: { at: scheduled },
+                    extra: { deepLink: meal.link },
+                  });
+                }
+              }
+            }
+
+            // Hydration reminders
+            if (p.hydration_reminders_enabled) {
+              for (const h of [9, 11, 13, 15, 17, 19]) {
+                const scheduled = new Date(now); scheduled.setHours(h, 0, 0, 0);
+                if (scheduled > now) {
+                  notificationsToSchedule.push({
+                    id: `local-hydration-${h}-${now.toISOString().split('T')[0]}`,
+                    title: 'Stay Hydrated! 💧',
+                    body: "Time for a glass of water. You're doing great!",
+                    schedule: { at: scheduled },
+                  });
+                }
+              }
+            }
+
+            // Daily summary
+            if (p.daily_summary_enabled) {
+              const scheduled = new Date(now); scheduled.setHours(21, 0, 0, 0);
+              if (scheduled > now) {
+                notificationsToSchedule.push({
+                  id: `local-summary-${now.toISOString().split('T')[0]}`,
+                  title: 'Daily Summary 📊',
+                  body: 'Check out your progress for today!',
+                  schedule: { at: scheduled },
+                  extra: { deepLink: '/' },
+                });
+              }
+            }
+
+            // Streak protection
+            if (p.streak_protection_enabled) {
+              const scheduled = new Date(now); scheduled.setHours(20, 0, 0, 0);
+              if (scheduled > now) {
+                notificationsToSchedule.push({
+                  id: `local-streak-${now.toISOString().split('T')[0]}`,
+                  title: 'Streak at Risk! 🔥',
+                  body: 'Log an activity now to protect your streak!',
+                  schedule: { at: scheduled },
+                  extra: { deepLink: '/workouts' },
+                });
+              }
+            }
+
+            // Motivational
+            if (p.motivational_enabled) {
+              const msgs = [
+                "You're stronger than you think! 💪", "Every step counts. Keep going! 🚀",
+                "Consistency is the key to results! 🔑", "Your future self will thank you! 🌟",
+                "Small progress is still progress! 📈", "Champions are made in the quiet hours! 🏆",
+                "Believe in the process! 💎", "Today is a great day to push harder! ⚡",
+                "You're one workout away from a good mood! 😊",
+              ];
+              const idx = now.getDate() % msgs.length;
+              const scheduled = new Date(now); scheduled.setHours(10 + (now.getDate() % 9), 0, 0, 0);
+              if (scheduled > now) {
+                notificationsToSchedule.push({
+                  id: `local-motivational-${now.toISOString().split('T')[0]}`,
+                  title: 'Daily Motivation 💪',
+                  body: msgs[idx],
+                  schedule: { at: scheduled },
+                });
+              }
+            }
+          }
+
+          // Cancel any existing local notifications first (to avoid duplicates)
+          await LocalNotifications.cancel({ notifications: [] });
+
+          // Schedule all pending ones for today
+          if (notificationsToSchedule.length > 0) {
+            await LocalNotifications.schedule({ notifications: notificationsToSchedule });
+            console.log(`[Cap] iOS: Scheduled ${notificationsToSchedule.length} local notifications for today`);
+          }
+
+          // Handle tap on local notification → navigate to deep link
+          LocalNotifications.addListener('localNotificationActionPerformed', (action) => {
+            const deepLink = action.notification.extra?.deepLink;
+            if (deepLink) {
+              window.location.href = deepLink;
+            }
+          });
+
+        } catch (e) {
+          console.warn('[Cap] iOS local notifications setup failed:', e);
+        }
+      }
     }
 
     bootstrap();
