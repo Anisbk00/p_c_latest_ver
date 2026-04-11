@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
     const { data, error } = await supabase.from('ai_insights').insert({
       user_id: user.id,
       insight_type: 'experiment',
+      title: body.title || 'Experiment',
       content: JSON.stringify({
         title: body.title,
         description: body.description,
@@ -97,7 +98,6 @@ export async function POST(request: NextRequest) {
         endDate: endDate.toISOString(),
         adherence: 0,
       }),
-      source: body.source || 'user',
     }).select().single()
 
     if (error) throw error

@@ -102,8 +102,8 @@ export async function POST(request: NextRequest) {
               const { error: reinsertError } = await supabase.from('ai_insights').insert({
                 user_id: row.user_id,
                 insight_type: row.insight_type,
+                title: row.title || 'Experiment',
                 content: row.content,
-                source: row.source,
               });
               if (reinsertError) {
                 console.error('[experiments/generate] Error re-inserting active experiment:', reinsertError.message);
@@ -292,7 +292,6 @@ Create experiments that address their specific gaps and help them progress towar
               endDate: null,
               adherence: 0,
             }),
-            source: 'ai',
           });
           if (insertError) {
             console.error('[experiments/generate] Insert error for experiment', exp.title, ':', insertError.message);
@@ -335,7 +334,6 @@ Create experiments that address their specific gaps and help them progress towar
             endDate: null,
             adherence: 0,
           }),
-          source: 'ai',
         });
         if (insertError) {
           console.error('[experiments/generate] Fallback insert error:', insertError.message);
