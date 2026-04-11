@@ -35,9 +35,9 @@ export const XP_REWARDS = {
   streak_bonus_30: 200,       // 30-day streak milestone
   
   // Experiments
-  experiment_completed_early: 15,   // Completed before time ran out
-  experiment_completed_ontime: 50,  // Completed on time (duration fully elapsed)
-  first_experiment: 30,             // Achievement: First experiment completed
+  experiment_completed_early: 15,    // Completed before time ran out
+  experiment_completed_ontime: 100,  // Completed on time (duration fully elapsed) — straight 100!
+  first_experiment: 30,              // Achievement: First experiment completed
 } as const;
 
 export type XPAction = keyof typeof XP_REWARDS;
