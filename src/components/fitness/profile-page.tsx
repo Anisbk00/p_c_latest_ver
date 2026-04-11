@@ -62,6 +62,7 @@ import {
   ChevronDown,
   ImageOff,
   Grid3x3,
+  Clock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1579,6 +1580,38 @@ function TransformationArchive({
   );
 }
 
+// Countdown timer hook for active experiments
+function useExperimentCountdown(startDate: string | undefined, durationDays: number) {
+  const [timeLeft, setTimeLeft] = useState<{ days: number; hours: number; minutes: number } | null>(null);
+
+  useEffect(() => {
+    if (!startDate) return;
+
+    const calculateTimeLeft = () => {
+      const start = new Date(startDate).getTime();
+      const now = Date.now();
+      const end = start + durationDays * 24 * 60 * 60 * 1000;
+      const diff = end - now;
+
+      if (diff <= 0) {
+        setTimeLeft({ days: 0, hours: 0, minutes: 0 });
+        return;
+      }
+
+      const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+      const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      setTimeLeft({ days, hours, minutes });
+    };
+
+    calculateTimeLeft();
+    const interval = setInterval(calculateTimeLeft, 60000); // update every minute
+    return () => clearInterval(interval);
+  }, [startDate, durationDays]);
+
+  return timeLeft;
+}
+
 // Micro-Experiments Carousel
 function MicroExperimentsCarousel({
   experiments,
@@ -1624,9 +1657,20 @@ function MicroExperimentsCarousel({
     }
   };
 
-  // Check if there's an active experiment
-  const activeExperiment = experiments.find(exp => exp.status === 'active');
-  const availableExperiments = experiments.filter(exp => exp.status !== 'active');
+  // Sort: active first, then available (newest), then completed at the back
+  const sortedExperiments = useMemo(() => {
+    return [...experiments].sort((a, b) => {
+      const order = { active: 0, available: 1, completed: 2 };
+      const aOrder = order[a.status] ?? 1;
+      const bOrder = order[b.status] ?? 1;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return 0;
+    });
+  }, [experiments]);
+
+  const activeExperiment = sortedExperiments.find(exp => exp.status === 'active');
+  const nonActiveExperiments = sortedExperiments.filter(exp => exp.status !== 'active');
+  const countdown = useExperimentCountdown(activeExperiment?.startedAt, activeExperiment?.duration ?? 0);
 
   const handleExperimentClick = (exp: ProfileData["experiments"][0]) => {
     setSelectedExperiment(exp);
@@ -1646,12 +1690,12 @@ function MicroExperimentsCarousel({
               <CardDescription className="mt-1">
                 {activeExperiment 
                   ? `Active: ${activeExperiment.title}` 
-                  : availableExperiments.length > 0
-                    ? `${availableExperiments.length} personalized experiments ready`
+                  : nonActiveExperiments.length > 0
+                    ? `${nonActiveExperiments.filter(e => e.status !== 'completed').length} experiments ready`
                     : "AI-powered experiments tailored to your goals"}
               </CardDescription>
             </div>
-            {!activeExperiment && availableExperiments.length === 0 && (
+            {!activeExperiment && nonActiveExperiments.length === 0 && (
               <Button
                 size="sm"
                 onClick={onGenerateExperiments}
@@ -1682,12 +1726,34 @@ function MicroExperimentsCarousel({
                   <Check className="w-3 h-3 text-white" />
                 </div>
                 <span className="text-sm font-medium text-emerald-600">Active Experiment</span>
-                <Badge variant="outline" className="text-[10px] ml-auto">
-                  {activeExperiment.duration} days
-                </Badge>
+                {countdown && (
+                  <Badge variant="outline" className="text-[10px] ml-auto font-mono">
+                    <Clock className="w-3 h-3 mr-1" />
+                    {countdown.days > 0 && `${countdown.days}d `}
+                    {countdown.hours}h {countdown.minutes}m left
+                  </Badge>
+                )}
               </div>
               <p className="text-sm font-semibold">{activeExperiment.title}</p>
               <p className="text-xs text-muted-foreground mt-1">{activeExperiment.description}</p>
+
+              {/* Progress bar based on time elapsed */}
+              {activeExperiment.startedAt && (
+                <div className="mt-3">
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-muted-foreground">Time Progress</span>
+                    <span className="font-medium">
+                      {activeExperiment.duration - (countdown?.days ?? activeExperiment.duration)} / {activeExperiment.duration} days
+                    </span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
+                      style={{ width: `${Math.min(100, ((activeExperiment.duration - (countdown?.days ?? activeExperiment.duration)) / activeExperiment.duration) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              )}
               
               {/* Daily Actions */}
               {activeExperiment.dailyActions && activeExperiment.dailyActions.length > 0 && (
@@ -1701,21 +1767,6 @@ function MicroExperimentsCarousel({
                       </li>
                     ))}
                   </ul>
-                </div>
-              )}
-              
-              {activeExperiment.adherence > 0 && (
-                <div className="mt-3">
-                  <div className="flex items-center justify-between text-xs mb-1">
-                    <span className="text-muted-foreground">Progress</span>
-                    <span className="font-medium">{activeExperiment.adherence}%</span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-gradient-to-r from-emerald-500 to-teal-500 rounded-full transition-all"
-                      style={{ width: `${activeExperiment.adherence}%` }}
-                    />
-                  </div>
                 </div>
               )}
               
@@ -1740,96 +1791,91 @@ function MicroExperimentsCarousel({
             </div>
           )}
           
-          {/* Available experiments */}
-          {availableExperiments.length > 0 ? (
-            <ScrollArea className="w-full">
-              <div className="flex gap-3 pb-2">
-                {availableExperiments.map((exp) => {
+          {/* Available / Completed experiments — vertical scroll */}
+          {nonActiveExperiments.length > 0 ? (
+            <ScrollArea className="w-full max-h-[400px]">
+              <div className="flex flex-col gap-3 pb-2">
+                {nonActiveExperiments.map((exp) => {
                   const isStarting = startingExperimentId === exp.id;
                   const isDisabled = !!activeExperiment || isStarting;
+                  const isCompleted = exp.status === 'completed';
                   
                   return (
                     <motion.div
                       key={exp.id}
-                      initial={{ opacity: 0, x: 20 }}
-                      animate={{ opacity: 1, x: 0 }}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
                       className={cn(
-                        "shrink-0 w-64 p-4 rounded-2xl border cursor-pointer transition-all",
-                        exp.status === 'completed' 
-                          ? "bg-muted/30 border-border/50 opacity-60"
+                        "w-full p-4 rounded-2xl border cursor-pointer transition-all",
+                        isCompleted
+                          ? "bg-muted/30 border-border/50 opacity-50"
                           : "bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border-emerald-500/20 hover:border-emerald-500/40",
-                        !isDisabled && "hover:shadow-md"
+                        !isDisabled && !isCompleted && "hover:shadow-md"
                       )}
                       onClick={() => handleExperimentClick(exp)}
                     >
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-start gap-3">
                         <div className={cn(
-                          "w-8 h-8 rounded-lg flex items-center justify-center",
+                          "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
                           getCategoryColor(exp.category)
                         )}>
-                          {getCategoryIcon(exp.category)}
+                          {isCompleted ? <Check className="w-5 h-5" /> : getCategoryIcon(exp.category)}
                         </div>
-                        <Badge variant="outline" className="text-[10px]">
-                          {exp.duration} days
-                        </Badge>
-                        <Badge variant="secondary" className="text-[10px]">
-                          {getCategoryLabel(exp.category)}
-                        </Badge>
-                      </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="text-sm font-semibold">{exp.title}</h4>
+                            <Badge variant="outline" className="text-[10px]">
+                              {exp.duration}d
+                            </Badge>
+                            <Badge variant="secondary" className="text-[10px]">
+                              {getCategoryLabel(exp.category)}
+                            </Badge>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{exp.description}</p>
 
-                      <h4 className="text-sm font-semibold">{exp.title}</h4>
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{exp.description}</p>
+                          {/* Daily action preview */}
+                          {exp.dailyActions && exp.dailyActions.length > 0 && (
+                            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1.5">
+                              🎯 {exp.expectedOutcome}
+                            </p>
+                          )}
 
-                      {/* Daily actions preview */}
-                      {exp.dailyActions && exp.dailyActions.length > 0 && (
-                        <div className="mt-2 p-2 rounded-lg bg-muted/30">
-                          <p className="text-[10px] font-medium text-muted-foreground mb-1">What you'll do:</p>
-                          <p className="text-[10px] text-muted-foreground line-clamp-1">
-                            • {exp.dailyActions[0]}
-                          </p>
+                          {/* Action */}
+                          <div className="mt-2 flex items-center gap-2">
+                            {isCompleted ? (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <Check className="w-3 h-3" /> Completed
+                              </span>
+                            ) : activeExperiment ? (
+                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
+                                <Lock className="w-3 h-3" /> One at a time
+                              </span>
+                            ) : (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onStartExperiment(exp);
+                                }}
+                                disabled={isDisabled}
+                                className="h-7 text-xs px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
+                              >
+                                {isStarting ? (
+                                  <>
+                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                                    Starting...
+                                  </>
+                                ) : (
+                                  <>
+                                    <Play className="w-3 h-3 mr-1" />
+                                    Start
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                          </div>
                         </div>
-                      )}
-
-                      <div className="mt-3 pt-3 border-t border-border/50">
-                        <p className="text-[10px] text-emerald-600 font-medium mb-2">
-                          🎯 {exp.expectedOutcome}
-                        </p>
-                        <Button
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onStartExperiment(exp);
-                          }}
-                          disabled={isDisabled}
-                          className={cn(
-                            "w-full h-8 text-xs",
-                            exp.status === 'completed' 
-                              ? "bg-muted text-muted-foreground"
-                              : "bg-emerald-500 hover:bg-emerald-600"
-                          )}
-                        >
-                          {isStarting ? (
-                            <>
-                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                              Starting...
-                            </>
-                          ) : exp.status === 'completed' ? (
-                            <>
-                              <Check className="w-3 h-3 mr-1" />
-                              Completed
-                            </>
-                          ) : activeExperiment ? (
-                            <>
-                              <Lock className="w-3 h-3 mr-1" />
-                              One at a time
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-3 h-3 mr-1" />
-                              Start Experiment
-                            </>
-                          )}
-                        </Button>
                       </div>
                     </motion.div>
                   );
@@ -1864,13 +1910,16 @@ function MicroExperimentsCarousel({
                   "w-8 h-8 rounded-lg flex items-center justify-center",
                   getCategoryColor(selectedExperiment.category)
                 )}>
-                  {getCategoryIcon(selectedExperiment.category)}
+                  {selectedExperiment.status === 'completed' 
+                    ? <Check className="w-4 h-4" /> 
+                    : getCategoryIcon(selectedExperiment.category)}
                 </div>
               )}
               {selectedExperiment?.title}
             </DialogTitle>
             <DialogDescription>
               {selectedExperiment?.duration} day experiment • {selectedExperiment && getCategoryLabel(selectedExperiment.category)}
+              {selectedExperiment?.status === 'completed' && " • Completed"}
             </DialogDescription>
           </DialogHeader>
           
@@ -1926,32 +1975,34 @@ function MicroExperimentsCarousel({
                 </div>
               )}
 
-              {/* Action Button */}
-              <Button
-                className="w-full bg-emerald-500 hover:bg-emerald-600"
-                onClick={() => {
-                  onStartExperiment(selectedExperiment);
-                  setShowDetail(false);
-                }}
-                disabled={!!activeExperiment || startingExperimentId === selectedExperiment.id}
-              >
-                {startingExperimentId === selectedExperiment.id ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Starting...
-                  </>
-                ) : activeExperiment ? (
-                  <>
-                    <Lock className="w-4 h-4 mr-2" />
-                    Complete current experiment first
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-4 h-4 mr-2" />
-                    Start This Experiment
-                  </>
-                )}
-              </Button>
+              {/* Action Button — only show for non-completed experiments */}
+              {selectedExperiment.status !== 'completed' && (
+                <Button
+                  className="w-full bg-emerald-500 hover:bg-emerald-600"
+                  onClick={() => {
+                    onStartExperiment(selectedExperiment);
+                    setShowDetail(false);
+                  }}
+                  disabled={!!activeExperiment || startingExperimentId === selectedExperiment.id}
+                >
+                  {startingExperimentId === selectedExperiment.id ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Starting...
+                    </>
+                  ) : activeExperiment ? (
+                    <>
+                      <Lock className="w-4 h-4 mr-2" />
+                      Complete current experiment first
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-4 h-4 mr-2" />
+                      Start This Experiment
+                    </>
+                  )}
+                </Button>
+              )}
             </div>
           )}
         </DialogContent>
