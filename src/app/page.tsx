@@ -177,36 +177,6 @@ function isHydrationDangerous(percent: number): boolean {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// PAGE LOADER - Subtle skeleton shimmer for lazy-loaded pages
-// ═══════════════════════════════════════════════════════════════
-
-function PageLoader() {
-  return (
-    <div 
-      className="flex flex-col gap-4 p-4 min-h-[60vh]"
-      role="status"
-      aria-live="polite"
-      aria-label="Loading page content"
-    >
-      {/* Skeleton cards with shimmer effect */}
-      {[1, 2, 3].map((i) => (
-        <div 
-          key={i}
-          className="rounded-2xl bg-muted/50 animate-pulse overflow-hidden"
-          style={{ 
-            height: i === 1 ? '120px' : i === 2 ? '180px' : '100px',
-            animationDelay: `${i * 100}ms`
-          }}
-        >
-          <div className="h-full w-full bg-linear-to-r from-transparent via-white/5 to-transparent animate-shimmer" />
-        </div>
-      ))}
-      <span className="sr-only">Loading...</span>
-    </div>
-  );
-}
-
-// ═══════════════════════════════════════════════════════════════
 // OFFLINE INDICATOR COMPONENT
 // ═══════════════════════════════════════════════════════════════
 
@@ -399,7 +369,7 @@ function ProgressCompanionHome() {
     }
   }, []); // Run once on mount
   
-  // Start minimum time timer (3 seconds — enough for core data + React render warmup)
+  // Start minimum time timer (3 seconds — enough for all data + lazy chunk preload)
   useEffect(() => {
     if (skipSplash || splashSkippedRef.current) return;
     
@@ -1018,16 +988,34 @@ function ProgressCompanionHome() {
     analyticsLoading
   );
   
-  // Core data ready — enough to show the app without splash (profile, settings, targets)
-  // Full data (workouts, nutrition, analytics) loads progressively in tabs
-  const isCoreDataReady = isAuthenticated && user?.id && userSettings && targets;
-  const isAppReady = !isAuthenticated || (!authLoading && (isCoreDataReady || !isDataLoading));
+  // App ready when ALL data is loaded — no more loading after splash
+  // During splash, lazy chunks and all data are preloaded in the background
+  const isAppReady = !isAuthenticated || (!authLoading && !isDataLoading);
   
   // ═══════════════════════════════════════════════════════════════
-  // SPLASH SCREEN LOGIC - Wait for app ready + minimum 5 seconds
+  // SPLASH SCREEN LOGIC - Wait for ALL data + preload lazy tabs
   // ═══════════════════════════════════════════════════════════════
   
-  // Hide splash when BOTH: app is ready AND minimum time (5s) has elapsed
+  // Preload lazy tab chunks during splash so tabs are instant on first tap
+  useEffect(() => {
+    if (!splashVisible || skipSplash) return;
+    // Use requestIdleCallback to preload chunks without blocking splash animation
+    const preload = (fn: () => Promise<unknown>) => {
+      if ('requestIdleCallback' in window) {
+        requestIdleCallback(() => fn().catch(() => {}));
+      } else {
+        setTimeout(() => fn().catch(() => {}), 100);
+      }
+    };
+    preload(() => import('@/components/fitness/foods-page'));
+    preload(() => import('@/components/fitness/workouts-page-v2'));
+    preload(() => import('@/components/fitness/analytics-page'));
+    preload(() => import('@/components/fitness/profile-page'));
+    preload(() => import('@/components/iron-coach/iron-coach-chat'));
+    preload(() => import('@/components/settings/SettingsPage'));
+  }, [splashVisible, skipSplash]);
+
+  // Hide splash when BOTH: ALL data is ready AND minimum time has elapsed
   // The inner SplashScreen handles its own exit animation (150ms delay + 700ms CSS = 850ms).
   // We wait 900ms after signaling it to exit, THEN remove from DOM — no cutting animation short.
   useEffect(() => {
@@ -1219,7 +1207,7 @@ function ProgressCompanionHome() {
               aria-label="Foods and nutrition tracking"
             >
               <ErrorBoundary showDetails={process.env.NODE_ENV === 'development'}>
-                <Suspense fallback={<PageLoader />}>
+                <Suspense fallback={null}>
                   <FoodsPage />
                 </Suspense>
               </ErrorBoundary>
@@ -1238,7 +1226,7 @@ function ProgressCompanionHome() {
               aria-label="Workouts and activity tracking"
             >
               <ErrorBoundary showDetails={process.env.NODE_ENV === 'development'}>
-                <Suspense fallback={<PageLoader />}>
+                <Suspense fallback={null}>
                   <WorkoutsPage />
                 </Suspense>
               </ErrorBoundary>
@@ -1256,7 +1244,7 @@ function ProgressCompanionHome() {
               aria-label="Analytics and insights"
             >
               <ErrorBoundary showDetails={process.env.NODE_ENV === 'development'}>
-                <Suspense fallback={<PageLoader />}>
+                <Suspense fallback={null}>
                   <AnalyticsPage />
                 </Suspense>
               </ErrorBoundary>
@@ -1275,7 +1263,7 @@ function ProgressCompanionHome() {
               aria-label="User profile and settings"
             >
               <ErrorBoundary showDetails={process.env.NODE_ENV === 'development'}>
-                <Suspense fallback={<PageLoader />}>
+                <Suspense fallback={null}>
                   <ProfilePage onOpenSettings={() => setSettingsOpen(true)} />
                 </Suspense>
               </ErrorBoundary>
@@ -1357,7 +1345,7 @@ function ProgressCompanionHome() {
       )}
       
       {/* ═══ SETTINGS SHEET - Embedded full-height panel (no route change) ═══ */}
-      <Suspense fallback={<PageLoader />}>
+      <Suspense fallback={null}>
         <Sheet open={settingsOpen} onOpenChange={setSettingsOpen}>
           <SheetContent side="right" className="w-full sm:max-w-lg p-0 overflow-y-auto">
             <SheetHeader className="sr-only">
