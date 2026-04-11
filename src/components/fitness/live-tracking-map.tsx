@@ -1411,9 +1411,9 @@ export function LiveTrackingMap({
                 whileTap={{ scale: 0.95 }}
                 onClick={onStop}
                 className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl flex items-center justify-center"
-                style={{ backgroundColor: colors.primary }}
+                style={{ backgroundColor: colors.gold }}
               >
-                <Square className="w-5 h-5 sm:w-6 sm:h-6 text-white" />
+                <Square className="w-5 h-5 sm:w-6 sm:h-6 text-white" fill="currentColor" />
               </motion.button>
             </div>
           </div>
