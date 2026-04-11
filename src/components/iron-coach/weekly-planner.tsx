@@ -478,7 +478,10 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
         body: JSON.stringify({ force_regenerate: forceRegenerate }),
       });
 
-      if (!response.ok) throw new Error('Failed to generate plan');
+      if (!response.ok) {
+        const errBody = await response.json().catch(() => ({}));
+        throw new Error(errBody.error || 'Failed to generate plan');
+      }
 
       const data = await response.json();
       

@@ -855,7 +855,7 @@ export async function POST(request: NextRequest) {
     // Generate plan with AI
     let plan;
     try {
-      let responseText = await generateText(userPrompt, systemPrompt, 4096);
+      let responseText = await generateText(userPrompt, systemPrompt, 2048);
 
       // Clean up response
       responseText = responseText
@@ -881,11 +881,15 @@ export async function POST(request: NextRequest) {
       }
     } catch (aiError) {
       console.error('[weekly-planner] AI error:', aiError);
+      const msg = aiError instanceof Error ? aiError.message : 'Unknown error';
+      const isRateLimit = msg.includes('rate limit') || msg.includes('high demand') || msg.includes('busy') || msg.includes('quota') || msg.includes('429');
       return NextResponse.json({
         success: false,
-        error: 'Failed to generate plan. AI service unavailable.',
-        details: aiError instanceof Error ? aiError.message : 'Unknown error',
-      }, { status: 500 });
+        error: isRateLimit 
+          ? 'AI is busy right now. Wait 30 seconds and try updating your plan again.' 
+          : 'Failed to generate plan. Please try again.',
+        details: msg,
+      }, { status: 503 });
     }
 
     // Try to store plan in database (optional, may fail if table doesn't exist)
