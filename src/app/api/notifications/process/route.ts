@@ -490,104 +490,84 @@ export async function GET(request: Request) {
             } catch { /* ignore quiet hours parse error */ }
           }
 
-          // One notification per user per cycle
-          const date = todayStr;
-          let notificationToCreate: { type: string; title: string; body: string; deep_link: string; throttle_key: string } | null = null;
+          // ── Schedule notifications for upcoming time slots today ──
+          // Since cron runs daily at midnight, we schedule for all upcoming slots today
+          const upcomingSlots: { type: string; title: string; body: string; deep_link: string; throttle_key: string; scheduledHour: number }[] = [];
 
-          // Workout reminder at preferred morning time
-          if (prefs.workout_reminders_enabled && !notificationToCreate) {
+          // Workout reminder
+          if (prefs.workout_reminders_enabled) {
             const mTime = prefs.preferred_morning_time || '08:00';
-            const [mH, mM] = mTime.split(':').map(Number);
-            if (hour === (mH || 8) && userTime.getMinutes() === (mM || 0)) {
-              notificationToCreate = {
-                type: 'workout_reminder', title: "Time to Workout! 💪", body: "Don't break your streak! Your workout is waiting.",
-                deep_link: '/workouts', throttle_key: `workout_reminder:${prefs.user_id}:${date}`
-              };
-            }
+            const [mH] = mTime.split(':').map(Number);
+            upcomingSlots.push({ type: 'workout_reminder', title: "Time to Workout! 💪", body: "Don't break your streak! Your workout is waiting.", deep_link: '/workouts', throttle_key: `workout_reminder:${prefs.user_id}:${date}`, scheduledHour: mH || 8 });
           }
 
           // Meal reminders
-          if (prefs.meal_reminders_enabled && !notificationToCreate && [8, 12, 19].includes(hour) && userTime.getMinutes() < 1) {
-            const mealNames: Record<number, string> = { 8: 'Breakfast', 12: 'Lunch', 19: 'Dinner' };
-            const mealTypes: Record<number, string> = { 8: 'breakfast', 12: 'lunch', 19: 'dinner' };
-            notificationToCreate = {
-              type: 'meal_reminder', title: `Log Your ${mealNames[hour]} 🍽️`, body: `Don't forget to track your ${mealTypes[hour].toLowerCase()}.`,
-              deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:${mealTypes[hour]}:${date}`
-            };
+          if (prefs.meal_reminders_enabled) {
+            upcomingSlots.push({ type: 'meal_reminder', title: 'Log Your Breakfast 🍽️', body: "Don't forget to track your breakfast.", deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:breakfast:${date}`, scheduledHour: 8 });
+            upcomingSlots.push({ type: 'meal_reminder', title: 'Log Your Lunch 🍽️', body: "Don't forget to track your lunch.", deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:lunch:${date}`, scheduledHour: 12 });
+            upcomingSlots.push({ type: 'meal_reminder', title: 'Log Your Dinner 🍽️', body: "Don't forget to track your dinner.", deep_link: '/foods', throttle_key: `meal_reminder:${prefs.user_id}:dinner:${date}`, scheduledHour: 19 });
           }
 
-          // Hydration reminder every 2h
-          if (prefs.hydration_reminders_enabled && !notificationToCreate && [9, 11, 13, 15, 17, 19].includes(hour) && userTime.getMinutes() < 1) {
-            const bucket = Math.floor(hour / 2);
-            notificationToCreate = {
-              type: 'hydration_reminder', title: 'Stay Hydrated! 💧', body: 'Time for a glass of water. You\'re doing great!',
-              deep_link: '/', throttle_key: `hydration_reminder:${prefs.user_id}:${date}:${bucket}`
-            };
-          }
-
-          // Streak protection at 20:00
-          if (prefs.streak_protection_enabled && !notificationToCreate && hour === 20 && userTime.getMinutes() < 1) {
-            notificationToCreate = {
-              type: 'streak_protection', title: 'Streak at Risk! 🔥', body: 'Log an activity now to protect your streak!',
-              deep_link: '/workouts', throttle_key: `streak_protection:${prefs.user_id}:${date}`
-            };
-          }
-
-          // Daily summary at 21:00
-          if (prefs.daily_summary_enabled && !notificationToCreate && hour === 21 && userTime.getMinutes() < 1) {
-            notificationToCreate = {
-              type: 'daily_summary', title: 'Daily Summary 📊', body: 'Check out your progress for today!',
-              deep_link: '/', throttle_key: `daily_summary:${prefs.user_id}:${date}`
-            };
-          }
-
-          // Motivational (deterministic pseudo-random time per user per day)
-          if (prefs.motivational_enabled && !notificationToCreate && hour >= 10 && hour <= 18) {
-            const dayHash = (parseInt(prefs.user_id.slice(0, 8), 16) + now.getDate()) % 9; // 0-8 → hours 10-18
-            if (hour === 10 + dayHash && userTime.getMinutes() < 1) {
-              const messages = [
-                "You're stronger than you think! 💪",
-                "Every step counts. Keep going! 🚀",
-                "Consistency is the key to results! 🔑",
-                "Your future self will thank you! 🌟",
-                "Small progress is still progress! 📈",
-                "Champions are made in the quiet hours! 🏆",
-                "Believe in the process! 💎",
-                "Today is a great day to push harder! ⚡",
-                "You're one workout away from a good mood! 😊",
-              ];
-              const msgIdx = (parseInt(prefs.user_id.slice(8, 16), 16) + now.getDate()) % messages.length;
-              notificationToCreate = {
-                type: 'motivational', title: 'Daily Motivation 💪', body: messages[msgIdx],
-                deep_link: '/', throttle_key: `motivational:${prefs.user_id}:${date}`
-              };
+          // Hydration reminders (every 2h from 09-19)
+          if (prefs.hydration_reminders_enabled) {
+            for (const h of [9, 11, 13, 15, 17, 19]) {
+              upcomingSlots.push({ type: 'hydration_reminder', title: 'Stay Hydrated! 💧', body: "Time for a glass of water. You're doing great!", deep_link: '/', throttle_key: `hydration_reminder:${prefs.user_id}:${date}:${Math.floor(h / 2)}`, scheduledHour: h });
             }
           }
 
-          if (notificationToCreate) {
-            // Throttle: check if notification with same key already exists today
+          // Streak protection
+          if (prefs.streak_protection_enabled) {
+            upcomingSlots.push({ type: 'streak_protection', title: 'Streak at Risk! 🔥', body: 'Log an activity now to protect your streak!', deep_link: '/workouts', throttle_key: `streak_protection:${prefs.user_id}:${date}`, scheduledHour: 20 });
+          }
+
+          // Daily summary
+          if (prefs.daily_summary_enabled) {
+            upcomingSlots.push({ type: 'daily_summary', title: 'Daily Summary 📊', body: 'Check out your progress for today!', deep_link: '/', throttle_key: `daily_summary:${prefs.user_id}:${date}`, scheduledHour: 21 });
+          }
+
+          // Motivational (once per day at deterministic time)
+          if (prefs.motivational_enabled) {
+            const dayHash = (parseInt(prefs.user_id.slice(0, 8), 16) + now.getDate()) % 9;
+            const messages = [
+              "You're stronger than you think! 💪", "Every step counts. Keep going! 🚀",
+              "Consistency is the key to results! 🔑", "Your future self will thank you! 🌟",
+              "Small progress is still progress! 📈", "Champions are made in the quiet hours! 🏆",
+              "Believe in the process! 💎", "Today is a great day to push harder! ⚡",
+              "You're one workout away from a good mood! 😊",
+            ];
+            const msgIdx = (parseInt(prefs.user_id.slice(8, 16), 16) + now.getDate()) % messages.length;
+            upcomingSlots.push({ type: 'motivational', title: 'Daily Motivation 💪', body: messages[msgIdx], deep_link: '/', throttle_key: `motivational:${prefs.user_id}:${date}`, scheduledHour: 10 + dayHash });
+          }
+
+          // Insert all upcoming slots with proper scheduled_for times
+          for (const slot of upcomingSlots) {
+            // Throttle: skip if already exists for today
             const { data: existing } = await supabase
               .from('notifications')
               .select('id')
-              .eq('throttle_key', notificationToCreate.throttle_key)
+              .eq('throttle_key', slot.throttle_key)
               .gte('created_at', todayStr)
               .limit(1);
 
-            if (!existing?.length) {
-              const { error: insertErr } = await supabase
-                .from('notifications')
-                .insert({
-                  user_id: prefs.user_id,
-                  type: notificationToCreate.type,
-                  title: notificationToCreate.title,
-                  body: notificationToCreate.body,
-                  scheduled_for: now.toISOString(),
-                  deep_link: notificationToCreate.deep_link,
-                  throttle_key: notificationToCreate.throttle_key,
-                  status: 'pending',
-                });
-              if (!insertErr) triggersCreated++;
-            }
+            if (existing?.length) continue;
+
+            // Calculate scheduled_for in user's timezone
+            const scheduledDate = new Date(now.toLocaleString('en-US', { timeZone: tz }));
+            scheduledDate.setHours(slot.scheduledHour, 0, 0, 0);
+
+            const { error: insertErr } = await supabase
+              .from('notifications')
+              .insert({
+                user_id: prefs.user_id,
+                type: slot.type,
+                title: slot.title,
+                body: slot.body,
+                scheduled_for: scheduledDate.toISOString(),
+                deep_link: slot.deep_link,
+                throttle_key: slot.throttle_key,
+                status: 'pending',
+              });
+            if (!insertErr) triggersCreated++;
           }
         }
       }
