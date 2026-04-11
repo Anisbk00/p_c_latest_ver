@@ -3327,7 +3327,7 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
   const [isGeneratingExperiments, setIsGeneratingExperiments] = useState(false);
 
   // Generate AI-powered experiments
-  const handleGenerateExperiments = useCallback(async (silent = false, count = 4) => {
+  const handleGenerateExperiments = useCallback(async (silent = false, count = 2) => {
     console.log('[experiments] handleGenerateExperiments called, silent=', silent);
     setIsGeneratingExperiments(true);
     try {
