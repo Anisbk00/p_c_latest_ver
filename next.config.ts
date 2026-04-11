@@ -52,6 +52,16 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       {
+        // Static HTML pages — prevent CDN from caching stale CSP headers
+        source: '/((?!api|_next|_vercel|favicon|logo|manifest|sw|icon).*)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=0, s-maxage=0, must-revalidate',
+          },
+        ],
+      },
+      {
         source: '/(.*)',
         headers: [
           // Content Security Policy — defense against XSS, clickjacking, code injection
