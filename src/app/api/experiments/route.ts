@@ -58,19 +58,21 @@ export async function POST(request: NextRequest) {
     const body = await request.json()
 
     // Check if there's already an active experiment
-    const { data: activeExp } = await supabase
+    const { data: activeExps, error: activeCheckError } = await supabase
       .from('ai_insights')
       .select('id, content')
       .eq('user_id', user.id)
-      .eq('insight_type', 'experiment')
-      .maybeSingle();
+      .eq('insight_type', 'experiment');
 
-    if (activeExp) {
-      const content = typeof activeExp.content === 'string' ? JSON.parse(activeExp.content) : activeExp.content;
-      if (content.status === 'active') {
-        return NextResponse.json({ 
-          error: 'An active experiment already exists. Complete or abandon it first.' 
-        }, { status: 400 });
+    if (!activeCheckError && activeExps) {
+      for (const row of activeExps) {
+        const content = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
+        if (content.status === 'active') {
+          return NextResponse.json({ 
+            error: 'An active experiment already exists. Complete or abandon it first.',
+            existingExperiment: { id: row.id, title: content.title }
+          }, { status: 400 });
+        }
       }
     }
 
@@ -114,6 +116,28 @@ export async function PATCH(request: NextRequest) {
     const body = await request.json()
 
     if (!body.experimentId) return NextResponse.json({ error: 'Missing experimentId' }, { status: 400 })
+
+    // If activating an experiment, check no other active experiment exists
+    if (body.status === 'active') {
+      const { data: allExps, error: checkError } = await supabase
+        .from('ai_insights')
+        .select('id, content')
+        .eq('user_id', user.id)
+        .eq('insight_type', 'experiment');
+
+      if (!checkError && allExps) {
+        for (const row of allExps) {
+          if (row.id === body.experimentId) continue; // skip the one being activated
+          const content = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
+          if (content.status === 'active') {
+            return NextResponse.json({ 
+              error: 'An active experiment already exists. Complete it first.',
+              existingExperiment: { id: row.id, title: content.title }
+            }, { status: 400 });
+          }
+        }
+      }
+    }
 
     // First get the existing experiment
     const { data: existing, error: fetchError } = await supabase

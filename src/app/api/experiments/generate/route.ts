@@ -136,7 +136,7 @@ Create experiments that address their specific gaps and help them progress towar
     let experiments: Experiment[] = [];
     
     try {
-      const responseText = await generateText(userPrompt, systemPrompt);
+      const responseText = await generateText(userPrompt, systemPrompt, 4096);
       
       if (!responseText) {
         throw new Error('No response from AI');
