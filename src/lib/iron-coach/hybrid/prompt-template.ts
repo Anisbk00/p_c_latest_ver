@@ -56,11 +56,13 @@ YOUR ROLE:
 
 GUIDELINES:
 • Tone: Aggressive, commanding, sarcastic, brutally honest. Roast and curse when needed. Encourage improvement.
-• Style: Short, punchy sentences. No fluff.
+• Style: Short, punchy sentences. No fluff. Get to the point FAST.
 • Honesty: Expose excuses. Call out laziness.
-• Length: 2-3 paragraphs max. No rambling.
+• LENGTH: MAXIMUM 3 sentences per response. NEVER exceed 3 sentences. If you write 4+ sentences, STOP and cut it down. Be brutal and brief.
 • Medical: "I'm a coach, not a doctor. Get cleared, then get back to work."
 • Emojis: Sparingly for impact (💀, ⚡, 🥩, 🏋️‍♂️).
+• DATA ACCURACY: Use ONLY the numbers provided in the user data below. Never make up calorie, protein, or weight numbers. If a value is 0 or missing, say "you haven't logged this yet" — do NOT invent data.
+• NEVER output weekly totals as daily values. If it says "weekly total: 8500 cal", that's ~1214 cal/day, NOT 8500 cal/day.
 
 SCOPE — NUTRITION ONLY:
 Nutrition, food, macros, calories, supplements, meal planning, recipes, hydration, diet strategy.
@@ -140,41 +142,36 @@ export function buildHybridCoachUserPrompt(input: {
     }
   }
 
-  // This week's numbers
+  // This week's numbers — ALL values are clearly labeled as daily/weekly
   lines.push('');
-  lines.push('=== THIS WEEK (Current) ===');
-  lines.push(`Calories consumed: ${profile?.caloriesConsumedThisWeek || 0}`);
-  const adherenceStr = profile?.proteinAdherencePct != null ? `${profile.proteinAdherencePct}%` : 'unknown';
-  lines.push(`Protein consumed: ${profile?.proteinConsumedThisWeek || 0}g / ${profile?.proteinTargetWeekly || '?'}g target (${adherenceStr} adherence)`);
-  lines.push(`Workouts: ${ctx.workoutsThisWeek || 0} (${profile?.totalWorkoutMinutes || 0}min total)`);
-  lines.push(`Calories burned: ${ctx.caloriesBurnedThisWeek || 0}`);
+  lines.push('=== CURRENT NUTRITION (daily averages, last 7 days) ===');
+  const calAdhStr = profile?.calorieAdherencePct != null ? `${profile.calorieAdherencePct}%` : 'no target set';
+  lines.push(`Avg daily calories: ${profile?.avgDailyCalories || 0} kcal / ${profile?.calorieTargetDaily || '?'} target (${calAdhStr} adherence)`);
+  const protAdhStr = profile?.proteinAdherencePct != null ? `${profile.proteinAdherencePct}%` : 'no target set';
+  lines.push(`Avg daily protein: ${profile?.proteinConsumedDaily || 0}g / ${profile?.proteinTargetDaily || '?'}g target (${protAdhStr} adherence)`);
+  lines.push(`Days with food logs: ${profile?.daysWithFoodLogs || 0}/7`);
+  lines.push(`Workouts this week: ${ctx.workoutsThisWeek || 0} (${profile?.totalWorkoutMinutes || 0}min)`);
+  lines.push(`Calories burned this week: ${ctx.caloriesBurnedThisWeek || 0}`);
   if (profile?.avgHydrationMl) lines.push(`Hydration avg: ${profile.avgHydrationMl}ml/day`);
-  if (profile?.avgSleepHours) lines.push(`Sleep avg: ${profile.avgSleepHours}h (quality: ${profile.avgSleepQuality || '?'}/100)`);
+  if (profile?.avgSleepHours) lines.push(`Sleep avg: ${profile.avgSleepHours}h`);
+  if (profile?.waterTargetMl) lines.push(`Water target: ${Math.round(profile.waterTargetMl / 1000)}L/day`);
 
-  // Daily nutrition history (last 14 days)
+  // Daily nutrition history (last 7 days — not too much data)
   if (ctx.dailyNutritionSummaries && ctx.dailyNutritionSummaries.length > 0) {
     lines.push('');
-    lines.push('=== DAILY NUTRITION (Last 10 Days) ===');
-    ctx.dailyNutritionSummaries.forEach(d => {
-      lines.push(`${d.date.slice(5)}: ${d.totalCalories}cal, ${d.totalProtein}g P, ${d.totalCarbs}g C, ${d.totalFat}g F`);
+    lines.push('=== DAILY NUTRITION (Last 7 Days) ===');
+    ctx.dailyNutritionSummaries.slice(0, 7).forEach(d => {
+      lines.push(`${d.date.slice(5)}: ${d.totalCalories}kcal, ${d.totalProtein}g P, ${d.totalCarbs}g C, ${d.totalFat}g F`);
     });
   }
 
-  // Weekly nutrition trends (4 weeks)
+  // Weekly nutrition trends (2 weeks — compact)
   if (ctx.weeklyNutritionAverages && ctx.weeklyNutritionAverages.length > 0) {
     lines.push('');
-    lines.push('=== NUTRITION TRENDS (4 Weeks) ===');
-    ctx.weeklyNutritionAverages.forEach(w => {
-      lines.push(`${w.weekLabel}: ${w.avgDailyCalories}cal, ${w.avgDailyProtein}g P/day (${w.daysLogged}d logged)`);
+    lines.push('=== NUTRITION TRENDS ===');
+    ctx.weeklyNutritionAverages.slice(0, 2).forEach(w => {
+      lines.push(`${w.weekLabel}: avg ${w.avgDailyCalories}kcal/day, ${w.avgDailyProtein}g P/day (${w.daysLogged}d logged)`);
     });
-    // Calculate trend direction
-    if (ctx.weeklyNutritionAverages.length >= 2) {
-      const latest = ctx.weeklyNutritionAverages[0].avgDailyCalories;
-      const oldest = ctx.weeklyNutritionAverages[ctx.weeklyNutritionAverages.length - 1].avgDailyCalories;
-      const diff = latest - oldest;
-      const direction = diff > 100 ? '↑ increasing' : diff < -100 ? '↓ decreasing' : '→ stable';
-      lines.push(`Calorie trend: ${direction} (${diff > 0 ? '+' : ''}${diff}cal/day over the period)`);
-    }
   }
   
   // Recent meals — today's and recent days (for diet questions)
@@ -186,14 +183,8 @@ export function buildHybridCoachUserPrompt(input: {
     });
   }
 
-  // Historical food pattern (older meals for memory)
-  if (ctx.historicalFoodLogs && ctx.historicalFoodLogs.length > 5) {
-    lines.push('');
-    lines.push('=== OLDER MEALS (Pattern) ===');
-    ctx.historicalFoodLogs.slice(5, 10).forEach((f: any) => {
-      lines.push(`- ${f.date ? f.date.slice(5) + ': ' : ''}${f.food || 'Unknown'}: ${f.calories || 0}cal, ${f.protein || 0}g P (${f.meal || '?'})`);
-    });
-  }
+  // Historical food pattern — REMOVED (too much context, causing confusion)
+  // The daily summaries above are sufficient
   
   // Recent workouts (for training questions)
   if (ctx.recentWorkouts?.length) {

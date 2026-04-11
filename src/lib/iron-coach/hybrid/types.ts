@@ -42,6 +42,13 @@ export interface IronCoachUserProfile {
   // Calculated protein targets based on weight and goal (null if weight unknown)
   proteinTargetDaily: number | null;
   proteinTargetWeekly: number | null;
+  // Daily averages (accurate for AI context)
+  avgDailyCalories: number;
+  proteinConsumedDaily: number;
+  daysWithFoodLogs: number;
+  calorieAdherencePct: number | null;
+  calorieTargetDaily: number | null;
+  waterTargetMl: number | null;
   workoutsThisWeek: number;
   caloriesBurnedThisWeek: number;
   totalWorkoutMinutes: number;
