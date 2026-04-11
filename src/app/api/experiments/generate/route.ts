@@ -200,15 +200,43 @@ export async function POST(request: NextRequest) {
       // ─── Step 3: Generate experiments via AI ────────────────────
       console.log('[experiments/generate] Step 3: Calling AI to generate experiments...');
 
+      // Analyze user gaps to prioritize categories
+      const gaps: string[] = [];
+      if (userContext.nutrition.avgDailyCalories === 0 || !userContext.nutrition.avgDailyCalories) {
+        gaps.push('User has NO food logging data — needs nutrition awareness experiments');
+      }
+      if (userContext.nutrition.avgDailyProtein < (userContext.nutrition.proteinTarget * 0.6)) {
+        gaps.push('Protein intake is significantly below target');
+      }
+      if (userContext.nutrition.avgDailyHydration < (userContext.nutrition.waterTarget * 0.5)) {
+        gaps.push('Hydration is very low');
+      }
+      if (userContext.training.workoutsPerWeek <= 1) {
+        gaps.push('Very low training frequency — needs consistency building');
+      }
+      if (userContext.training.workoutsPerWeek === 0) {
+        gaps.push('No workout data — needs beginner-friendly movement experiments');
+      }
+      if (userContext.profile.fitnessLevel === 'beginner') {
+        gaps.push('Beginner level — keep exercises simple and accessible');
+      }
+
       const systemPrompt = `You are an expert fitness and nutrition coach who creates personalized micro-experiments for users. 
+
+CRITICAL RULE: You MUST diversify categories. Each experiment MUST have a DIFFERENT category. If generating 2 experiments, use 2 different categories from: nutrition, training, habit. NEVER repeat the same category.
+
+Category balance priority based on user gaps:
+${gaps.length > 0 ? gaps.map((g, i) => `${i + 1}. ${g}`).join('\n') : 'No specific gaps detected — provide a balanced mix.'}
+
 Each experiment should be:
 - Small, achievable, and take 7-21 days
-- Based on the user's specific goals, current habits, and gaps
+- Based on the user's specific goals, current habits, and weaknesses
 - Easy to understand and track
 - Designed to create lasting habit changes
 - Tailored to the user's fitness level and lifestyle
+- DIRECTLY targeting their weakest areas first
 
-Generate exactly ${requestedCount} personalized experiments.
+Generate exactly ${requestedCount} personalized experiments. Each MUST have a unique category.
 Return ONLY valid JSON in this exact format, no markdown, no explanation:
 {
   "experiments": [
@@ -216,7 +244,7 @@ Return ONLY valid JSON in this exact format, no markdown, no explanation:
       "id": "exp_1",
       "title": "Short catchy title",
       "description": "2-3 sentence description of the experiment",
-      "category": "nutrition|training|habit",
+      "category": "nutrition",
       "duration": 14,
       "expectedOutcome": "What the user can expect to achieve",
       "dailyActions": ["Specific action 1", "Specific action 2"],
@@ -233,7 +261,18 @@ SCOPE: Only fitness, nutrition, training, and health habits. Reject all off-topi
 USER DATA:
 ${JSON.stringify(userContext)}
 
-Create experiments that address their specific gaps and help them progress toward their goals. Focus on practical, actionable changes they can make today. Return ONLY the JSON object.`;
+IDENTIFIED WEAKNESSES:
+${gaps.length > 0 ? gaps.join('\n') : 'Balanced profile — provide varied experiments across all categories.'}
+
+RULES:
+1. Each experiment MUST have a DIFFERENT category (nutrition, training, habit)
+2. Prioritize categories where the user has the biggest gaps
+3. If user has no workout data, include a "training" experiment for beginners
+4. If user has poor nutrition tracking, include a "nutrition" experiment
+5. Always include a "habit" experiment for behavior change
+6. Make experiments specific to the user's data, not generic advice
+
+Create experiments that directly address their weaknesses. Return ONLY the JSON object.`;
 
       let experiments: Experiment[] = [];
 
@@ -268,6 +307,30 @@ Create experiments that address their specific gaps and help them progress towar
       if (experiments.length === 0) {
         experiments = generateFallbackExperiments(userContext);
         console.log('[experiments/generate] No experiments from AI, using', experiments.length, 'fallback experiments');
+      }
+
+      // Force category diversity — if AI returned duplicates, fix them
+      const allCategories = ['nutrition', 'training', 'habit'];
+      const usedCategories = new Set(experiments.slice(0, requestedCount).map(e => e.category));
+      const missingCategories = allCategories.filter(c => !usedCategories.has(c));
+      
+      if (missingCategories.length > 0 && requestedCount >= 2) {
+        // Replace duplicate categories with missing ones
+        const exps = experiments.slice(0, requestedCount);
+        const categoryCount: Record<string, number> = {};
+        for (const exp of exps) {
+          categoryCount[exp.category] = (categoryCount[exp.category] || 0) + 1;
+        }
+        let missIdx = 0;
+        for (let i = 0; i < exps.length && missIdx < missingCategories.length; i++) {
+          if (categoryCount[exps[i].category] > 1) {
+            exps[i].category = missingCategories[missIdx] as 'nutrition' | 'training' | 'habit';
+            categoryCount[exps[i].category] = (categoryCount[exps[i].category] || 0) + 1;
+            missIdx++;
+          }
+        }
+        experiments = exps;
+        console.log('[experiments/generate] Forced category diversity, final categories:', experiments.map(e => e.category));
       }
 
       // Ensure unique IDs and cap to requested count
