@@ -1,12 +1,13 @@
-// ═══════════════════════════════════════════════════════════════════
+// ═══════════════════════════════════════════════════════════════════════════════
 // Supabase Edge Function: analyze-food
-// 
-// Analyzes food photos using Gemini Vision API.
-// Runs in Supabase (150s timeout) instead of Vercel (10s Hobby timeout).
 //
-// Environment Variables (secrets):
+// Analyzes food photos using Gemini Vision API with 150s timeout.
+// This avoids Vercel Hobby's 10s serverless function timeout.
+//
+// Environment Variables (set in Supabase Dashboard → Settings → Edge Functions → Secrets):
 //   GEMINI_API_KEY - Google Gemini API key
-// ═══════════════════════════════════════════════════════════════════
+//   SUPABASE_SERVICE_ROLE_KEY - For authorization (auto-injected)
+// ═══════════════════════════════════════════════════════════════════════════════
 
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 
@@ -35,20 +36,8 @@ Important:
 - Always return valid JSON with all fields present
 - Serving size should be in grams for solid foods, ml for liquids`;
 
-function extractJson(text: string): string {
-  let clean = text.trim();
-  if (clean.startsWith('```json')) clean = clean.slice(7);
-  else if (clean.startsWith('```')) clean = clean.slice(3);
-  if (clean.endsWith('```')) clean = clean.slice(0, -3);
-  clean = clean.trim();
-  if (!clean.startsWith('{')) {
-    const match = clean.match(/\{[\s\S]*\}/);
-    if (match) clean = match[0];
-  }
-  return clean.replace(/[\r\n]+/g, ' ').trim();
-}
-
 Deno.serve(async (req: Request) => {
+  // Handle CORS
   if (req.method === "OPTIONS") {
     return new Response(null, {
       status: 204,
@@ -67,157 +56,194 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Auth: accept service role key or a valid Supabase JWT
+  // Authorization - only accept service role key
   const authHeader = req.headers.get("authorization");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  if (serviceKey && authHeader !== `Bearer ${serviceKey}`) {
-    // For non-service-role requests, we still allow if they have any valid auth header
-    // (the Vercel proxy handles user auth before forwarding)
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+  if (!serviceKey || authHeader !== `Bearer ${serviceKey}`) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Check Gemini API key
+  const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
+  if (!geminiApiKey) {
+    return new Response(
+      JSON.stringify({ error: "GEMINI_API_KEY not configured in edge function" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 
   try {
     const body = await req.json();
     const { image } = body;
 
-    if (!image) {
-      return new Response(JSON.stringify({ error: "Missing image" }), {
-        status: 400,
-        headers: { "Content-Type": "application/json" },
-      });
+    if (!image || typeof image !== "string") {
+      return new Response(
+        JSON.stringify({ error: "Missing or invalid image field" }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
     }
 
-    // Extract base64 data
+    // Parse image data
     let base64Data: string;
-    let mimeType = "image/jpeg";
+    let mimeType: string = "image/jpeg";
 
     if (image.startsWith("data:")) {
       const matches = image.match(/^data:([^;]+);base64,(.+)$/);
       if (!matches) {
-        return new Response(JSON.stringify({ error: "Invalid image format" }), {
-          status: 400,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: "Invalid image data URL format" }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
       }
       mimeType = matches[1];
       base64Data = matches[2];
     } else {
-      base64Data = image;
+      // Fetch from URL
+      const imgResponse = await fetch(image, { signal: AbortSignal.timeout(10000) });
+      if (!imgResponse.ok) {
+        return new Response(
+          JSON.stringify({ error: `Failed to fetch image: ${imgResponse.status}` }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+      }
+      const arrayBuffer = await imgResponse.arrayBuffer();
+      const bytes = new Uint8Array(arrayBuffer);
+      let binary = "";
+      for (const byte of bytes) binary += String.fromCharCode(byte);
+      base64Data = btoa(binary);
+      mimeType = imgResponse.headers.get("content-type") || "image/jpeg";
     }
 
-    // Call Gemini Vision API
-    const apiKey = Deno.env.get("GEMINI_API_KEY");
-    if (!apiKey) {
-      return new Response(JSON.stringify({ error: "GEMINI_API_KEY not configured" }), {
-        status: 500,
-        headers: { "Content-Type": "application/json" },
-      });
-    }
+    console.log(`[analyze-food] Image received: ${mimeType}, base64 length: ${base64Data.length}`);
 
-    const modelUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`;
+    // Call Gemini Vision API with 90s timeout
+    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
 
-    const response = await fetch(modelUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{
+    const geminiPayload = {
+      contents: [
+        {
           parts: [
             { text: FOOD_ANALYSIS_PROMPT },
-            { inlineData: { mimeType, data: base64Data } },
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data,
+              },
+            },
           ],
-        }],
-        generationConfig: {
-          temperature: 0.35,
-          maxOutputTokens: 2048,
         },
-      }),
-    });
+      ],
+      generationConfig: {
+        temperature: 0.35,
+        maxOutputTokens: 2048,
+      },
+    };
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error("[analyze-food] Gemini API error:", response.status, errorText);
-      return new Response(JSON.stringify({
-        error: `AI analysis failed: ${response.status}`,
-        success: true,
-        food: {
-          name: "Unknown Food",
-          description: "Could not analyze this image",
-          calories: 0, protein: 0, carbs: 0, fat: 0,
-          servingSize: 100, servingUnit: "g",
-          confidence: 0.1, detectedItems: [],
-        },
-        provider: "gemini-2.0-flash",
-        model: "gemini-2.0-flash",
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
 
-    const result = await response.json();
-    const content = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!content) {
-      return new Response(JSON.stringify({
-        error: "No response from AI",
-        success: true,
-        food: {
-          name: "Unknown Food", description: "Could not analyze this image",
-          calories: 0, protein: 0, carbs: 0, fat: 0,
-          servingSize: 100, servingUnit: "g",
-          confidence: 0.1, detectedItems: [],
-        },
-        provider: "gemini-2.0-flash",
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    }
-
-    // Parse JSON
     try {
-      const jsonStr = extractJson(content);
-      const food = JSON.parse(jsonStr);
+      const geminiResponse = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(geminiPayload),
+        signal: controller.signal,
+      });
 
-      return new Response(JSON.stringify({
-        success: true,
-        food: {
-          name: String(food.name || "Unknown Food").slice(0, 100),
-          description: String(food.description || "").slice(0, 200),
-          calories: Math.max(0, Number(food.calories) || 0),
-          protein: Math.max(0, Number(food.protein) || 0),
-          carbs: Math.max(0, Number(food.carbs) || 0),
-          fat: Math.max(0, Number(food.fat) || 0),
-          fiber: food.fiber ? Math.max(0, Number(food.fiber)) : undefined,
-          sugar: food.sugar ? Math.max(0, Number(food.sugar)) : undefined,
-          servingSize: Math.max(1, Number(food.servingSize) || 100),
-          servingUnit: ["g", "ml", "piece"].includes(food.servingUnit) ? food.servingUnit : "g",
-          confidence: Math.min(1, Math.max(0, Number(food.confidence) || 0.5)),
-          detectedItems: Array.isArray(food.detectedItems)
-            ? food.detectedItems.slice(0, 10).map(String)
-            : [],
-        },
-        provider: "gemini-2.0-flash",
-        model: "gemini-2.0-flash",
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
-    } catch (parseError) {
-      console.error("[analyze-food] JSON parse error:", content);
-      return new Response(JSON.stringify({
-        success: true,
-        food: {
-          name: "Unknown Food", description: "Could not analyze this image",
-          calories: 0, protein: 0, carbs: 0, fat: 0,
-          servingSize: 100, servingUnit: "g",
-          confidence: 0.1, detectedItems: [],
-        },
-        provider: "gemini-2.0-flash",
-        parseWarning: "AI response could not be parsed",
-      }), { status: 200, headers: { "Content-Type": "application/json" } });
+      clearTimeout(timeoutId);
+
+      if (!geminiResponse.ok) {
+        const errorData = await geminiResponse.text();
+        console.error("[analyze-food] Gemini error:", geminiResponse.status, errorData);
+        return new Response(
+          JSON.stringify({
+            error: `Gemini API error: ${geminiResponse.status}`,
+            details: errorData.substring(0, 500),
+          }),
+          { status: 502, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      const geminiResult = await geminiResponse.json();
+      const textContent = geminiResult.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!textContent) {
+        console.error("[analyze-food] No content in Gemini response:", JSON.stringify(geminiResult).substring(0, 500));
+        return new Response(
+          JSON.stringify({ error: "No analysis result from AI" }),
+          { status: 502, headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      // Parse JSON from response
+      let cleanContent = textContent.trim();
+      if (cleanContent.startsWith("```json")) cleanContent = cleanContent.slice(7);
+      else if (cleanContent.startsWith("```")) cleanContent = cleanContent.slice(3);
+      if (cleanContent.endsWith("```")) cleanContent = cleanContent.slice(0, -3);
+      cleanContent = cleanContent.trim();
+
+      if (!cleanContent.startsWith("{")) {
+        const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) cleanContent = jsonMatch[0];
+      }
+
+      cleanContent = cleanContent.replace(/[\r\n]+/g, " ").trim();
+
+      const food = JSON.parse(cleanContent);
+
+      console.log(`[analyze-food] Success: ${food.name} (${food.calories} kcal, confidence: ${food.confidence})`);
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          food: {
+            name: String(food.name || "Unknown Food").slice(0, 100),
+            description: String(food.description || "").slice(0, 200),
+            calories: Math.max(0, Number(food.calories) || 0),
+            protein: Math.max(0, Number(food.protein) || 0),
+            carbs: Math.max(0, Number(food.carbs) || 0),
+            fat: Math.max(0, Number(food.fat) || 0),
+            fiber: food.fiber ? Math.max(0, Number(food.fiber)) : undefined,
+            sugar: food.sugar ? Math.max(0, Number(food.sugar)) : undefined,
+            servingSize: Math.max(1, Number(food.servingSize) || 100),
+            servingUnit: ["g", "ml", "piece"].includes(food.servingUnit) ? food.servingUnit : "g",
+            confidence: Math.min(1, Math.max(0, Number(food.confidence) || 0.5)),
+            detectedItems: Array.isArray(food.detectedItems)
+              ? food.detectedItems.slice(0, 10).map(String)
+              : [],
+          },
+          provider: "gemini-2.0-flash",
+          model: "gemini-2.0-flash",
+        }),
+        {
+          status: 200,
+          headers: {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          },
+        }
+      );
+    } finally {
+      clearTimeout(timeoutId);
     }
-
   } catch (error) {
     console.error("[analyze-food] Error:", error);
-    return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : "Analysis failed",
-    }), { status: 500, headers: { "Content-Type": "application/json" } });
+
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return new Response(
+        JSON.stringify({ error: "Image analysis timed out. Please try a clearer or simpler photo." }),
+        { status: 504, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        error: error instanceof Error ? error.message : "Failed to analyze food photo",
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
   }
 });

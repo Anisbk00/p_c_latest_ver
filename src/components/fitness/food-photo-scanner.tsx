@@ -28,6 +28,33 @@ import { apiFetch } from '@/lib/mobile-api';
 import { Button } from "@/components/ui/button";
 
 // ═══════════════════════════════════════════════════════════════
+// Image Compression Utility
+// Reduces camera photos from 5-20MB to ~200KB for fast upload
+// ═══════════════════════════════════════════════════════════════
+
+const MAX_IMAGE_DIMENSION = 1280;
+const JPEG_QUALITY = 0.75;
+
+function compressImage(canvas: HTMLCanvasElement): string {
+  let { width, height } = canvas;
+
+  // Scale down if larger than max dimension
+  if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
+    const ratio = Math.min(MAX_IMAGE_DIMENSION / width, MAX_IMAGE_DIMENSION / height);
+    width = Math.round(width * ratio);
+    height = Math.round(height * ratio);
+  }
+
+  const tempCanvas = document.createElement('canvas');
+  tempCanvas.width = width;
+  tempCanvas.height = height;
+  const ctx = tempCanvas.getContext('2d')!;
+  ctx.drawImage(canvas, 0, 0, width, height);
+
+  return tempCanvas.toDataURL('image/jpeg', JPEG_QUALITY);
+}
+
+// ═══════════════════════════════════════════════════════════════
 // Types
 // ═══════════════════════════════════════════════════════════════
 
@@ -163,18 +190,33 @@ export function FoodPhotoScanner({
     // Stop camera
     stopCamera();
 
-    // Convert to base64
-    const imageData = canvas.toDataURL("image/jpeg", 0.9);
-    setCapturedImage(imageData);
+    // Convert to base64 (full quality for display)
+    const fullImageData = canvas.toDataURL("image/jpeg", 0.9);
+    setCapturedImage(fullImageData);
     setStatus("analyzing");
+
+    // Compress image for API upload (reduces payload from ~5-20MB to ~200KB)
+    const compressedImage = compressImage(canvas);
 
     // Analyze the image
     try {
       const response = await apiFetch("/api/analyze-food-photo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: imageData }),
+        body: JSON.stringify({ image: compressedImage }),
       });
+
+      // Handle non-JSON responses (504 HTML error pages, etc.)
+      const contentType = response.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) {
+        if (response.status === 504) {
+          throw new Error('Server timed out. The image may be too complex — try a clearer photo.');
+        }
+        if (response.status >= 500) {
+          throw new Error('Server error. Please try again in a moment.');
+        }
+        throw new Error(`Unexpected response (${response.status}). Please try again.`);
+      }
 
       const data = await response.json();
 
@@ -187,7 +229,8 @@ export function FoodPhotoScanner({
       }
     } catch (err) {
       console.error("[FoodPhotoScanner] Analysis error:", err);
-      setError("Failed to analyze photo. Please try again.");
+      const message = err instanceof Error ? err.message : 'Failed to analyze photo. Please try again.';
+      setError(message);
       setStatus("error");
     }
   }, [stopCamera]);
