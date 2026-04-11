@@ -185,10 +185,10 @@ export async function buildIronCoachContext(userId: string, question: string): P
       .select('streak_count, login_streak')
       .eq('user_id', userId)
       .maybeSingle(),
-    // User goals (include calorie and protein targets)
+    // User goals
     supabase
       .from('goals')
-      .select('goal_type, target_weight_kg, target_date, calories_target, protein_target_g, water_target_ml, created_at')
+      .select('goal_type, target_weight_kg, target_date, created_at')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(3),
@@ -290,9 +290,6 @@ export async function buildIronCoachContext(userId: string, question: string): P
     goal_type?: string | null;
     target_weight_kg?: number | null;
     target_date?: string | null;
-    calories_target?: number | null;
-    protein_target_g?: number | null;
-    water_target_ml?: number | null;
   }>;
 
   const workouts = (workoutsRes.data ?? []) as Array<{
@@ -364,9 +361,6 @@ export async function buildIronCoachContext(userId: string, question: string): P
   const settings = settingsRes.data as Record<string, any> | null;
 
   const latestGoal = goals[0];
-  const calorieTargetDaily = latestGoal?.calories_target || null;
-  const proteinTargetFromGoals = latestGoal?.protein_target_g || null;
-  const waterTargetMl = latestGoal?.water_target_ml || null;
 
   // Get latest body metrics (need these early for weight calculation)
   const latestWeight = bodyMetrics.find(m => m.metric_type === 'weight');
@@ -488,19 +482,15 @@ export async function buildIronCoachContext(userId: string, question: string): P
   const userWeightKg = profile?.weight_kg || latestWeight?.value || null;
   const calculatedProteinTarget = calculateProteinTarget(userWeightKg, latestGoal?.goal_type);
   
-  // Use goals table target first, then calculated, then null
-  const proteinTargetDaily = proteinTargetFromGoals || calculatedProteinTarget;
-  const proteinTargetWeekly = proteinTargetDaily ? proteinTargetDaily * 7 : null;
+  // Use calculated target if available, otherwise we cannot calculate adherence accurately
+  // Protein adherence will be shown as "unknown" if we don't have the target
+  const proteinTargetDaily = calculatedProteinTarget;
+  const proteinTargetWeekly = calculatedProteinTarget ? calculatedProteinTarget * 7 : null;
   
   // Calculate adherence only if we have a valid target
   const proteinAdherencePct = proteinTargetWeekly 
     ? clampPercent((proteinConsumed / proteinTargetWeekly) * 100)
     : null; // null means unknown (no target available)
-
-  // Calculate calorie adherence (7-day average vs daily target)
-  const daysWithFood = new Set(foodLogs7d.map(f => f.logged_at?.split('T')[0])).size;
-  const avgDailyCalories = daysWithFood > 0 ? Math.round(caloriesConsumed / daysWithFood) : 0;
-  const calorieAdherencePct = calorieTargetDaily ? clampPercent((avgDailyCalories / calorieTargetDaily) * 100) : null;
 
   const latestInsightConfidence = insights[0]?.confidence ?? 0.75;
   const momentumScore = clampPercent((workoutsThisWeek * 15) + ((proteinAdherencePct ?? 0) * 0.55) + (latestInsightConfidence * 20));
@@ -613,25 +603,13 @@ export async function buildIronCoachContext(userId: string, question: string): P
     proteinTargetDaily,
     proteinTargetWeekly,
     
-    // Daily averages (for accurate AI context)
-    avgDailyCalories,
-    proteinConsumedDaily,
-    daysWithFoodLogs: daysWithFood,
-    calorieTargetDaily,
-    waterTargetMl,
-    
     // Recent stats
     workoutsThisWeek,
     caloriesBurnedThisWeek,
     totalWorkoutMinutes,
     proteinAdherencePct,
-    calorieAdherencePct,
-    calorieTargetDaily,
-    waterTargetMl,
     caloriesConsumedThisWeek: Math.round(caloriesConsumed),
-    avgDailyCalories,
     proteinConsumedThisWeek: Math.round(proteinConsumed),
-    proteinConsumedDaily: daysWithFood > 0 ? Math.round(proteinConsumed / daysWithFood) : 0,
     
     // Sleep
     avgSleepHours: avgSleepMinutes ? Math.round(avgSleepMinutes / 60 * 10) / 10 : null,
