@@ -206,15 +206,9 @@ export function useGPSTracking(
         }
         
         wakeLockRef.current = await navigator.wakeLock.request('screen');
-        
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[GPS] Wake Lock acquired');
-        }
-        
+
         const releaseHandler = () => {
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[GPS] Wake Lock released');
-          }
+          // Wake lock released
         };
         wakeLockReleaseHandlerRef.current = releaseHandler;
         wakeLockRef.current.addEventListener('release', releaseHandler);
@@ -304,10 +298,8 @@ export function useGPSTracking(
           Date.now() - new Date(w.startedAt).getTime() < 24 * 60 * 60 * 1000
         );
         setIncompleteSession(incomplete || null);
-      } catch (err) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('[GPS] Failed to check incomplete sessions:', err);
-        }
+      } catch {
+        // Ignore incomplete session check failure
       }
     };
     
@@ -672,10 +664,8 @@ export function useGPSTracking(
     
     try {
       await saveOfflineWorkout(offlineWorkout);
-    } catch (err) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to persist session:', err);
-      }
+    } catch {
+      // Ignore persist failure (non-critical)
     }
   }, []); // GPS-SS-1: uses isOfflineRef to avoid stale closure
   
@@ -853,16 +843,9 @@ export function useGPSTracking(
         // Request permission on native
         const perms = await Geolocation.requestPermissions();
         if (perms.location === 'denied') {
-          if (process.env.NODE_ENV === 'development') {
-            console.error('[GPS] Location permission denied (native)');
-          }
           setGpsError('Location permission denied. Please enable location access.');
           setIsTracking(false);
           return;
-        }
-        
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[GPS] Starting Capacitor geolocation tracking (native)');
         }
         
         const capWatchId = await Geolocation.watchPosition(
@@ -876,9 +859,7 @@ export function useGPSTracking(
             if (err) {
               // Don't treat timeout as hard error - will retry
               if (err.code === 3) { // TIMEOUT
-                if (process.env.NODE_ENV === 'development') {
-                  console.warn('[GPS] Capacitor geolocation timeout (will retry)');
-                }
+                // Will retry automatically
               } else {
                 console.error('[GPS] Capacitor geolocation error:', err);
               }
@@ -931,10 +912,8 @@ export function useGPSTracking(
         }
         
         return; // Exit early for native path
-      } catch (e) {
-        if (process.env.NODE_ENV === 'development') {
-          console.error('[GPS] Capacitor geolocation failed, falling back to web', e);
-        }
+      } catch {
+        // Fall back to web geolocation
       }
     }
     
@@ -1110,10 +1089,8 @@ export function useGPSTracking(
     
     try {
       await saveOfflineWorkout(offlineWorkout);
-    } catch (err) {
-      if (process.env.NODE_ENV === 'development') {
-        console.error('Failed to save final session:', err);
-      }
+    } catch {
+      // Ignore save failure for final session
     }
     
     // Haptic feedback

@@ -312,6 +312,7 @@ export function calculateStreak(entries: FoodLogEntry[]): number {
 interface AppContextType {
   // User
   user: UserProfile | null;
+  userProfile: UserProfileDetails | null;
   userLoading: boolean;
   refetchUser: () => Promise<void>;
   
@@ -2590,6 +2591,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const value = useMemo<AppContextType>(() => ({
     user,
+    userProfile,
     userLoading,
     refetchUser: () => fetchUser(false),
     targets,
@@ -2652,7 +2654,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     userSettings,
     setUserSettings,
   }), [
-    user, userLoading, fetchUser, targets, targetsLoading, fetchTargets,
+    user, userProfile, userLoading, fetchUser, targets, targetsLoading, fetchTargets,
     nutrition, nutritionLoading, fetchNutrition, addNutrition, removeNutrition,
     foodLogEntries, foodLogLoading, foodLogSyncing, fetchFoodLog, addFoodEntry, updateFoodEntry, deleteFoodEntry,
     selectedFoodDate, setSelectedFoodDate, goToToday,

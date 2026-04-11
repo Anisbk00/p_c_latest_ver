@@ -566,9 +566,6 @@ export function LiveTrackingMap({
       // Mark style as NOT loaded before switching - prevents stale route updates
       styleLoadedRef.current = false;
       queueMicrotask(() => setSourcesReady(false));
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Map] Switching style to theme:', appTheme);
-      }
       map.setStyle(createMapStyle(appTheme));
     }
   }, [appTheme]);
@@ -623,9 +620,6 @@ export function LiveTrackingMap({
       // Navigation controls removed - users can use touch gestures or mouse wheel to zoom
 
       map.on('load', () => {
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[Map] Map loaded successfully');
-        }
         setIsLoading(false);
         onMapReady?.();
         
@@ -797,9 +791,6 @@ export function LiveTrackingMap({
         
         // Mark sources and style as ready - route can now be rendered
         styleLoadedRef.current = true;
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[Map] Sources and layers added, ready for route data');
-        }
         setSourcesReady(true);
       });
 
@@ -960,10 +951,6 @@ export function LiveTrackingMap({
     if (routeUpdateRafRef.current) cancelAnimationFrame(routeUpdateRafRef.current);
     
     routeUpdateRafRef.current = requestAnimationFrame(() => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[Map] Updating route with', points.length, 'points, isTracking:', isTracking);
-      }
-
       // Update basic route line
       const coordinates = points.map(p => [p.lon, p.lat] as [number, number]);
 
@@ -977,13 +964,8 @@ export function LiveTrackingMap({
             coordinates,
           },
         });
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[Map] Route source updated with', coordinates.length, 'coordinates');
-        }
       } else {
-        if (process.env.NODE_ENV === 'development') {
-          console.warn('[Map] Route source not found!');
-        }
+        // Route source not yet ready
       }
 
       // Create speed-colored segments
@@ -1020,9 +1002,6 @@ export function LiveTrackingMap({
           type: 'FeatureCollection',
           features,
         });
-        if (process.env.NODE_ENV === 'development') {
-          console.log('[Map] Segments updated with', features.length, 'features');
-        }
       }
 
       // Fit to route bounds (F-LTM-4.15: prevent animation queuing)
@@ -1033,9 +1012,6 @@ export function LiveTrackingMap({
         if (!isTracking) {
           // Post-workout view: always fit the entire route with more padding
           map.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 0 });
-          if (process.env.NODE_ENV === 'development') {
-            console.log('[Map] Fitted to route bounds (post-workout):', coordinates.length, 'points');
-          }
         } else if (isFollowingRef.current) {
           // Active tracking: only animate for initial points to prevent animation queuing
           map.fitBounds(bounds, { padding: 50, maxZoom: 16, duration: points.length <= 5 ? 0 : 500 });

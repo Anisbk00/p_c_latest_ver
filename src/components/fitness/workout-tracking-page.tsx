@@ -769,15 +769,28 @@ function WorkoutHistoryItem({
 
 export function WorkoutTrackingPage() {
   // Global context
-  const { workouts, workoutsLoading, refetchWorkouts, latestWeight } = useApp();
+  const { workouts, workoutsLoading, refetchWorkouts, latestWeight, userProfile } = useApp();
   const { isSyncing } = useWorkoutSync();
 
   // Estimated max heart rate (Tanaka formula: 208 - 0.7 × age).
-  // Uses age 30 as default when birthDate is unavailable from profile.
+  // Derives age from userProfile.birthDate when available; falls back to 30.
+  const birthDate = userProfile?.birthDate ?? null;
   const estimatedMaxHR = useMemo(() => {
-    const defaultAge = 30;
-    return Math.round(208 - 0.7 * defaultAge);
-  }, []);
+    let age = 30;
+    if (birthDate) {
+      const birth = new Date(birthDate);
+      const now = new Date();
+      if (!isNaN(birth.getTime())) {
+        let computed = now.getFullYear() - birth.getFullYear();
+        const monthDiff = now.getMonth() - birth.getMonth();
+        if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) {
+          computed--;
+        }
+        if (computed > 0) age = computed;
+      }
+    }
+    return Math.round(208 - 0.7 * age);
+  }, [birthDate]);
 
   // GPS tracking hook
   const {
@@ -1026,7 +1039,7 @@ export function WorkoutTrackingPage() {
                     key={workout.id}
                     workout={workout as Workout}
                     onTap={() => {
-                      console.log('[WorkoutDetail] Tapped workout:', workout.id);
+                      // Navigate to workout detail (not yet implemented)
                     }}
                   />
                 ))}
