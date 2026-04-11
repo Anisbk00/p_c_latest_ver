@@ -182,6 +182,7 @@ export async function POST(request: NextRequest) {
     // ════════════════════════════════════════════════════
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    let usedEdgeFunction = false
 
     if (supabaseUrl && serviceKey) {
       try {
@@ -196,18 +197,25 @@ export async function POST(request: NextRequest) {
         })
 
         if (edgeResponse.ok) {
+          usedEdgeFunction = true
           const result = await edgeResponse.json()
           return NextResponse.json(result)
         }
 
-        // Edge function returned error - return its error to client
-        const edgeError = await edgeResponse.json().catch(() => null)
-        console.warn('[analyze-food-photo] Edge function returned:', edgeResponse.status, edgeError)
-        if (edgeError?.error) {
-          return NextResponse.json(
-            { error: edgeError.error, edgeStatus: edgeResponse.status },
-            { status: edgeResponse.status >= 500 ? 502 : edgeResponse.status }
-          )
+        // Edge function exists but returned an error (e.g. 504 timeout from Gemini)
+        // If it's a 404/503, the function isn't deployed — fall through to direct Gemini
+        if (edgeResponse.status === 404 || edgeResponse.status === 503) {
+          console.warn('[analyze-food-photo] Edge function not deployed (status:', edgeResponse.status, '), falling back to direct Gemini')
+        } else {
+          // Try to return the edge function's error
+          const edgeError = await edgeResponse.json().catch(() => null)
+          console.warn('[analyze-food-photo] Edge function error:', edgeResponse.status, edgeError)
+          if (edgeError?.error) {
+            return NextResponse.json(
+              { error: edgeError.error },
+              { status: 502 }
+            )
+          }
         }
       } catch (edgeError) {
         console.warn('[analyze-food-photo] Edge function unavailable, falling back to direct Gemini')
@@ -217,6 +225,7 @@ export async function POST(request: NextRequest) {
     // ════════════════════════════════════════════════════
     // PATH 2: Direct Gemini API call (fallback, within 60s)
     // ════════════════════════════════════════════════════
+    console.log('[analyze-food-photo] Using direct Gemini API', usedEdgeFunction ? '(edge function failed)' : '(no edge function config)')
     try {
       const food = await callGeminiDirect(base64Data, mimeType)
       return NextResponse.json(buildFoodResponse(food))
@@ -226,13 +235,13 @@ export async function POST(request: NextRequest) {
 
       if (msg.includes('No Gemini API key')) {
         return NextResponse.json(
-          { error: 'AI service not configured. Please set GEMINI_API_KEY.' },
+          { error: 'AI service not configured.' },
           { status: 503 }
         )
       }
 
       return NextResponse.json(
-        { error: `AI analysis failed: ${msg}` },
+        { error: `Food analysis failed. Please try again.` },
         { status: 502 }
       )
     }
