@@ -42,8 +42,13 @@ export async function GET(_request: NextRequest) {
       return NextResponse.json({ user: formatUser(user, newProfile) })
     }
 
-    const { data: userProfile } = await supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle()
-    const { data: settings } = await supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle()
+    // Parallelize user_profile and user_settings queries
+    const [userProfileResult, settingsResult] = await Promise.all([
+      supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle(),
+      supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
+    ]);
+    const { data: userProfile } = userProfileResult;
+    const { data: settings } = settingsResult;
 
     return NextResponse.json({
       user: {

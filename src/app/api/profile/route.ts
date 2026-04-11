@@ -261,28 +261,38 @@ export async function GET(request: NextRequest) {
     const level = Number(profile?.level) || 1
 
     // ─── Resolve image URLs for progressPhotos (signed URLs for private buckets) ────
-    const photosWithUrls = await Promise.all(
-      (finalProgressPhotos ?? []).map(async (p: any) => {
-        let imageUrl: string | null = null;
-        if (p.path) {
-          if (p.path.startsWith('data:') || p.path.startsWith('http')) {
-            imageUrl = p.path;
-          } else {
-            // Try signed URL first (works for both public and private buckets)
-            try {
-              const { data: signedData } = await supabase.storage
-                .from('progress-photos')
-                .createSignedUrl(p.path, 3600); // 1 hour expiry
-              if (signedData?.signedUrl) imageUrl = signedData.signedUrl;
-            } catch {
-              // Signed URL failed, fall through to public URL
-            }
-            if (!imageUrl) imageUrl = getPublicUrl(p.path, 'progress-photos');
-          }
+    // Batch signed URLs for all photos at once instead of N individual requests
+    const photoPaths = (finalProgressPhotos ?? [])
+      .map((p: any) => p.path)
+      .filter((path: string) => path && !path.startsWith('data:') && !path.startsWith('http'));
+    
+    let signedUrlMap = new Map<string, string>();
+    if (photoPaths.length > 0) {
+      try {
+        const { data: signedUrls } = await supabase.storage
+          .from('progress-photos')
+          .createSignedUrls(photoPaths, 3600);
+        if (signedUrls) {
+          signedUrls.forEach((item: any) => {
+            if (item.signedUrl) signedUrlMap.set(item.path, item.signedUrl);
+          });
         }
-        return { ...p, _resolvedImageUrl: imageUrl };
-      })
-    )
+      } catch {
+        // Batch failed, fall through to individual public URLs
+      }
+    }
+    
+    const photosWithUrls = (finalProgressPhotos ?? []).map((p: any) => {
+      let imageUrl: string | null = null;
+      if (p.path) {
+        if (p.path.startsWith('data:') || p.path.startsWith('http')) {
+          imageUrl = p.path;
+        } else {
+          imageUrl = signedUrlMap.get(p.path) || getPublicUrl(p.path, 'progress-photos');
+        }
+      }
+      return { ...p, _resolvedImageUrl: imageUrl };
+    });
 
     // Build body composition object from latest metrics
     const bodyCompositionData = latestBodyFat ? {

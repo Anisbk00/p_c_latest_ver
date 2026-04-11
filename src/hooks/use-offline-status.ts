@@ -156,7 +156,7 @@ export function useOfflineStatus(): OfflineStatus {
     });
 
     // Periodic sync stats update
-    const interval = setInterval(updateSyncStats, 30000); // Every 30 seconds
+    const interval = setInterval(updateSyncStats, 60000); // Fallback poll — primary trigger is syncManager.subscribe()
 
     return () => {
       clearTimeout(timeoutId);
@@ -201,7 +201,7 @@ export function useSyncStats(): SyncStats {
       updateStats();
     });
 
-    const interval = setInterval(updateStats, 10000);
+    const interval = setInterval(updateStats, 60000); // Fallback poll — primary trigger is syncManager.subscribe()
 
     return () => {
       unsubscribe();

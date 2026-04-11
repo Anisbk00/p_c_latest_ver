@@ -59,20 +59,20 @@ export async function POST(request: NextRequest) {
         // Use admin client to bypass RLS for initial row creation
         try {
           const admin = createAdminClient()
-          // Create profile
-          await admin.from('profiles').insert({
-            id: data.user.id,
-            email: data.user.email ?? '',
-            name: (data.user.user_metadata?.name ?? data.user.user_metadata?.full_name ?? null) as string | null,
-            timezone: 'UTC',
-            locale: 'en',
-            coaching_tone: 'encouraging',
-            privacy_mode: false,
-          })
-          // Create user_settings
-          await admin.from('user_settings').insert({ user_id: data.user.id })
-          // Create user_profiles
-          await admin.from('user_profiles').insert({ user_id: data.user.id })
+          // Parallelize all three inserts for faster new-user setup
+          await Promise.all([
+            admin.from('profiles').insert({
+              id: data.user.id,
+              email: data.user.email ?? '',
+              name: (data.user.user_metadata?.name ?? data.user.user_metadata?.full_name ?? null) as string | null,
+              timezone: 'UTC',
+              locale: 'en',
+              coaching_tone: 'encouraging',
+              privacy_mode: false,
+            }) as unknown as Promise<any>,
+            admin.from('user_settings').insert({ user_id: data.user.id }) as unknown as Promise<any>,
+            admin.from('user_profiles').insert({ user_id: data.user.id }) as unknown as Promise<any>,
+          ])
         } catch (adminErr) {
           // Fall back to anon client — only works if RLS allows own-user insert
           // eslint-disable-next-line @typescript-eslint/no-explicit-any

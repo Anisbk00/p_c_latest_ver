@@ -159,9 +159,9 @@ export function useXP() {
     // Initial fetch
     fetchStats();
     
-    // Set up interval for background refresh
+    // Set up interval for background refresh — only fetch when tab is visible
     const interval = setInterval(() => {
-      fetchStats();
+      if (document.visibilityState === 'visible') fetchStats();
     }, 5 * 60 * 1000); // 5 minutes
     
     return () => clearInterval(interval);

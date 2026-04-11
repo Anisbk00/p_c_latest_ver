@@ -21,8 +21,8 @@ const nextConfig: NextConfig = {
     root: process.cwd(),
   },
 
-  // Static export for Capacitor mobile build
-  output: isMobileBuild ? 'export' : undefined,
+  // Standalone output for production builds; static export for Capacitor mobile build
+  output: isMobileBuild ? 'export' : 'standalone',
   trailingSlash: isMobileBuild ? true : undefined,
   images: isMobileBuild ? {
     unoptimized: true,
@@ -36,6 +36,14 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
   },
   serverExternalPackages: ['@supabase/ssr'],
+
+  experimental: {
+    optimizePackageImports: [
+      'lucide-react',
+      'date-fns',
+      'framer-motion',
+    ],
+  },
   // Disable source maps to prevent 403 errors on __nextjs_original-stack-frames in preview
   productionBrowserSourceMaps: false,
 

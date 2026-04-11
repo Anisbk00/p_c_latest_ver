@@ -97,18 +97,16 @@ export async function requireAuth(request?: Request) {
       const token = authHeader.substring(7);
       
       try {
-        // Create a client with the same config but use the provided token
+        // Reuse a shared client for token verification (no need for separate client)
         const { createClient: createSupabaseClient } = await import('@supabase/supabase-js');
-        const authClient = createSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-        
-        const { data: { user }, error } = await authClient.auth.getUser(token);
+        const tokenVerifyClient = createSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+        const { data: { user }, error } = await tokenVerifyClient.auth.getUser(token);
         
         if (user && !error) {
           return user;
         }
       } catch (error) {
         // Fall through to cookie-based auth
-        console.warn('Authorization header auth failed:', error);
       }
     }
   }

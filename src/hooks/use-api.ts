@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { apiFetch } from "@/lib/mobile-api";
 
 // Types
@@ -123,6 +123,8 @@ export function useChat() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [history, setHistory] = useState<ChatMessage[]>([]);
+  const historyRef = useRef(history);
+  useEffect(() => { historyRef.current = history; }, [history]);
 
   const sendMessage = useCallback(
     async (
@@ -140,7 +142,7 @@ export function useChat() {
           method: "POST",
           body: JSON.stringify({
             message,
-            history,
+            history: historyRef.current,
             coachingTone: options?.coachingTone || "supportive",
             context: options?.context || {},
           }),
@@ -168,7 +170,7 @@ export function useChat() {
         setIsLoading(false);
       }
     },
-    [history]
+    []
   );
 
   const clearHistory = useCallback(() => {
