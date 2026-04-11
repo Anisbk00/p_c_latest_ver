@@ -2,12 +2,12 @@
  * Photo Analysis API — Optimized for speed & reliability
  * 
  * Key optimizations:
- * - Gemini AI call with strict 12s timeout (fits within Vercel gateway limits)
+ * - Groq AI call (LPU inference, <2s typical)
  * - DB writes are non-blocking (fire-and-forget) to reduce response time
  * - Settings fetch runs in parallel with request validation
  * - Client receives AI results immediately; DB storage happens in background
  * 
- * Uses Google Gemini Flash for AI analysis.
+ * Uses Groq (llama-4-scout-17b-16e-instruct) for AI analysis.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -133,11 +133,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No image provided' }, { status: 400 });
     }
 
-    // Step 4: Run Gemini AI analysis with an outer timeout to prevent
+    // Step 4: Run Groq AI analysis with an outer timeout to prevent
     // retry-with-backoff from exceeding Vercel gateway timeout.
-    // Inner analyzePhoto() has its own 12s timeout + rate-limit retries,
-    // but in worst case 3 retries × (12s + backoff) ≈ 72s — way too long.
-    // This outer cap at 18s guarantees a response before gateway 504.
+    // Groq is typically <2s, but this guard prevents runaway retries.
     const OUTER_TIMEOUT_MS = 18000;
     const result = await Promise.race([
       analyzePhoto(finalImageUrl, analysisType),
@@ -177,7 +175,7 @@ export async function POST(request: NextRequest) {
 
     const timestamp = new Date().toISOString();
     const provenance = {
-      source: 'gemini-vlm',
+      source: 'groq-vlm',
       model: MODEL_NAME,
       timestamp,
       analysisType,
@@ -356,7 +354,7 @@ async function storeAnalysisResults(
 export async function GET() {
   return NextResponse.json({
     endpoint: 'Photo Analysis API',
-    provider: 'Gemini 2.0 Flash',
+    provider: 'Groq (llama-4-scout)',
     features: [
       'Multi-language support (EN, FR, AR)',
       'Automatic storage to database tables',

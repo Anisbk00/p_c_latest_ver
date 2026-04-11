@@ -1977,7 +1977,7 @@ const BodyIntelligenceCard = React.memo(function BodyIntelligenceCard({
                     {/* How derived */}
                     <p className="text-[11px] text-muted-foreground/80 italic leading-relaxed">
                       How derived: {insightSource === 'ai'
-                        ? 'Generated from your workout, nutrition, and body data using Gemini AI'
+                        ? 'Generated from your workout, nutrition, and body data using AI'
                         : 'Based on your activity patterns and training data'}
                     </p>
 

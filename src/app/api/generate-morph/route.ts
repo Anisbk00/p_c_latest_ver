@@ -15,6 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from '@/lib/supabase/server';
 import { generateWithImage, MODEL_NAME } from '@/lib/ai/gemini-service';
+// Note: gemini-service.ts now uses Groq API under the hood
 
 // ═══════════════════════════════════════════════════════════════
 // POST /api/generate-morph

@@ -12,7 +12,7 @@
  * 
  * All outputs respect user's language preference from user_settings.language
  * 
- * Uses Google Gemini Flash as the AI provider.
+ * Uses Groq (llama-3.3-70b-versatile) as the AI provider.
  */
 
 import { 

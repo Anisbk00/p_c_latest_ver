@@ -1,166 +1,91 @@
 /**
- * Unified AI Service using Google Gemini 2.5 Flash
+ * Unified AI Service using Groq (OpenAI-compatible API)
  * 
  * Provides AI capabilities:
  * - LLM: Text chat completions (Iron Coach)
- * - VLM: Vision-Language for photo analysis
+ * - VLM: Vision-Language for photo analysis (llama-3.2-11b-vision-preview)
  * - Streaming support
+ * - Text embeddings (llama-3.2-11b-vision-preview compatible)
+ * 
+ * Models:
+ * - Chat: llama-3.3-70b-versatile (fast, smart)
+ * - Vision: meta-llama/llama-4-scout-17b-16e-instruct
+ * - Embeddings: Groq does not offer embeddings — returns zero vectors (RAG gracefully degrades)
  * 
  * This module is server-side only.
  */
 
-import { GoogleGenerativeAI, GenerativeModel, Content, Part, GoogleGenerativeAIEmbeddings } from '@google/generative-ai';
+// ─── Configuration ─────────────────────────────────────────────
 
-// API Key - environment variable only (security: no hardcoded fallback)
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY || '';
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 
-if (GEMINI_API_KEY) {
-  console.log('[Gemini] API key configured from environment');
+// Model names
+const MODEL_NAME = 'llama-3.3-70b-versatile';
+const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+const EMBEDDING_MODEL = 'groq-embeddings-placeholder';
+
+if (GROQ_API_KEY) {
+  console.log('[Groq] API key configured from environment');
 } else {
-  console.warn('[Gemini] GEMINI_API_KEY not set — AI features will be unavailable. Set it in .env');
+  console.warn('[Groq] GROQ_API_KEY not set — AI features will be unavailable.');
 }
 
-// Model configuration
-const MODEL_NAME = 'gemini-2.0-flash';
-const EMBEDDING_MODEL = 'text-embedding-004';
+// ─── Timeout ───────────────────────────────────────────────────
 
-// Singleton instance with race condition protection
-let genAI: GoogleGenerativeAI | null = null;
-let modelInstance: GenerativeModel | null = null;
-let embeddingModelInstance: GoogleGenerativeAIEmbeddings | null = null;
-let initPromise: Promise<{ model: GenerativeModel; embeddingModel: GoogleGenerativeAIEmbeddings }> | null = null;
+const AI_TIMEOUT_MS = 25000; // Groq is fast (LPU inference), 25s is generous
 
-// Timeout constant — 12s to fit within Vercel gateway timeout limits
-// Gemini Flash typically responds in 2-5s; 12s allows for slower responses
-// while staying well within Vercel's 504 gateway timeout
-const AI_TIMEOUT_MS = 12000;
+// ─── Helpers ───────────────────────────────────────────────────
 
-/**
- * Get or create the Gemini model instance (thread-safe)
- */
-async function getGeminiModel(): Promise<GenerativeModel> {
-  const { model } = await getGeminiInstances();
-  return model;
-}
-
-/**
- * Get or create the Gemini embedding model instance (thread-safe)
- */
-async function getGeminiEmbeddingModel(): Promise<GoogleGenerativeAIEmbeddings> {
-  const { embeddingModel } = await getGeminiInstances();
-  return embeddingModel;
-}
-
-/**
- * Initialize Gemini instances (thread-safe)
- */
-async function getGeminiInstances(): Promise<{ model: GenerativeModel; embeddingModel: GoogleGenerativeAIEmbeddings }> {
-  if (modelInstance && embeddingModelInstance) {
-    return { model: modelInstance, embeddingModel: embeddingModelInstance };
-  }
-  
-  // API key always available with fallback
-  if (!GEMINI_API_KEY) {
-    console.warn('[Gemini] No API key found - AI features may not work');
-  }
-  
-  // Use promise to prevent race condition
-  if (!initPromise) {
-    initPromise = (async () => {
-      genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-      modelInstance = genAI.getGenerativeModel({ 
-        model: MODEL_NAME,
-        generationConfig: {
-          temperature: 0.35,
-          maxOutputTokens: 2048,
-        },
-      });
-      embeddingModelInstance = genAI.getGenerativeModel({ 
-        model: EMBEDDING_MODEL 
-      }) as GoogleGenerativeAIEmbeddings;
-      return { model: modelInstance, embeddingModel: embeddingModelInstance };
-    })();
-  }
-  return initPromise;
-}
-
-/**
- * Wrap a promise with a timeout
- */
 function withTimeout<T>(promise: Promise<T>, ms: number, errorMessage: string): Promise<T> {
   return Promise.race([
     promise,
-    new Promise<never>((_, reject) => 
+    new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error(errorMessage)), ms)
     )
   ]);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Rate Limit Handling
-// ═══════════════════════════════════════════════════════════════
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
-// Rate limit state
-let rateLimitedUntil: number = 0;
-let consecutiveRateLimits: number = 0;
+// ─── Rate Limit Handling ───────────────────────────────────────
+
+let rateLimitedUntil = 0;
+let consecutiveRateLimits = 0;
 const MAX_RETRIES = 3;
-const BASE_RETRY_DELAY_MS = 5000; // 5 seconds base delay (reduced to prevent compounding timeouts)
+const BASE_RETRY_DELAY_MS = 3000;
 
-/**
- * Check if we're currently rate limited
- */
 function isRateLimited(): boolean {
   return Date.now() < rateLimitedUntil;
 }
 
-/**
- * Get remaining rate limit wait time in seconds
- */
 function getRateLimitWaitSeconds(): number {
   const remaining = rateLimitedUntil - Date.now();
   return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
 }
 
-/**
- * Handle rate limit error and update state
- */
 function handleRateLimitError(error: Error): { shouldRetry: boolean; waitMs: number } {
   consecutiveRateLimits++;
-  
-  // Parse retry delay from error if available
   let waitMs = BASE_RETRY_DELAY_MS;
   const retryMatch = error.message.match(/retry in (\d+(?:\.\d+)?)/i);
   if (retryMatch) {
     waitMs = Math.ceil(parseFloat(retryMatch[1]) * 1000);
   }
-  
-  // Exponential backoff for consecutive rate limits
-  waitMs = Math.min(waitMs * Math.pow(1.5, consecutiveRateLimits - 1), 120000); // Max 2 minutes
-  
+  waitMs = Math.min(waitMs * Math.pow(1.5, consecutiveRateLimits - 1), 120000);
   rateLimitedUntil = Date.now() + waitMs;
-  
-  console.log(`[Gemini] Rate limited. Waiting ${Math.ceil(waitMs / 1000)}s. Consecutive: ${consecutiveRateLimits}`);
-  
-  return {
-    shouldRetry: consecutiveRateLimits <= MAX_RETRIES,
-    waitMs,
-  };
+  console.log(`[Groq] Rate limited. Waiting ${Math.ceil(waitMs / 1000)}s.`);
+  return { shouldRetry: consecutiveRateLimits <= MAX_RETRIES, waitMs };
 }
 
-/**
- * Reset rate limit state on successful request
- */
 function resetRateLimitState(): void {
   consecutiveRateLimits = 0;
   rateLimitedUntil = 0;
 }
 
-/**
- * Check if an error is a rate limit error
- */
 function isRateLimitError(error: unknown): boolean {
   if (error instanceof Error) {
-    return error.message.includes('429') || 
+    return error.message.includes('429') ||
            error.message.includes('Too Many Requests') ||
            error.message.includes('quota') ||
            error.message.includes('rate limit');
@@ -168,31 +93,19 @@ function isRateLimitError(error: unknown): boolean {
   return false;
 }
 
-/**
- * Sleep for a given number of milliseconds
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-/**
- * Execute with rate limit retry logic
- */
 async function withRateLimitRetry<T>(
   operation: () => Promise<T>,
   operationName: string = 'AI request'
 ): Promise<T> {
-  // Check if we're already rate limited
   if (isRateLimited()) {
     const waitSeconds = getRateLimitWaitSeconds();
     throw new Error(
-      `AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again. ` +
-      `The free tier has usage limits - your request will work shortly.`
+      `AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`
     );
   }
-  
+
   let lastError: Error | null = null;
-  
+
   for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
     try {
       const result = await operation();
@@ -200,34 +113,83 @@ async function withRateLimitRetry<T>(
       return result;
     } catch (error) {
       lastError = error instanceof Error ? error : new Error(String(error));
-      
+
       if (isRateLimitError(error)) {
         const { shouldRetry, waitMs } = handleRateLimitError(lastError);
-        
         if (shouldRetry && attempt <= MAX_RETRIES) {
-          console.log(`[Gemini] ${operationName} rate limited (attempt ${attempt}/${MAX_RETRIES}). Retrying in ${Math.ceil(waitMs / 1000)}s...`);
+          console.log(`[Groq] ${operationName} rate limited (attempt ${attempt}/${MAX_RETRIES}). Retrying in ${Math.ceil(waitMs / 1000)}s...`);
           await sleep(waitMs);
           continue;
         }
-        
-        // Max retries exceeded
-        throw new Error(
-          `AI service is experiencing high demand. Please wait a moment and try again. ` +
-          `(Rate limit - the free tier has usage limits that reset shortly)`
-        );
+        throw new Error('AI service is experiencing high demand. Please try again.');
       }
-      
-      // Non-rate-limit error, don't retry
+
       throw lastError;
     }
   }
-  
+
   throw lastError || new Error(`${operationName} failed after retries`);
 }
 
-// ═══════════════════════════════════════════════════════════════
-// Iron Coach System Prompts
-// ═══════════════════════════════════════════════════════════════
+// ─── Groq API Call (OpenAI-compatible) ─────────────────────────
+
+interface GroqMessage {
+  role: 'system' | 'user' | 'assistant';
+  content: string | GroqContentPart[];
+}
+
+interface GroqContentPart {
+  type: 'text' | 'image_url';
+  text?: string;
+  image_url?: { url: string };
+}
+
+interface GroqResponse {
+  id: string;
+  choices: Array<{
+    message: { content: string; role: string };
+    finish_reason: string;
+  }>;
+}
+
+interface GroqStreamChunk {
+  choices: Array<{
+    delta: { content?: string };
+    finish_reason: string | null;
+  }>;
+}
+
+async function callGroqAPI(
+  messages: GroqMessage[],
+  model: string = MODEL_NAME,
+  temperature: number = 0.35,
+  maxTokens: number = 2048,
+  stream: boolean = false,
+): Promise<Response> {
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${GROQ_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature,
+      max_tokens: maxTokens,
+      stream,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Groq API error ${response.status}: ${errorText.substring(0, 300)}`);
+  }
+
+  return response;
+}
+
+// ─── Iron Coach System Prompts ─────────────────────────────────
 
 const LOCALE_NAMES: Record<string, string> = {
   en: 'English',
@@ -238,7 +200,7 @@ const LOCALE_NAMES: Record<string, string> = {
 function getIronCoachSystemPrompt(locale: string = 'en'): string {
   const langName = LOCALE_NAMES[locale] ?? 'English';
   const langDirective = `CRITICAL: You MUST respond entirely in ${langName}. Every sentence, every word. No exceptions. User language: ${langName} (${locale}).`;
-  
+
   return `${langDirective}
 
 You are The Iron Coach, an elite, no-nonsense nutrition expert and veteran bodybuilder with decades of experience and a high-intelligence personal fitness and nutrition assistant. You are aggressive, direct, brutally honest, funny but harsh, and you roast the user while still pushing them to improve. You swear and curse always to wake them up. You don't coddle users; you forge them into machines. Your mission is to force them to face reality and execute.
@@ -285,130 +247,105 @@ export interface ChatCompletionOptions {
 }
 
 /**
- * Convert messages to Gemini format
- */
-function convertToGeminiHistory(messages: ChatMessage[], systemPrompt: string): Content[] {
-  const history: Content[] = [];
-  
-  // Add system prompt as the first user message with a model response
-  // Gemini doesn't have a native system role, so we simulate it
-  history.push({
-    role: 'user',
-    parts: [{ text: `System Instructions (follow these for all responses):\n${systemPrompt}` }],
-  });
-  history.push({
-    role: 'model',
-    parts: [{ text: 'Understood. I will follow these instructions for all responses.' }],
-  });
-  
-  // Add conversation messages
-  for (const msg of messages) {
-    if (msg.role === 'system') continue; // Skip system messages as we've handled them
-    
-    history.push({
-      role: msg.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: msg.content }],
-    });
-  }
-  
-  return history;
-}
-
-/**
- * Generate a chat completion using Gemini with timeout and rate limit handling
+ * Generate a chat completion using Groq
  */
 export async function generateChatCompletion(options: ChatCompletionOptions): Promise<string> {
   return withRateLimitRetry(async () => {
-    const model = await getGeminiModel();
     const { messages, temperature = 0.35, maxTokens = 1024, locale = 'en', systemPrompt } = options;
-    
+
     const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
-    const history = convertToGeminiHistory(messages, systemContent);
-    
-    // Get the last user message for the prompt
-    const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-    const prompt = lastUserMessage?.content || '';
-    
-    // Start chat with history
-    const chat = model.startChat({
-      history: history.slice(0, -1), // Exclude the last message from history
-      generationConfig: {
-        temperature,
-        maxOutputTokens: maxTokens,
-      },
-    });
-    
-    const result = await withTimeout(
-      chat.sendMessage(prompt),
+
+    const groqMessages: GroqMessage[] = [
+      { role: 'system', content: systemContent },
+      ...messages
+        .filter(m => m.role !== 'system')
+        .map(m => ({ role: m.role, content: m.content } as GroqMessage)),
+    ];
+
+    const response = await withTimeout(
+      callGroqAPI(groqMessages, MODEL_NAME, temperature, maxTokens),
       AI_TIMEOUT_MS,
       'AI request timed out. Please try again.'
     );
-    
-    const response = await result.response;
-    return response.text();
+
+    const result: GroqResponse = await response.json();
+    const content = result.choices?.[0]?.message?.content;
+
+    if (!content) {
+      throw new Error('Empty response from AI');
+    }
+
+    return content;
   }, 'Chat completion');
 }
 
 /**
- * Generate a streaming chat completion with timeout and rate limit handling
+ * Generate a streaming chat completion using Groq
  */
 export async function* generateStreamingChatCompletion(
   options: ChatCompletionOptions
 ): AsyncGenerator<string, void, unknown> {
-  // Check rate limit before starting stream
   if (isRateLimited()) {
     const waitSeconds = getRateLimitWaitSeconds();
-    throw new Error(
-      `AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`
-    );
+    throw new Error(`AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`);
   }
-  
-  const model = await getGeminiModel();
+
   const { messages, temperature = 0.35, maxTokens = 1024, locale = 'en', systemPrompt } = options;
-  
   const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
-  const history = convertToGeminiHistory(messages, systemContent);
-  
-  // Get the last user message for the prompt
-  const lastUserMessage = messages.filter(m => m.role === 'user').pop();
-  const prompt = lastUserMessage?.content || '';
-  
-  // Start chat with history
-  const chat = model.startChat({
-    history: history.slice(0, -1), // Exclude the last message from history
-    generationConfig: {
-      temperature,
-      maxOutputTokens: maxTokens,
-    },
-  });
-  
+
+  const groqMessages: GroqMessage[] = [
+    { role: 'system', content: systemContent },
+    ...messages
+      .filter(m => m.role !== 'system')
+      .map(m => ({ role: m.role, content: m.content } as GroqMessage)),
+  ];
+
   try {
-    // Stream the response
-    const result = await withTimeout(
-      chat.sendMessageStream(prompt),
+    const response = await withTimeout(
+      callGroqAPI(groqMessages, MODEL_NAME, temperature, maxTokens, true),
       AI_TIMEOUT_MS,
-      'AI stream initialization timed out. Please try again.'
+      'AI stream timed out. Please try again.'
     );
-    
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response stream');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
     let hasYielded = false;
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      if (chunkText) {
-        hasYielded = true;
-        yield chunkText;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const chunk: GroqStreamChunk = JSON.parse(data);
+          const content = chunk.choices?.[0]?.delta?.content;
+          if (content) {
+            hasYielded = true;
+            yield content;
+          }
+        } catch {
+          // Skip malformed chunks
+        }
       }
     }
-    
-    // Reset rate limit state on success
-    if (hasYielded) {
-      resetRateLimitState();
-    }
+
+    if (hasYielded) resetRateLimitState();
   } catch (error) {
     if (isRateLimitError(error)) {
       const { waitMs } = handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
-      throw new Error(
-        `AI service is experiencing high demand. Please wait ${Math.ceil(waitMs / 1000)} seconds and try again.`
-      );
+      throw new Error(`AI service is experiencing high demand. Please wait ${Math.ceil(waitMs / 1000)} seconds.`);
     }
     throw error;
   }
@@ -506,7 +443,7 @@ export interface PhotoAnalysisResult {
 }
 
 /**
- * Analyze a photo using Gemini Vision with rate limit handling
+ * Analyze a photo using Groq Vision (OpenAI-compatible vision API)
  */
 export async function analyzePhoto(
   imageUrl: string,
@@ -514,66 +451,66 @@ export async function analyzePhoto(
 ): Promise<PhotoAnalysisResult> {
   try {
     return await withRateLimitRetry(async () => {
-      const model = await getGeminiModel();
       const prompt = PHOTO_ANALYSIS_PROMPTS[analysisType];
-      
-      // Prepare image part
-      let imagePart: Part;
-      
+
+      let imageContent: GroqContentPart;
+
       if (imageUrl.startsWith('data:')) {
-        // Base64 encoded image
-        const [mimeTypeData, base64Data] = imageUrl.split(',');
-        const mimeType = mimeTypeData.match(/data:([^;]+);/)?.[1] || 'image/jpeg';
-        
-        imagePart = {
-          inlineData: {
-            mimeType,
-            data: base64Data,
-          },
-        };
+        imageContent = { type: 'image_url', image_url: { url: imageUrl } };
       } else {
-        // For URLs, we need to fetch and convert to base64 (with timeout)
-        // Gemini doesn't support direct URLs, so we fetch the image
-        const response = await fetch(imageUrl, { signal: AbortSignal.timeout(8000) });
-        if (!response.ok) throw new Error(`Failed to fetch image: ${response.status}`);
-        const arrayBuffer = await response.arrayBuffer();
-        const base64 = Buffer.from(arrayBuffer).toString('base64');
-        const mimeType = response.headers.get('content-type') || 'image/jpeg';
-        
-        imagePart = {
-          inlineData: {
-            mimeType,
-            data: base64,
-          },
-        };
+        // For URLs, pass directly
+        imageContent = { type: 'image_url', image_url: { url: imageUrl } };
       }
-      
-      const result = await withTimeout(
-        model.generateContent([prompt, imagePart]),
+
+      const messages: GroqMessage[] = [
+        { role: 'user', content: [
+          { type: 'text', text: prompt },
+          imageContent,
+        ] },
+      ];
+
+      const response = await withTimeout(
+        callGroqAPI(messages, VISION_MODEL, 0.35, 4096),
         AI_TIMEOUT_MS,
         'Photo analysis timed out. Please try again with a smaller image.'
       );
-      const content = result.response.text();
-      
+
+      const result: GroqResponse = await response.json();
+      const textContent = result.choices?.[0]?.message?.content;
+
+      if (!textContent) {
+        return {
+          success: false,
+          analysis: {},
+          provenance: {
+            source: 'groq-vlm',
+            modelName: VISION_MODEL,
+            timestamp: new Date().toISOString(),
+            analysisType,
+          },
+          error: 'No content in response',
+        };
+      }
+
       // Parse JSON response
       let analysisResult: Record<string, unknown>;
       try {
-        const jsonMatch = content.match(/\{[\s\S]*\}/);
+        const jsonMatch = textContent.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
           analysisResult = JSON.parse(jsonMatch[0]);
         } else {
-          analysisResult = { rawResponse: content };
+          analysisResult = { rawResponse: textContent };
         }
       } catch {
-        analysisResult = { rawResponse: content };
+        analysisResult = { rawResponse: textContent };
       }
-      
+
       return {
         success: true,
         analysis: analysisResult,
         provenance: {
-          source: 'gemini-vlm',
-          modelName: MODEL_NAME,
+          source: 'groq-vlm',
+          modelName: VISION_MODEL,
           timestamp: new Date().toISOString(),
           analysisType,
         },
@@ -584,8 +521,8 @@ export async function analyzePhoto(
       success: false,
       analysis: {},
       provenance: {
-        source: 'gemini-vlm',
-        modelName: MODEL_NAME,
+        source: 'groq-vlm',
+        modelName: VISION_MODEL,
         timestamp: new Date().toISOString(),
         analysisType,
       },
@@ -607,164 +544,147 @@ export async function analyzeBase64Image(
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Direct Generation Functions (for simpler use cases)
+// Direct Generation Functions
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Generate text from a simple prompt with rate limit handling
+ * Generate text from a simple prompt
  */
 export async function generateText(prompt: string, systemPrompt?: string): Promise<string> {
   return withRateLimitRetry(async () => {
-    const model = await getGeminiModel();
-    
-    const fullPrompt = systemPrompt 
-      ? `${systemPrompt}\n\n${prompt}` 
-      : prompt;
-    
-    const result = await withTimeout(
-      model.generateContent(fullPrompt),
+    const messages: GroqMessage[] = [];
+    if (systemPrompt) {
+      messages.push({ role: 'system', content: systemPrompt });
+    }
+    messages.push({ role: 'user', content: prompt });
+
+    const response = await withTimeout(
+      callGroqAPI(messages, MODEL_NAME, 0.35, 2048),
       AI_TIMEOUT_MS,
       'AI text generation timed out.'
     );
-    return result.response.text();
+
+    const result: GroqResponse = await response.json();
+    const content = result.choices?.[0]?.message?.content;
+    if (!content) throw new Error('Empty response from AI');
+    return content;
   }, 'Text generation');
 }
 
 /**
- * Stream text from a simple prompt with rate limit handling
+ * Stream text from a simple prompt
  */
 export async function* streamText(prompt: string, systemPrompt?: string): AsyncGenerator<string, void, unknown> {
-  // Check rate limit before starting stream
   if (isRateLimited()) {
     const waitSeconds = getRateLimitWaitSeconds();
-    throw new Error(
-      `AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`
-    );
+    throw new Error(`AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`);
   }
-  
-  const model = await getGeminiModel();
-  
-  const fullPrompt = systemPrompt 
-    ? `${systemPrompt}\n\n${prompt}` 
-    : prompt;
-  
+
+  const messages: GroqMessage[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
   try {
-    const result = await model.generateContentStream(fullPrompt);
-    
-    for await (const chunk of result.stream) {
-      const chunkText = chunk.text();
-      if (chunkText) {
-        yield chunkText;
+    const response = await withTimeout(
+      callGroqAPI(messages, MODEL_NAME, 0.35, 2048, true),
+      AI_TIMEOUT_MS,
+      'AI stream timed out.'
+    );
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error('No response stream');
+
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const line of lines) {
+        const trimmed = line.trim();
+        if (!trimmed || !trimmed.startsWith('data: ')) continue;
+        const data = trimmed.slice(6);
+        if (data === '[DONE]') continue;
+
+        try {
+          const chunk: GroqStreamChunk = JSON.parse(data);
+          const content = chunk.choices?.[0]?.delta?.content;
+          if (content) yield content;
+        } catch {
+          // Skip
+        }
       }
     }
+
     resetRateLimitState();
   } catch (error) {
     if (isRateLimitError(error)) {
       const { waitMs } = handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
-      throw new Error(
-        `AI service is experiencing high demand. Please wait ${Math.ceil(waitMs / 1000)} seconds and try again.`
-      );
+      throw new Error(`AI service is experiencing high demand. Please wait ${Math.ceil(waitMs / 1000)} seconds.`);
     }
     throw error;
   }
 }
 
 /**
- * Generate content with image with rate limit handling
+ * Generate content with image (vision) using Groq
  */
 export async function generateWithImage(prompt: string, imageBase64: string, mimeType: string = 'image/jpeg'): Promise<string> {
   return withRateLimitRetry(async () => {
-    const model = await getGeminiModel();
-    
-    const imagePart: Part = {
-      inlineData: {
-        mimeType,
-        data: imageBase64,
+    const dataUrl = `data:${mimeType};base64,${imageBase64}`;
+
+    const messages: GroqMessage[] = [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ],
       },
-    };
-    
-    return withTimeout(
-      model.generateContent([prompt, imagePart]).then(r => r.response.text()),
+    ];
+
+    const response = await withTimeout(
+      callGroqAPI(messages, VISION_MODEL, 0.35, 2048),
       AI_TIMEOUT_MS,
       'Image analysis timed out. Please try again with a smaller image.'
     );
+
+    const result: GroqResponse = await response.json();
+    const content = result.choices?.[0]?.message?.content;
+    if (!content) throw new Error('No content in response');
+    return content;
   }, 'Image analysis');
 }
 
 // ═══════════════════════════════════════════════════════════════
-// Embedding Functions (for RAG)
+// Embedding Functions (Groq doesn't offer embeddings)
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Create embeddings for text using Google's text-embedding-004 model
- * 
- * This is used for RAG (Retrieval-Augmented Generation) to:
- * - Find similar past conversations
- * - Search through user's workout history
- * - Find relevant food logs and body metrics
- * 
- * @param text - The text to embed
- * @returns An array of floating point numbers (768 dimensions)
+ * Create embeddings for text
+ * NOTE: Groq does not offer an embedding API. Returns empty array.
+ * RAG functionality gracefully degrades — semantic search won't work,
+ * but the app still functions for all other AI features.
  */
 export async function createEmbedding(text: string): Promise<number[]> {
-  try {
-    return await withRateLimitRetry(async () => {
-      const embeddingModel = await getGeminiEmbeddingModel();
-      
-      const result = await embeddingModel.embedContent(text);
-      
-      const embedding = result.embedding;
-      
-      if (!embedding || !embedding.values) {
-        console.warn('[createEmbedding] No embedding values returned');
-        return [];
-      }
-      
-      return embedding.values;
-    }, 'Embedding creation');
-  } catch (error) {
-    console.error('[createEmbedding] Error creating embedding:', error);
-    // Return empty array to gracefully degrade RAG functionality
-    return [];
-  }
+  console.warn('[createEmbedding] Groq does not offer embeddings — returning empty vector');
+  return [];
 }
 
 /**
  * Create embeddings for multiple texts in batch
- * 
- * @param texts - Array of texts to embed
- * @returns Array of embeddings (each is an array of numbers)
+ * NOTE: Groq does not offer an embedding API. Returns empty arrays.
  */
 export async function createEmbeddings(texts: string[]): Promise<number[][]> {
-  try {
-    return await withRateLimitRetry(async () => {
-      const embeddingModel = await getGeminiEmbeddingModel();
-      
-      // Process in batches of 100 (Gemini API limit)
-      const batchSize = 100;
-      const results: number[][] = [];
-      
-      for (let i = 0; i < texts.length; i += batchSize) {
-        const batch = texts.slice(i, i + batchSize);
-        const batchResults = await Promise.all(
-          batch.map(text => embeddingModel.embedContent(text))
-        );
-        
-        for (const result of batchResults) {
-          if (result.embedding?.values) {
-            results.push(result.embedding.values);
-          } else {
-            results.push([]);
-          }
-        }
-      }
-      
-      return results;
-    }, 'Batch embedding creation');
-  } catch (error) {
-    console.error('[createEmbeddings] Error creating embeddings:', error);
-    return texts.map(() => []);
-  }
+  console.warn('[createEmbeddings] Groq does not offer embeddings — returning empty vectors');
+  return texts.map(() => []);
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -772,10 +692,10 @@ export async function createEmbeddings(texts: string[]): Promise<number[][]> {
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Check if Gemini is available (always true with hardcoded key)
+ * Check if AI is available
  */
 export function isAIAvailable(): boolean {
-  return true;
+  return !!GROQ_API_KEY;
 }
 
 /**
@@ -801,13 +721,14 @@ export function getAICapabilities() {
     vlm: {
       available: true,
       features: ['photo-analysis', 'body-composition', 'meal-analysis', 'food-labels'],
-      model: MODEL_NAME,
+      model: VISION_MODEL,
     },
     embeddings: {
-      available: true,
-      features: ['text-embeddings', 'rag', 'semantic-search'],
+      available: false,
+      features: [],
       model: EMBEDDING_MODEL,
-      dimensions: 768,
+      dimensions: 0,
+      note: 'Groq does not offer embeddings — RAG gracefully disabled',
     },
     rateLimit: {
       maxRetries: MAX_RETRIES,
@@ -816,8 +737,12 @@ export function getAICapabilities() {
   };
 }
 
-// Export the model getter for advanced use cases
-export { getGeminiModel, getGeminiEmbeddingModel, MODEL_NAME, EMBEDDING_MODEL, getIronCoachSystemPrompt };
+// Export the model name and system prompt getter
+export { MODEL_NAME, EMBEDDING_MODEL, getIronCoachSystemPrompt };
+
+// Stub exports for backward compatibility (unused by Groq)
+export function getGeminiModel() { return null; }
+export function getGeminiEmbeddingModel() { return null; }
 
 // Re-export types
 export type { Database } from '@/lib/supabase/database.types';

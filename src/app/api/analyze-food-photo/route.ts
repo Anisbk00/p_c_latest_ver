@@ -1,9 +1,8 @@
 /**
  * Food Photo Analysis API
  * 
- * Strategy:
- * 1. Try Supabase Edge Function first (150s timeout, no Vercel limits)
- * 2. Fallback: Direct Gemini API call (works within 60s with compressed images)
+ * Uses Groq (llama-4-scout-17b-16e-instruct) for vision analysis.
+ * Groq is ~10x faster than Gemini, completing in 1-3 seconds.
  * 
  * @module api/analyze-food-photo
  */
@@ -11,12 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseUser } from '@/lib/supabase/supabase-data'
 
-// Vercel Hobby plan caps at 10s — every millisecond counts
 export const maxDuration = 10
-
-// ═══════════════════════════════════════════════════════════════
-// Gemini Direct API Call (fallback when edge function unavailable)
-// ═══════════════════════════════════════════════════════════════
 
 const FOOD_ANALYSIS_PROMPT = `You are a nutrition expert analyzing food images. Analyze this food image and provide accurate nutritional information.
 
@@ -43,90 +37,70 @@ Important:
 - Always return valid JSON with all fields present
 - Serving size should be in grams for solid foods, ml for liquids`
 
-async function callGeminiDirect(imageBase64: string, mimeType: string): Promise<Record<string, unknown>> {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_AI_API_KEY
+async function callGroqVision(imageBase64: string, mimeType: string): Promise<Record<string, unknown>> {
+  const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    throw new Error('No Gemini API key configured')
+    throw new Error('No Groq API key configured')
   }
 
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`
+  const dataUrl = `data:${mimeType};base64,${imageBase64}`
 
-  const payload = {
-    contents: [{
-      parts: [
-        { text: FOOD_ANALYSIS_PROMPT },
-        { inlineData: { mimeType, data: imageBase64 } },
-      ],
-    }],
-    generationConfig: {
-      temperature: 0.35,
-      maxOutputTokens: 2048,
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
     },
+    body: JSON.stringify({
+      model: 'meta-llama/llama-4-scout-17b-16e-instruct',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'text', text: FOOD_ANALYSIS_PROMPT },
+          { type: 'image_url', image_url: { url: dataUrl } },
+        ],
+      }],
+      temperature: 0.35,
+      max_tokens: 2048,
+    }),
+    signal: AbortSignal.timeout(8000),
+  })
+
+  if (!response.ok) {
+    const errorText = await response.text()
+    if (response.status === 429) throw new Error('RATE_LIMIT')
+    if (response.status === 401) throw new Error('API_KEY_INVALID')
+    throw new Error(`Groq API error ${response.status}: ${errorText.substring(0, 200)}`)
   }
 
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 8000) // 8s timeout (within Vercel 10s limit)
+  const result = await response.json()
+  const textContent = result.choices?.[0]?.message?.content
 
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-      signal: controller.signal,
-    })
+  if (!textContent) throw new Error('No content in Groq response')
 
-    if (!response.ok) {
-      const errorText = await response.text()
-      // Return user-friendly errors for known Gemini API issues
-      if (response.status === 429) {
-        throw new Error('RATE_LIMIT')
-      }
-      if (response.status === 403) {
-        throw new Error('API_KEY_INVALID')
-      }
-      throw new Error(`Gemini API error ${response.status}: ${errorText.substring(0, 200)}`)
-    }
-
-    const result = await response.json()
-    const textContent = result.candidates?.[0]?.content?.parts?.[0]?.text
-
-    if (!textContent) {
-      throw new Error('No content in Gemini response')
-    }
-
-    // Parse JSON from response
-    let cleanContent = textContent.trim()
-    if (cleanContent.startsWith('```json')) cleanContent = cleanContent.slice(7)
-    else if (cleanContent.startsWith('```')) cleanContent = cleanContent.slice(3)
-    if (cleanContent.endsWith('```')) cleanContent = cleanContent.slice(0, -3)
-    cleanContent = cleanContent.trim()
-    if (!cleanContent.startsWith('{')) {
-      const jsonMatch = cleanContent.match(/\{[\s\S]*\}/)
-      if (jsonMatch) cleanContent = jsonMatch[0]
-    }
-    cleanContent = cleanContent.replace(/[\r\n]+/g, ' ').trim()
-
-    return JSON.parse(cleanContent)
-  } finally {
-    clearTimeout(timeoutId)
+  // Parse JSON from response
+  let cleanContent = textContent.trim()
+  if (cleanContent.startsWith('```json')) cleanContent = cleanContent.slice(7)
+  else if (cleanContent.startsWith('```')) cleanContent = cleanContent.slice(3)
+  if (cleanContent.endsWith('```')) cleanContent = cleanContent.slice(0, -3)
+  cleanContent = cleanContent.trim()
+  if (!cleanContent.startsWith('{')) {
+    const jsonMatch = cleanContent.match(/\{[\s\S]*\}/)
+    if (jsonMatch) cleanContent = jsonMatch[0]
   }
+  cleanContent = cleanContent.replace(/[\r\n]+/g, ' ').trim()
+
+  return JSON.parse(cleanContent)
 }
 
 function parseImage(body: { image: string }): { base64Data: string; mimeType: string } {
   const image = body.image
-  let base64Data: string
-  let mimeType = 'image/jpeg'
-
   if (image.startsWith('data:')) {
     const matches = image.match(/^data:([^;]+);base64,(.+)$/)
     if (!matches) throw new Error('Invalid image data URL format')
-    mimeType = matches[1]
-    base64Data = matches[2]
-  } else {
-    throw new Error('Only base64 data URLs are supported')
+    return { base64Data: matches[2], mimeType: matches[1] }
   }
-
-  return { base64Data, mimeType }
+  throw new Error('Only base64 data URLs are supported')
 }
 
 function buildFoodResponse(food: any) {
@@ -146,25 +120,16 @@ function buildFoodResponse(food: any) {
       confidence: Math.min(1, Math.max(0, Number(food.confidence) || 0.5)),
       detectedItems: Array.isArray(food.detectedItems) ? food.detectedItems.slice(0, 10).map(String) : [],
     },
-    provider: 'gemini-2.0-flash',
-    model: 'gemini-2.0-flash',
+    provider: 'groq',
+    model: 'llama-4-scout-17b-16e-instruct',
   }
 }
 
-// ═══════════════════════════════════════════════════════════════
-// POST /api/analyze-food-photo
-// ═══════════════════════════════════════════════════════════════
-
 export async function POST(request: NextRequest) {
   try {
-    // SECURITY: Require authentication
     const { user } = await getSupabaseUser()
-    
     if (!user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     let body: any
@@ -173,53 +138,37 @@ export async function POST(request: NextRequest) {
     } catch {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
     }
+
     const { AnalyzeFoodPhotoSchema } = await import('@/lib/validation')
     const parseResult = AnalyzeFoodPhotoSchema.safeParse(body)
     if (!parseResult.success) {
-      return NextResponse.json({
-        error: 'Invalid input',
-        details: parseResult.error.flatten()
-      }, { status: 400 })
+      return NextResponse.json({ error: 'Invalid input', details: parseResult.error.flatten() }, { status: 400 })
     }
 
     const { base64Data, mimeType } = parseImage(body)
 
-    // ════════════════════════════════════════════════════
-    // Direct Gemini API call (bypass edge function for speed)
-    // Edge function not deployed yet, so go straight to Gemini
-    // With compressed images (~200KB), this completes in 3-8s
-    // ════════════════════════════════════════════════════
-    console.log('[analyze-food-photo] Calling Gemini API directly, base64 length:', base64Data.length)
+    console.log('[analyze-food-photo] Calling Groq Vision API, base64 length:', base64Data.length)
     try {
-      const food = await callGeminiDirect(base64Data, mimeType)
+      const food = await callGroqVision(base64Data, mimeType)
       return NextResponse.json(buildFoodResponse(food))
-    } catch (geminiError) {
-      const msg = geminiError instanceof Error ? geminiError.message : String(geminiError)
-      console.error('[analyze-food-photo] Gemini error:', msg)
+    } catch (groqError) {
+      const msg = groqError instanceof Error ? groqError.message : String(groqError)
+      console.error('[analyze-food-photo] Groq error:', msg)
 
       if (msg === 'RATE_LIMIT') {
         return NextResponse.json(
-          { error: 'AI quota exceeded. The free tier has been used up. Please enable billing on your Gemini API key or try again later.' },
+          { error: 'AI quota exceeded. Please try again in a minute.' },
           { status: 429 }
         )
       }
       if (msg === 'API_KEY_INVALID') {
-        return NextResponse.json(
-          { error: 'AI API key is invalid or blocked.' },
-          { status: 503 }
-        )
+        return NextResponse.json({ error: 'AI API key is invalid.' }, { status: 503 })
       }
-      if (msg.includes('No Gemini API key')) {
-        return NextResponse.json(
-          { error: 'AI service not configured.' },
-          { status: 503 }
-        )
+      if (msg.includes('No Groq API key')) {
+        return NextResponse.json({ error: 'AI service not configured.' }, { status: 503 })
       }
 
-      return NextResponse.json(
-        { error: 'Food analysis failed. Please try again.' },
-        { status: 502 }
-      )
+      return NextResponse.json({ error: 'Food analysis failed. Please try again.' }, { status: 502 })
     }
 
   } catch (error) {
