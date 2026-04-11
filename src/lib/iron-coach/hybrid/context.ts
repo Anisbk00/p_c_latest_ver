@@ -139,6 +139,14 @@ export async function buildIronCoachContext(userId: string, question: string): P
   const weekStartStr = weekStart.toISOString().split('T')[0];
   const todayStr = today.toISOString().split('T')[0];
 
+  // Time windows
+  const now = Date.now();
+  const sevenDaysAgo = new Date(now - 7 * 24 * 3600 * 1000);
+  const fourteenDaysAgo = new Date(now - 14 * 24 * 3600 * 1000);
+  const thirtyDaysAgo = new Date(now - 30 * 24 * 3600 * 1000);
+  const sixtyDaysAgo = new Date(now - 60 * 24 * 3600 * 1000);
+  const ninetyDaysAgo = new Date(now - 90 * 24 * 3600 * 1000);
+
   // Fetch all user data in parallel
   const [
     profileRes,
@@ -146,7 +154,8 @@ export async function buildIronCoachContext(userId: string, question: string): P
     settingsRes,
     goalsRes,
     workoutsRes,
-    foodRes,
+    foodRes7d,
+    foodRes30d,
     insightsRes,
     bodyMetricsRes,
     sleepRes,
@@ -182,19 +191,26 @@ export async function buildIronCoachContext(userId: string, question: string): P
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(3),
-    // Recent workouts
+    // Recent workouts (14 days for trend)
     supabase
       .from('workouts')
       .select('calories_burned, started_at, duration_minutes, workout_type, notes')
       .eq('user_id', userId)
-      .gte('started_at', new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString())
+      .gte('started_at', fourteenDaysAgo.toISOString())
       .order('started_at', { ascending: false }),
-    // Recent food logs
+    // Recent food logs (7 days - detailed)
     supabase
       .from('food_logs')
       .select('protein, calories, carbs, fat, logged_at, food_name, meal_type')
       .eq('user_id', userId)
-      .gte('logged_at', new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString())
+      .gte('logged_at', sevenDaysAgo.toISOString())
+      .order('logged_at', { ascending: false }),
+    // Historical food logs (90 days - for AI memory and deep trends)
+    supabase
+      .from('food_logs')
+      .select('protein, calories, carbs, fat, logged_at, food_name, meal_type')
+      .eq('user_id', userId)
+      .gte('logged_at', ninetyDaysAgo.toISOString())
       .order('logged_at', { ascending: false }),
     // AI insights
     supabase
@@ -203,20 +219,21 @@ export async function buildIronCoachContext(userId: string, question: string): P
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(5),
-    // Body metrics (weight history)
+    // Body metrics (90 days for deep weight/body comp trend)
     supabase
       .from('body_metrics')
       .select('metric_type, value, unit, logged_at')
       .eq('user_id', userId)
       .in('metric_type', ['weight', 'body_fat', 'muscle_mass', 'waist', 'chest', 'arms'])
+      .gte('logged_at', ninetyDaysAgo.toISOString())
       .order('logged_at', { ascending: false })
-      .limit(20),
-    // Sleep logs
+      .limit(100),
+    // Sleep logs (7 days)
     supabase
       .from('sleep_logs')
       .select('duration_minutes, quality, logged_at')
       .eq('user_id', userId)
-      .gte('logged_at', new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString())
+      .gte('logged_at', sevenDaysAgo.toISOString())
       .order('logged_at', { ascending: false })
       .limit(7),
     // Hydration logs (last 7 days)
@@ -224,7 +241,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
       .from('supplement_logs')
       .select('amount_ml, logged_at')
       .eq('user_id', userId)
-      .gte('logged_at', new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString())
+      .gte('logged_at', sevenDaysAgo.toISOString())
       .order('logged_at', { ascending: false })
       .limit(14),
     // User's supplements
@@ -281,7 +298,17 @@ export async function buildIronCoachContext(userId: string, question: string): P
     started_at?: string | null;
   }>;
 
-  const foodLogs = (foodRes.data ?? []) as Array<{
+  const foodLogs7d = (foodRes7d.data ?? []) as Array<{
+    protein?: number | null;
+    calories?: number | null;
+    carbs?: number | null;
+    fat?: number | null;
+    food_name?: string | null;
+    meal_type?: string | null;
+    logged_at?: string | null;
+  }>;
+
+  const foodLogsHistorical = (foodRes30d.data ?? []) as Array<{
     protein?: number | null;
     calories?: number | null;
     carbs?: number | null;
@@ -343,8 +370,111 @@ export async function buildIronCoachContext(userId: string, question: string): P
   const caloriesBurnedThisWeek = Math.round(workouts.reduce((sum, w) => sum + (w.calories_burned ?? 0), 0));
   const totalWorkoutMinutes = workouts.reduce((sum, w) => sum + (w.duration_minutes ?? 0), 0);
 
-  const proteinConsumed = foodLogs.reduce((sum, f) => sum + (f.protein ?? 0), 0);
-  const caloriesConsumed = foodLogs.reduce((sum, f) => sum + (f.calories ?? 0), 0);
+  const proteinConsumed = foodLogs7d.reduce((sum, f) => sum + (f.protein ?? 0), 0);
+  const caloriesConsumed = foodLogs7d.reduce((sum, f) => sum + (f.calories ?? 0), 0);
+
+  // ═══ DAILY NUTRITION SUMMARIES (last 30 days for AI context) ═══
+  const dailyNutritionMap = new Map<string, { calories: number; protein: number; carbs: number; fat: number; meals: number[] }>();
+  foodLogsHistorical.forEach((f) => {
+    const date = f.logged_at?.split('T')[0] || 'unknown';
+    if (!dailyNutritionMap.has(date)) {
+      dailyNutritionMap.set(date, { calories: 0, protein: 0, carbs: 0, fat: 0, meals: [] });
+    }
+    const day = dailyNutritionMap.get(date)!;
+    day.calories += f.calories ?? 0;
+    day.protein += f.protein ?? 0;
+    day.carbs += f.carbs ?? 0;
+    day.fat += f.fat ?? 0;
+  });
+
+  const dailyNutritionSummaries = Array.from(dailyNutritionMap.entries())
+    .sort(([a], [b]) => b.localeCompare(a))
+    .slice(0, 30)
+    .map(([date, data]) => ({
+      date,
+      totalCalories: Math.round(data.calories),
+      totalProtein: Math.round(data.protein),
+      totalCarbs: Math.round(data.carbs),
+      totalFat: Math.round(data.fat),
+      mealCount: data.meals.length,
+    }));
+
+  // ═══ WEEKLY NUTRITION AVERAGES (last 4 weeks for trend) ═══
+  const weeklyNutritionAverages: Array<{ weekLabel: string; avgDailyCalories: number; avgDailyProtein: number; daysLogged: number }> = [];
+  for (let weekIdx = 0; weekIdx < 4; weekIdx++) {
+    const weekStart = new Date(now - (weekIdx + 1) * 7 * 24 * 3600 * 1000);
+    const weekEnd = new Date(now - weekIdx * 7 * 24 * 3600 * 1000);
+    const weekLabel = weekIdx === 0 ? 'This week' : weekIdx === 1 ? 'Last week' : `${weekIdx + 1} weeks ago`;
+
+    let weekCalories = 0;
+    let weekProtein = 0;
+    let daysLogged = 0;
+
+    foodLogsHistorical.forEach((f) => {
+      const logDate = f.logged_at ? new Date(f.logged_at).getTime() : 0;
+      if (logDate >= weekStart.getTime() && logDate < weekEnd.getTime()) {
+        weekCalories += f.calories ?? 0;
+        weekProtein += f.protein ?? 0;
+      }
+    });
+
+    // Count unique days
+    const uniqueDays = new Set(
+      foodLogsHistorical
+        .filter((f) => {
+          const logDate = f.logged_at ? new Date(f.logged_at).getTime() : 0;
+          return logDate >= weekStart.getTime() && logDate < weekEnd.getTime();
+        })
+        .map((f) => f.logged_at?.split('T')[0])
+    );
+    daysLogged = uniqueDays.size;
+
+    if (daysLogged > 0) {
+      weeklyNutritionAverages.push({
+        weekLabel,
+        avgDailyCalories: Math.round(weekCalories / daysLogged),
+        avgDailyProtein: Math.round(weekProtein / daysLogged),
+        daysLogged,
+      });
+    }
+  }
+
+  // ═══ WEIGHT HISTORY (for trend analysis) ═══
+  const allWeightEntries = bodyMetrics.filter(m => m.metric_type === 'weight' && m.value);
+  const weightHistory = allWeightEntries
+    .slice(0, 30)
+    .map(m => ({
+      date: (m.logged_at as string)?.split('T')[0] || '',
+      weightKg: m.value as number,
+    }))
+    .reverse(); // oldest first
+
+  // Calculate weight trend
+  const latestWeightEntry = allWeightEntries[0];
+  let weightTrend: 'up' | 'down' | 'stable' = 'stable';
+  let weightChange7d: number | undefined;
+  let weightChange30d: number | undefined;
+
+  if (latestWeightEntry) {
+    const latestW = latestWeightEntry.value as number;
+    const entry7dAgo = allWeightEntries.find(m => {
+      const entryDate = new Date(m.logged_at as string).getTime();
+      return entryDate <= sevenDaysAgo.getTime();
+    });
+    const entry30dAgo = allWeightEntries.find(m => {
+      const entryDate = new Date(m.logged_at as string).getTime();
+      return entryDate <= thirtyDaysAgo.getTime();
+    });
+
+    if (entry7dAgo) {
+      const diff = latestW - (entry7dAgo.value as number);
+      weightChange7d = Math.round(diff * 10) / 10;
+      if (Math.abs(diff) >= 0.3) weightTrend = diff > 0 ? 'up' : 'down';
+    }
+    if (entry30dAgo) {
+      weightChange30d = Math.round((latestW - (entry30dAgo.value as number)) * 10) / 10;
+    }
+  }
   
   // Calculate protein target based on user's actual weight, or use null if unknown
   const userWeightKg = profile?.weight_kg || latestWeight?.value || null;
@@ -538,8 +668,8 @@ export async function buildIronCoachContext(userId: string, question: string): P
     // Full user profile for AI
     userProfile,
     
-    // Recent food logs (for diet analysis)
-    recentFoodLogs: foodLogs.slice(0, 10).map(f => ({
+    // Recent food logs (7 days - detailed)
+    recentFoodLogs: foodLogs7d.slice(0, 10).map(f => ({
       food: f.food_name,
       meal: f.meal_type,
       protein: f.protein,
@@ -547,13 +677,35 @@ export async function buildIronCoachContext(userId: string, question: string): P
       carbs: f.carbs,
       fat: f.fat,
     })),
-    
-    // Recent workouts
-    recentWorkouts: workouts.slice(0, 5).map(w => ({
+
+    // Daily nutrition summaries (14 days)
+    dailyNutritionSummaries,
+
+    // Weekly nutrition averages (4 weeks trend)
+    weeklyNutritionAverages,
+
+    // Weight history & trend
+    weightHistory,
+    weightTrend,
+    weightChange7d,
+    weightChange30d,
+
+    // Historical food logs (90 days - summary for AI memory)
+    historicalFoodLogs: foodLogsHistorical.slice(0, 50).map(f => ({
+      food: f.food_name,
+      meal: f.meal_type,
+      protein: f.protein,
+      calories: f.calories,
+      date: f.logged_at?.split('T')[0] || null,
+    })),
+
+    // Recent workouts (14 days)
+    recentWorkouts: workouts.slice(0, 7).map(w => ({
       type: w.workout_type,
       duration: w.duration_minutes,
       calories: w.calories_burned,
       notes: w.notes,
+      startedAt: w.started_at,
     })),
     
     // Weekly plan data

@@ -81,11 +81,48 @@ export interface IronCoachContextSnapshot {
     carbs: number | null;
     fat: number | null;
   }>;
+
+  // Daily nutrition summaries (last 14 days)
+  dailyNutritionSummaries?: Array<{
+    date: string;
+    totalCalories: number;
+    totalProtein: number;
+    totalCarbs: number;
+    totalFat: number;
+    mealCount: number;
+  }>;
+
+  // Weekly nutrition averages (last 4 weeks for trend analysis)
+  weeklyNutritionAverages?: Array<{
+    weekLabel: string;
+    avgDailyCalories: number;
+    avgDailyProtein: number;
+    daysLogged: number;
+  }>;
+
+  // Weight history for trend analysis
+  weightHistory?: Array<{
+    date: string;
+    weightKg: number;
+  }>;
+  weightTrend?: 'up' | 'down' | 'stable';
+  weightChange7d?: number;
+  weightChange30d?: number;
   recentWorkouts?: Array<{
     type: string | null;
     duration: number | null;
     calories: number | null;
     notes: string | null;
+    startedAt?: string | null;
+  }>;
+
+  // Historical food logs (30 days) for AI memory
+  historicalFoodLogs?: Array<{
+    food: string | null;
+    meal: string | null;
+    protein: number | null;
+    calories: number | null;
+    date: string | null;
   }>;
   
   // Weekly planner data

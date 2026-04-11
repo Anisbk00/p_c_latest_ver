@@ -128,22 +128,73 @@ export function buildHybridCoachUserPrompt(input: {
   if (profile?.supplements?.length) lines.push(`Supplements: ${profile.supplements.map(s => `${s.name} (${s.dose}, ${s.timing})`).join(', ')}`);
   if (profile?.currentStreak) lines.push(`Streak: ${profile.currentStreak} days`);
   
+  // Weight progression (historical + trend)
+  if (ctx.weightHistory && ctx.weightHistory.length > 0) {
+    lines.push('');
+    lines.push('=== WEIGHT PROGRESSION ===');
+    const currentWeight = ctx.weightHistory[ctx.weightHistory.length - 1]?.weightKg;
+    const trendSymbol = ctx.weightTrend === 'up' ? '↑ up' : ctx.weightTrend === 'down' ? '↓ down' : '→ stable';
+    lines.push(`Current: ${currentWeight}kg | Trend: ${trendSymbol}`);
+    if (ctx.weightChange7d !== undefined) lines.push(`7-day change: ${ctx.weightChange7d > 0 ? '+' : ''}${ctx.weightChange7d}kg`);
+    if (ctx.weightChange30d !== undefined) lines.push(`30-day change: ${ctx.weightChange30d > 0 ? '+' : ''}${ctx.weightChange30d}kg`);
+    // Show weight history timeline
+    if (ctx.weightHistory.length > 1) {
+      const timeline = ctx.weightHistory.map(w => `${w.date.slice(5)}: ${w.weightKg}kg`).join(' → ');
+      lines.push(`History: ${timeline}`);
+    }
+  }
+
   // This week's numbers
   lines.push('');
-  lines.push('=== THIS WEEK ===');
+  lines.push('=== THIS WEEK (Current) ===');
   lines.push(`Calories consumed: ${profile?.caloriesConsumedThisWeek || 0}`);
   lines.push(`Protein consumed: ${profile?.proteinConsumedThisWeek || 0}g / ${profile?.proteinTargetWeekly || '?'}g target (${profile?.proteinAdherencePct || 0}% adherence)`);
   lines.push(`Workouts: ${ctx.workoutsThisWeek || 0} (${profile?.totalWorkoutMinutes || 0}min total)`);
   lines.push(`Calories burned: ${ctx.caloriesBurnedThisWeek || 0}`);
   if (profile?.avgHydrationMl) lines.push(`Hydration avg: ${profile.avgHydrationMl}ml/day`);
   if (profile?.avgSleepHours) lines.push(`Sleep avg: ${profile.avgSleepHours}h (quality: ${profile.avgSleepQuality || '?'}/100)`);
+
+  // Daily nutrition history (last 14 days)
+  if (ctx.dailyNutritionSummaries && ctx.dailyNutritionSummaries.length > 0) {
+    lines.push('');
+    lines.push('=== DAILY NUTRITION (Last 14 Days) ===');
+    ctx.dailyNutritionSummaries.forEach(d => {
+      lines.push(`${d.date.slice(5)}: ${d.totalCalories}cal, ${d.totalProtein}g P, ${d.totalCarbs}g C, ${d.totalFat}g F`);
+    });
+  }
+
+  // Weekly nutrition trends (4 weeks)
+  if (ctx.weeklyNutritionAverages && ctx.weeklyNutritionAverages.length > 0) {
+    lines.push('');
+    lines.push('=== NUTRITION TRENDS (4 Weeks) ===');
+    ctx.weeklyNutritionAverages.forEach(w => {
+      lines.push(`${w.weekLabel}: avg ${w.avgDailyCalories}cal/day, ${w.avgDailyProtein}g P/day (${w.daysLogged} days logged)`);
+    });
+    // Calculate trend direction
+    if (ctx.weeklyNutritionAverages.length >= 2) {
+      const latest = ctx.weeklyNutritionAverages[0].avgDailyCalories;
+      const oldest = ctx.weeklyNutritionAverages[ctx.weeklyNutritionAverages.length - 1].avgDailyCalories;
+      const diff = latest - oldest;
+      const direction = diff > 100 ? '↑ increasing' : diff < -100 ? '↓ decreasing' : '→ stable';
+      lines.push(`Calorie trend: ${direction} (${diff > 0 ? '+' : ''}${diff}cal/day over the period)`);
+    }
+  }
   
-  // Recent meals (for diet questions)
+  // Recent meals — today's and recent days (for diet questions)
   if (ctx.recentFoodLogs?.length) {
     lines.push('');
-    lines.push('=== RECENT MEALS ===');
-    ctx.recentFoodLogs.slice(0, 5).forEach((f: any) => {
+    lines.push('=== RECENT MEALS (Latest, Most Recent First) ===');
+    ctx.recentFoodLogs.slice(0, 8).forEach((f: any) => {
       lines.push(`- ${f.food || 'Unknown'}: ${f.calories || 0} cal, ${f.protein || 0}g P, ${f.carbs || 0}g C, ${f.fat || 0}g F (${f.meal || '?'})`);
+    });
+  }
+
+  // Historical food pattern (older meals for memory)
+  if (ctx.historicalFoodLogs && ctx.historicalFoodLogs.length > 8) {
+    lines.push('');
+    lines.push('=== OLDER MEAL HISTORY (Pattern Reference) ===');
+    ctx.historicalFoodLogs.slice(8, 20).forEach((f: any) => {
+      lines.push(`- ${f.date ? f.date.slice(5) + ': ' : ''}${f.food || 'Unknown'}: ${f.calories || 0}cal, ${f.protein || 0}g P (${f.meal || '?'})`);
     });
   }
   
@@ -151,8 +202,9 @@ export function buildHybridCoachUserPrompt(input: {
   if (ctx.recentWorkouts?.length) {
     lines.push('');
     lines.push('=== RECENT WORKOUTS ===');
-    ctx.recentWorkouts.slice(0, 3).forEach((w: any) => {
-      lines.push(`- ${w.type || 'Workout'}: ${w.duration || 0}min, ${w.calories || 0}cal burned`);
+    ctx.recentWorkouts.slice(0, 7).forEach((w: any) => {
+      const date = w.startedAt ? w.startedAt.slice(0, 10) : '';
+      lines.push(`- ${date ? date.slice(5) + ': ' : ''}${w.type || 'Workout'}: ${w.duration || 0}min, ${w.calories || 0}cal burned`);
     });
   }
   

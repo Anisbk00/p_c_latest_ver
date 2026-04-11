@@ -106,18 +106,20 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
     return '';
   }
   
-  // Check cache with locale
-  const cached = getCachedPromptResult(MODEL_NAME, prompt, locale);
-  if (cached) {
-    console.log('[streamCloudPrompt] Using cached response');
-    streamText(cached);
-    return cached;
-  }
-
   // Detect if prompt contains rich context (from buildContextPrompt)
   // Rich prompts include system instructions + user data + question (>200 chars)
   // Simple prompts are just raw questions from non-context paths
   const hasRichContext = prompt.length > Math.max((userQuestion?.length || 50) + 100, 200);
+
+  // Only use cache for simple prompts WITHOUT user data context
+  // Context-rich prompts always have fresh data and should never be cached
+  // to avoid returning stale nutrition/workout/body metrics info
+  const cached = !hasRichContext ? getCachedPromptResult(MODEL_NAME, prompt, locale) : null;
+  if (cached) {
+    console.log('[streamCloudPrompt] Using cached response (simple prompt)');
+    streamText(cached);
+    return cached;
+  }
 
   let effectiveUserPrompt: string;
   let effectiveSystemPrompt: string | undefined;
@@ -155,10 +157,12 @@ Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific qu
       return '';
     }
 
-    // Stream and cache the response
+    // Stream and cache the response (only cache simple prompts without user data)
     if (fullText && fullText.trim()) {
       streamText(fullText);
-      setCachedPromptResult(MODEL_NAME, prompt, fullText, undefined, locale);
+      if (!hasRichContext) {
+        setCachedPromptResult(MODEL_NAME, prompt, fullText, undefined, locale);
+      }
       return fullText;
     }
     
