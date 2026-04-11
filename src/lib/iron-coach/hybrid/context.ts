@@ -1,7 +1,8 @@
 import { retrieveContext } from '@/lib/iron-coach/retriever';
 import { getSupabase } from '@/lib/supabase/supabase-data';
-import { createCloudEmbedding } from './cloud';
-import { getTopAIMemory, searchAIEmbeddings } from './ai-store';
+// createCloudEmbedding — DISABLED: Groq doesn't support embeddings, was wasting compute
+// import { createCloudEmbedding } from './cloud';
+import { getTopAIMemory } from './ai-store';
 import { buildHybridCoachSystemPrompt, buildHybridCoachUserPrompt } from './prompt-template';
 import type { IronCoachContextSnapshot } from './types';
 
@@ -175,13 +176,13 @@ export async function buildIronCoachContext(userId: string, question: string): P
     // Extended user profile (target weight, primary goal, etc.)
     supabase
       .from('user_profiles')
-      .select('*')
+      .select('height_cm, activity_level, fitness_level, dietary_restrictions, allergies, primary_goal, target_weight_kg, target_date, birth_date, biological_sex')
       .eq('user_id', userId)
       .maybeSingle(),
     // User settings (streak, preferences)
     supabase
       .from('user_settings')
-      .select('*')
+      .select('streak_count, login_streak')
       .eq('user_id', userId)
       .maybeSingle(),
     // User goals
@@ -227,7 +228,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
       .in('metric_type', ['weight', 'body_fat', 'muscle_mass', 'waist', 'chest', 'arms'])
       .gte('logged_at', ninetyDaysAgo.toISOString())
       .order('logged_at', { ascending: false })
-      .limit(100),
+      .limit(40),
     // Sleep logs (7 days)
     supabase
       .from('sleep_logs')
@@ -248,7 +249,8 @@ export async function buildIronCoachContext(userId: string, question: string): P
     supabase
       .from('supplements')
       .select('name, dose, timing, frequency')
-      .eq('user_id', userId),
+      .eq('user_id', userId)
+      .limit(20),
     // Recent chat messages (last 10 for memory)
     sb
       .from('ai_messages')
@@ -389,7 +391,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
 
   const dailyNutritionSummaries = Array.from(dailyNutritionMap.entries())
     .sort(([a], [b]) => b.localeCompare(a))
-    .slice(0, 30)
+    .slice(0, 10)
     .map(([date, data]) => ({
       date,
       totalCalories: Math.round(data.calories),
@@ -442,7 +444,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
   // ═══ WEIGHT HISTORY (for trend analysis) ═══
   const allWeightEntries = bodyMetrics.filter(m => m.metric_type === 'weight' && m.value);
   const weightHistory = allWeightEntries
-    .slice(0, 30)
+    .slice(0, 15)
     .map(m => ({
       date: (m.logged_at as string)?.split('T')[0] || '',
       weightKg: m.value as number,
@@ -503,27 +505,11 @@ export async function buildIronCoachContext(userId: string, question: string): P
     ? Math.round(sleepLogs.reduce((sum, s) => sum + (s.quality ?? 0), 0) / sleepLogs.length)
     : null;
 
-  // Build embedding snippets
+  // Build embedding snippets — DISABLED: createCloudEmbedding returns empty arrays (Groq doesn't support embeddings)
+  // This was wasting compute on every request. Re-enable if a working embedding provider is added.
+  // const vector = await createCloudEmbedding(question);
+  // ... searchAIEmbeddings logic ...
   let embeddingSnippets: Array<{ source: string; text: string; similarity: number }> = [];
-  try {
-    const vector = await createCloudEmbedding(question);
-    if (vector.length > 0) {
-      const matches = await searchAIEmbeddings({
-        userId,
-        queryEmbedding: vector,
-        matchCount: 5,
-        sourceTables: ['workouts', 'food_logs', 'sleep_logs', 'body_metrics', 'ai_messages'],
-      });
-
-      embeddingSnippets = matches.map((match) => ({
-        source: match.source_table,
-        text: match.content,
-        similarity: match.similarity,
-      }));
-    }
-  } catch {
-    embeddingSnippets = [];
-  }
 
   const retrievalContext = [
     ...docs.map((d) => d.content),
@@ -691,7 +677,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
     weightChange30d,
 
     // Historical food logs (90 days - summary for AI memory)
-    historicalFoodLogs: foodLogsHistorical.slice(0, 50).map(f => ({
+    historicalFoodLogs: foodLogsHistorical.slice(0, 20).map(f => ({
       food: f.food_name,
       meal: f.meal_type,
       protein: f.protein,
@@ -712,7 +698,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
     weeklyPlan,
 
     // Recent chat history (for conversational continuity)
-    recentChatHistory: recentChat.slice(0, 6).reverse().map(m => ({
+    recentChatHistory: recentChat.slice(0, 4).reverse().map(m => ({
       role: m.role || 'user',
       content: m.content || '',
     })),

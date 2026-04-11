@@ -213,7 +213,7 @@ export async function POST(request: NextRequest) {
       { data: weeklyPlan },
     ] = await Promise.all([
       supabase.from('profiles').select('name, height_cm, weight_kg, activity_level, fitness_level, dietary_restrictions, allergies').eq('id', user.id).maybeSingle(),
-      supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle(),
+      supabase.from('user_profiles').select('height_cm, activity_level, fitness_level, dietary_restrictions, allergies, primary_goal, target_weight_kg, birth_date, biological_sex').eq('user_id', user.id).maybeSingle(),
       supabase.from('user_settings').select('map_storage').eq('user_id', user.id).maybeSingle(),
       supabase.from('body_metrics').select('value, unit, captured_at').eq('user_id', user.id).eq('metric_type', 'weight').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
       supabase.from('body_metrics').select('value, captured_at').eq('user_id', user.id).eq('metric_type', 'body_fat').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
@@ -286,13 +286,10 @@ export async function POST(request: NextRequest) {
     if (weightKg) profileParts.push(`Weight: ${weightKg}kg`)
     if (sex && sex !== 'unknown') profileParts.push(`Sex: ${sex}`)
     if (age) profileParts.push(`Age: ${age}`)
+    profileParts.push(`Activity: ${activityLevel}`)
+    profileParts.push(`Fitness: ${fitnessLevel}`)
+    profileParts.push(`Goal: ${primaryGoal}`)
     contextLines.push(`- ${profileParts.join(' | ') || 'No physical measurements available — estimate visually'}`)
-    
-    const fitnessParts: string[] = []
-    fitnessParts.push(`Activity: ${activityLevel}`)
-    fitnessParts.push(`Fitness: ${fitnessLevel}`)
-    fitnessParts.push(`Goal: ${primaryGoal}`)
-    contextLines.push(`- ${fitnessParts.join(' | ')}`)
     
     if (targetWeightKg) contextLines.push(`- Target Weight: ${targetWeightKg}kg`)
     if (dietaryRestrictions?.length) contextLines.push(`- Dietary Restrictions: ${Array.isArray(dietaryRestrictions) ? dietaryRestrictions.join(', ') : dietaryRestrictions}`)
@@ -320,21 +317,11 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const enhancedPrompt = `You are estimating body composition from this photo. You have the user's profile data above — USE IT.
-
-PHOTO CONDITIONS: Lighting=${lighting}, Clothing=${clothing}
-
-INSTRUCTIONS:
-1. Look at the photo carefully — assess body fat distribution, muscle definition, overall build
-2. Cross-reference with the user's data: weight, height, activity level, training volume, nutrition
-3. A person in caloric deficit with high protein + resistance training likely has MORE lean mass than sedentary same-weight person
-4. Use previous body fat measurement as anchor if available
-5. Be realistic — most people are 15-30% body fat, athletes 8-15%, bodybuilders 4-8%
-
-OUTPUT FORMAT — respond with ONLY this JSON, nothing else:
-{"bodyFatEstimate":{"value":NUMBER,"confidence":0.0_TO_1.0,"rationale":"brief reason"},"muscleMassEstimate":{"value":NUMBER_IN_KG,"confidence":0.0_TO_1.0,"rationale":"brief reason"},"weightEstimate":{"value":NUMBER_IN_KG,"confidence":0.0_TO_1.0,"rationale":"brief reason"},"overallConfidence":0.0_TO_1.0,"analysisNotes":"2-3 sentence analysis using user data + photo observations","recommendations":["rec1","rec2"]}
-
-Do NOT add any text before or after the JSON. Do NOT say you need more data. Use what you have.`
+    const enhancedPrompt = `Estimate body comp from this photo. Use profile data above. Photo: lighting=${lighting}, clothing=${clothing}.
+Cross-reference: caloric deficit + high protein + training = more lean mass. Use prev BF as anchor.
+Realistic ranges: avg 15-30%, athlete 8-15%, bodybuilder 4-8%.
+Return ONLY JSON:{"bodyFatEstimate":{"value":0,"confidence":0,"rationale":""},"muscleMassEstimate":{"value":0,"confidence":0,"rationale":""},"weightEstimate":{"value":0,"confidence":0,"rationale":""},"overallConfidence":0,"analysisNotes":"","recommendations":[]}
+No disclaimers. No text outside JSON.`
 
     // ── Call AI vision analysis ─────────────────────────────────────
     const { analyzePhoto } = await import('@/lib/ai/gemini-service')

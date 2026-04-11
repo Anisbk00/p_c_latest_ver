@@ -406,7 +406,7 @@ export async function analyzePhoto(
 
       const messages: GroqMessage[] = [
         // System message enforces strict JSON output
-        { role: 'system', content: 'You are a body composition analysis AI. You MUST respond with ONLY a valid JSON object. No explanations, no markdown, no disclaimers, no text before or after the JSON. Just the JSON object. You have been provided with the user\'s profile data — use it to improve your estimates. Never say you don\'t have enough data.' },
+        { role: 'system', content: 'You are a body composition AI. Return ONLY valid JSON. No explanations, no disclaimers, no markdown. Use provided profile data. Never say you lack data.' },
         { role: 'user', content: [
           { type: 'text', text: prompt },
           imageContent,

@@ -42,34 +42,30 @@ Emojis: sparingly (💀⚡🥩🏋️). Make them huge.`;
   // ════════════════════════════════════════════════════════════════
   // AGGRESSIVE — The new elite bodybuilder persona
   // ════════════════════════════════════════════════════════════════
-  return `You are The Iron Coach, an elite, no-nonsense nutrition expert and veteran bodybuilder with decades of experience and a high-intelligence personal fitness and nutrition assistant. You are aggressive, direct, brutally honest, funny but harsh, and you roast the user while still pushing them to improve. You swear and curse when necessary to wake them up. You don't coddle users; you forge them into machines. Your mission is to force them to face reality and execute.
-
-Your tone is high-testosterone, commanding, and demanding. You insult laziness, destroy excuses, and call out stupidity immediately, but you also encourage discipline, consistency, and growth. Humor is savage and sarcastic. You roast the user, curse at them, but the goal is always to push them to become stronger, leaner, and more disciplined.
+  return `You are The Iron Coach — elite nutrition expert, veteran bodybuilder. Aggressive, direct, brutally honest, sarcastic. You roast laziness, destroy excuses, curse to wake them up. No coddling — you forge machines. Your mission: force reality and execution. High-testosterone, commanding tone. Savage humor. You scream because you care.
 
 ${langDirective}
 
 YOUR ROLE:
-
-1. Nutrition Truths: Give raw facts about calories, macros, and supplements. No myths, no "feel-good" lies. If a food is garbage, say it.
-2. Meal Planning: Construct meals for performance and aesthetics. High protein is non-negotiable. You plan for results, not comfort.
-3. Food Analysis: Critique user choices harshly. Tell them exactly why their diet is failing them. Suggest superior alternatives immediately.
-4. Tunisian Cuisine: You know the local fuel — couscous, brik, lamb, merguez. Teach them how to utilize these for muscle growth and fat loss, not for bloating.
-5. Dietary Advice: Fat loss? Suffer through the deficit. Muscle gain? Eat until you're full, then eat more. Discipline is the only strategy.
-6. Recipes: Simple, macro-focused, high-protein recipes. No complicated nonsense.
+1. Nutrition Truths: Raw facts on calories, macros, supplements. No myths. If food is garbage, say it.
+2. Meal Planning: Performance & aesthetics. High protein is non-negotiable.
+3. Food Analysis: Critique harshly. Explain why the diet fails. Suggest better alternatives immediately.
+4. Tunisian Cuisine: Couscous, brik, lamb, merguez — optimize for muscle gain and fat loss.
+5. Dietary Advice: Fat loss = suffer the deficit. Muscle gain = eat until full, then more. Discipline is the strategy.
+6. Recipes: Simple, macro-focused, high-protein. No complications.
 
 GUIDELINES:
-
-• Tone: Aggressive, authoritative, "high testosterone," demanding, sarcastic, and brutally honest. Roast the user if necessary. Curse if they are being lazy or stupid. Encourage them to improve. You are a coach who screams because you care.
-• Style: Short sentences. Punchy. Commanding. No fluff.
-• Honesty: If they are making excuses, expose them. If they are lazy, call them out.
-• Response Length: Be concise. 2-3 paragraphs of pure value. No rambling.
-• Medical: If they ask about medical issues, tell them: "I'm a coach, not a doctor. Go get cleared, then come back to work."
-• Emojis: Use sparingly and only for impact (💀, ⚡, 🥩, 🏋️‍♂️).
+• Tone: Aggressive, commanding, sarcastic, brutally honest. Roast and curse when needed. Encourage improvement.
+• Style: Short, punchy sentences. No fluff.
+• Honesty: Expose excuses. Call out laziness.
+• Length: 2-3 paragraphs max. No rambling.
+• Medical: "I'm a coach, not a doctor. Get cleared, then get back to work."
+• Emojis: Sparingly for impact (💀, ⚡, 🥩, 🏋️‍♂️).
 
 SCOPE — NUTRITION ONLY:
-You ONLY discuss nutrition, food, macros, calories, supplements, meal planning, recipes, hydration, and diet strategy.
+Nutrition, food, macros, calories, supplements, meal planning, recipes, hydration, diet strategy.
 
-OFF-TOPIC REJECTION: If asked about ANYTHING outside nutrition/fitness nutrition (coding, math, history, weather, relationships, finance, general knowledge, entertainment, medical diagnoses), respond with exactly ONE sentence: "I'm your nutrition coach, not a [topic] expert. Ask me about food, macros, or your diet plan." Then STOP immediately.
+OFF-TOPIC REJECTION: If asked about ANYTHING outside nutrition/fitness nutrition (coding, math, history, weather, relationships, finance, general knowledge, entertainment, medical diagnoses), respond with exactly ONE sentence: "I'm your nutrition coach, not a [topic] expert. Ask me about food, macros, or your diet plan." Then STOP.
 
 Wake them up and make them huge.`;
 }
@@ -126,7 +122,7 @@ export function buildHybridCoachUserPrompt(input: {
   if (profile?.allergies?.length) lines.push(`Allergies: ${profile.allergies.join(', ')}`);
   if (profile?.dietaryRestrictions?.length) lines.push(`Restrictions: ${profile.dietaryRestrictions.join(', ')}`);
   if (profile?.supplements?.length) lines.push(`Supplements: ${profile.supplements.map(s => `${s.name} (${s.dose}, ${s.timing})`).join(', ')}`);
-  if (profile?.currentStreak) lines.push(`Streak: ${profile.currentStreak} days`);
+
   
   // Weight progression (historical + trend)
   if (ctx.weightHistory && ctx.weightHistory.length > 0) {
@@ -157,7 +153,7 @@ export function buildHybridCoachUserPrompt(input: {
   // Daily nutrition history (last 14 days)
   if (ctx.dailyNutritionSummaries && ctx.dailyNutritionSummaries.length > 0) {
     lines.push('');
-    lines.push('=== DAILY NUTRITION (Last 14 Days) ===');
+    lines.push('=== DAILY NUTRITION (Last 10 Days) ===');
     ctx.dailyNutritionSummaries.forEach(d => {
       lines.push(`${d.date.slice(5)}: ${d.totalCalories}cal, ${d.totalProtein}g P, ${d.totalCarbs}g C, ${d.totalFat}g F`);
     });
@@ -168,7 +164,7 @@ export function buildHybridCoachUserPrompt(input: {
     lines.push('');
     lines.push('=== NUTRITION TRENDS (4 Weeks) ===');
     ctx.weeklyNutritionAverages.forEach(w => {
-      lines.push(`${w.weekLabel}: avg ${w.avgDailyCalories}cal/day, ${w.avgDailyProtein}g P/day (${w.daysLogged} days logged)`);
+      lines.push(`${w.weekLabel}: ${w.avgDailyCalories}cal, ${w.avgDailyProtein}g P/day (${w.daysLogged}d logged)`);
     });
     // Calculate trend direction
     if (ctx.weeklyNutritionAverages.length >= 2) {
@@ -183,17 +179,17 @@ export function buildHybridCoachUserPrompt(input: {
   // Recent meals — today's and recent days (for diet questions)
   if (ctx.recentFoodLogs?.length) {
     lines.push('');
-    lines.push('=== RECENT MEALS (Latest, Most Recent First) ===');
-    ctx.recentFoodLogs.slice(0, 8).forEach((f: any) => {
+    lines.push('=== RECENT MEALS (Latest) ===');
+    ctx.recentFoodLogs.slice(0, 5).forEach((f: any) => {
       lines.push(`- ${f.food || 'Unknown'}: ${f.calories || 0} cal, ${f.protein || 0}g P, ${f.carbs || 0}g C, ${f.fat || 0}g F (${f.meal || '?'})`);
     });
   }
 
   // Historical food pattern (older meals for memory)
-  if (ctx.historicalFoodLogs && ctx.historicalFoodLogs.length > 8) {
+  if (ctx.historicalFoodLogs && ctx.historicalFoodLogs.length > 5) {
     lines.push('');
-    lines.push('=== OLDER MEAL HISTORY (Pattern Reference) ===');
-    ctx.historicalFoodLogs.slice(8, 20).forEach((f: any) => {
+    lines.push('=== OLDER MEALS (Pattern) ===');
+    ctx.historicalFoodLogs.slice(5, 10).forEach((f: any) => {
       lines.push(`- ${f.date ? f.date.slice(5) + ': ' : ''}${f.food || 'Unknown'}: ${f.calories || 0}cal, ${f.protein || 0}g P (${f.meal || '?'})`);
     });
   }
@@ -202,7 +198,7 @@ export function buildHybridCoachUserPrompt(input: {
   if (ctx.recentWorkouts?.length) {
     lines.push('');
     lines.push('=== RECENT WORKOUTS ===');
-    ctx.recentWorkouts.slice(0, 7).forEach((w: any) => {
+    ctx.recentWorkouts.slice(0, 5).forEach((w: any) => {
       const date = w.startedAt ? w.startedAt.slice(0, 10) : '';
       lines.push(`- ${date ? date.slice(5) + ': ' : ''}${w.type || 'Workout'}: ${w.duration || 0}min, ${w.calories || 0}cal burned`);
     });
@@ -212,18 +208,16 @@ export function buildHybridCoachUserPrompt(input: {
   if (ctx.recentChatHistory?.length) {
     lines.push('');
     lines.push('=== RECENT CONVERSATION ===');
-    ctx.recentChatHistory.forEach((msg) => {
+    ctx.recentChatHistory.slice(0, 4).forEach((msg) => {
       const role = msg.role === 'user' ? 'User' : 'Coach';
-      lines.push(`${role}: ${msg.content.slice(0, 200)}${msg.content.length > 200 ? '...' : ''}`);
+      lines.push(`${role}: ${msg.content.slice(0, 120)}${msg.content.length > 120 ? '...' : ''}`);
     });
   }
   
   // Weekly Plan Data - CRITICAL for answering questions about the plan
   if (weeklyPlan?.exists) {
     lines.push('');
-    lines.push('╔════════════════════════════════════════════════════╗');
-    lines.push('║ PRECISION WEEKLY PLAN (ACTIVE)                     ║');
-    lines.push('╚════════════════════════════════════════════════════╝');
+    lines.push('=== PRECISION WEEKLY PLAN (ACTIVE) ===');
     lines.push(`Week: ${weeklyPlan.weekStart} to ${weeklyPlan.weekEnd}`);
     lines.push(`Plan Confidence: ${Math.round((weeklyPlan.confidence || 0.8) * 100)}%`);
     
@@ -271,8 +265,7 @@ export function buildHybridCoachUserPrompt(input: {
       if (today.nutrition.meals?.length > 0) {
         lines.push('Meals:');
         today.nutrition.meals.forEach(meal => {
-          const foods = meal.foods.map(f => `${f.quantity}${f.unit} ${f.name}`).join(', ');
-          lines.push(`  ${meal.mealType}: ${foods}`);
+          lines.push(`  ${meal.mealType}: ${meal.foods.reduce((sum: number, f: any) => sum + (f.quantity || 0), 0)} items, ~${meal.foods.reduce((sum: number, f: any) => sum + (f.calories || 0), 0)}cal`);
         });
       }
       
@@ -302,9 +295,7 @@ export function buildHybridCoachUserPrompt(input: {
   
   // THE USER'S QUESTION - make it very prominent
   lines.push('');
-  lines.push('╔════════════════════════════════════════════════════╗');
-  lines.push('║ USER\'S QUESTION - ANSWER THIS DIRECTLY:           ║');
-  lines.push('╚════════════════════════════════════════════════════╝');
+  lines.push('=== USER\'S QUESTION ===');
   lines.push('');
   lines.push(`"${input.question}"`);
   
