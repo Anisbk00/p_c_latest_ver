@@ -1162,6 +1162,25 @@
   display: none;
 }
 
+/* Thin horizontal scrollbar */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: hsl(var(--muted)) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  height: 4px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: hsl(var(--muted));
+  border-radius: 999px;
+}
+
 /* Focus ring for accessibility */
 .focus-ring:focus-visible {
   outline: 2px solid var(--ring);

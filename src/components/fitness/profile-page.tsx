@@ -1791,10 +1791,10 @@ function MicroExperimentsCarousel({
             </div>
           )}
           
-          {/* Available / Completed experiments — vertical scroll */}
+          {/* Available / Completed experiments — horizontal scroll */}
           {nonActiveExperiments.length > 0 ? (
-            <ScrollArea className="w-full max-h-[400px]">
-              <div className="flex flex-col gap-3 pb-2">
+            <div className="overflow-x-auto -mx-1 px-1 pb-1 scrollbar-thin">
+              <div className="flex gap-3" style={{ minWidth: 'max-content' }}>
                 {nonActiveExperiments.map((exp) => {
                   const isStarting = startingExperimentId === exp.id;
                   const isDisabled = !!activeExperiment || isStarting;
@@ -1803,10 +1803,10 @@ function MicroExperimentsCarousel({
                   return (
                     <motion.div
                       key={exp.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
+                      initial={{ opacity: 0, x: 20 }}
+                      animate={{ opacity: 1, x: 0 }}
                       className={cn(
-                        "w-full p-4 rounded-2xl border cursor-pointer transition-all",
+                        "shrink-0 w-64 p-4 rounded-2xl border cursor-pointer transition-all",
                         isCompleted
                           ? "bg-muted/30 border-border/50 opacity-50"
                           : "bg-gradient-to-br from-emerald-500/10 to-teal-500/10 border-emerald-500/20 hover:border-emerald-500/40",
@@ -1814,74 +1814,85 @@ function MicroExperimentsCarousel({
                       )}
                       onClick={() => handleExperimentClick(exp)}
                     >
-                      <div className="flex items-start gap-3">
+                      <div className="flex items-center gap-2 mb-2">
                         <div className={cn(
-                          "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+                          "w-8 h-8 rounded-lg flex items-center justify-center",
                           getCategoryColor(exp.category)
                         )}>
-                          {isCompleted ? <Check className="w-5 h-5" /> : getCategoryIcon(exp.category)}
+                          {isCompleted ? <Check className="w-4 h-4" /> : getCategoryIcon(exp.category)}
                         </div>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <h4 className="text-sm font-semibold">{exp.title}</h4>
-                            <Badge variant="outline" className="text-[10px]">
-                              {exp.duration}d
-                            </Badge>
-                            <Badge variant="secondary" className="text-[10px]">
-                              {getCategoryLabel(exp.category)}
-                            </Badge>
-                          </div>
-                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{exp.description}</p>
+                        <Badge variant="outline" className="text-[10px]">
+                          {exp.duration} days
+                        </Badge>
+                        <Badge variant="secondary" className="text-[10px]">
+                          {getCategoryLabel(exp.category)}
+                        </Badge>
+                        {isCompleted && (
+                          <Badge variant="outline" className="text-[10px] text-emerald-600 border-emerald-500/30 ml-auto">
+                            Done
+                          </Badge>
+                        )}
+                      </div>
 
-                          {/* Daily action preview */}
-                          {exp.dailyActions && exp.dailyActions.length > 0 && (
-                            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 mt-1.5">
-                              🎯 {exp.expectedOutcome}
-                            </p>
+                      <h4 className="text-sm font-semibold">{exp.title}</h4>
+                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{exp.description}</p>
+
+                      {/* Daily action preview */}
+                      {exp.dailyActions && exp.dailyActions.length > 0 && (
+                        <div className="mt-2 p-2 rounded-lg bg-muted/30">
+                          <p className="text-[10px] font-medium text-muted-foreground mb-1">What you'll do:</p>
+                          <p className="text-[10px] text-muted-foreground line-clamp-1">
+                            • {exp.dailyActions[0]}
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="mt-3 pt-3 border-t border-border/50">
+                        <p className="text-[10px] text-emerald-600 font-medium mb-2">
+                          🎯 {exp.expectedOutcome}
+                        </p>
+                        <Button
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onStartExperiment(exp);
+                          }}
+                          disabled={isDisabled}
+                          className={cn(
+                            "w-full h-8 text-xs",
+                            isCompleted
+                              ? "bg-muted text-muted-foreground"
+                              : "bg-emerald-500 hover:bg-emerald-600"
                           )}
-
-                          {/* Action */}
-                          <div className="mt-2 flex items-center gap-2">
-                            {isCompleted ? (
-                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                <Check className="w-3 h-3" /> Completed
-                              </span>
-                            ) : activeExperiment ? (
-                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                <Lock className="w-3 h-3" /> One at a time
-                              </span>
-                            ) : (
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  onStartExperiment(exp);
-                                }}
-                                disabled={isDisabled}
-                                className="h-7 text-xs px-2 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-500/10"
-                              >
-                                {isStarting ? (
-                                  <>
-                                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-                                    Starting...
-                                  </>
-                                ) : (
-                                  <>
-                                    <Play className="w-3 h-3 mr-1" />
-                                    Start
-                                  </>
-                                )}
-                              </Button>
-                            )}
-                          </div>
-                        </div>
+                        >
+                          {isStarting ? (
+                            <>
+                              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                              Starting...
+                            </>
+                          ) : isCompleted ? (
+                            <>
+                              <Check className="w-3 h-3 mr-1" />
+                              Completed
+                            </>
+                          ) : activeExperiment ? (
+                            <>
+                              <Lock className="w-3 h-3 mr-1" />
+                              One at a time
+                            </>
+                          ) : (
+                            <>
+                              <Play className="w-3 h-3 mr-1" />
+                              Start Experiment
+                            </>
+                          )}
+                        </Button>
                       </div>
                     </motion.div>
                   );
                 })}
               </div>
-            </ScrollArea>
+            </div>
           ) : !activeExperiment && (
             <div className="text-center py-8">
               <div className="w-16 h-16 mx-auto mb-3 rounded-2xl bg-gradient-to-br from-emerald-500/20 to-teal-500/20 flex items-center justify-center">
