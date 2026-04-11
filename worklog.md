@@ -164,3 +164,49 @@ Stage Summary:
 - Edge function updated to use modern FCM HTTP v1 API instead of deprecated legacy API
 - Fixed throttle key bug that would have caused runtime errors in production cron
 - Only syncs when notification settings actually change (fingerprint comparison)
+
+---
+Task ID: body-comp-fix
+Agent: main
+Task: Fix body composition scanning system end-to-end (3 problems)
+
+Work Log:
+- Analyzed all relevant files: body-composition API route, groq-service AI, profile API, profile-page component, body-composition-analyzer
+- Identified root causes for all 3 problems
+
+### Changes Made:
+
+1. **Modified `/src/lib/ai/groq-service.ts`**
+   - Added optional `customPrompt` parameter to `analyzePhoto()` function signature
+   - When `customPrompt` is provided, it overrides the default prompt from `PHOTO_ANALYSIS_PROMPTS`
+   - Existing callers are unaffected (backward compatible)
+
+2. **Rewrote POST handler in `/src/app/api/body-composition/route.ts`**
+   - GET handler left completely intact
+   - POST handler now accepts `{ frontPhotoUrl, lighting, clothing }` from frontend
+   - Fetches user context in parallel: profiles (height, sex, birthDate), user_profiles (activity_level, fitness_level, primary_goal), body_metrics (latest weight, previous body_fat)
+   - Builds enhanced AI prompt dynamically with user context (height, weight, sex, age, activity level, goals, previous body fat, photo conditions)
+   - Calls `analyzePhoto()` from `@/lib/ai/gemini-service` with custom enhanced prompt
+   - Parses AI results: body fat estimate → min/max range (±3), muscle mass estimate
+   - Saves `body_fat` and `muscle_mass` metrics to `body_metrics` table with confidence
+   - Calculates body fat change from previous scan and determines direction (improving/declining/stable)
+   - Generates AI commentary from analysis notes + recommendations + change summary
+   - Derives photo quality scores (photoClarity, lightingQuality, poseQuality) from lighting/clothing inputs
+   - Implements rapid change detection (>3% change) with safety alert
+   - Returns `{ scan: {...} }` matching the exact frontend `BodyCompositionScan` interface
+
+3. **Modified `/src/app/api/profile/route.ts`**
+   - Added parallel fetch of latest `body_fat` and `muscle_mass` from `body_metrics` table
+   - Built `bodyComposition` object from latest metrics with id, date, bodyFatMin/Max, muscleTone, confidence, source, commentary
+   - Added `bodyComposition` parameter to `buildResponse()` helper function
+   - Added `bodyComposition` field to the API response JSON
+   - Both lazy-create and normal profile paths pass `bodyComposition` (null for new users)
+
+4. **Modified `/src/components/fitness/profile-page.tsx`**
+   - Changed `bodyComposition: null` (hardcoded) to map from `result.bodyComposition` API response
+   - Properly types and converts all fields (id, date, bodyFatMin, bodyFatMax, muscleTone, confidence, photoCount, source, commentary)
+   - The `EvolutionMetricsStrip` component now displays actual body fat data instead of "--"
+
+### Verification:
+- `bun run lint` passes with 0 errors (23 pre-existing warnings unchanged)
+- All existing GET handler and other features remain untouched

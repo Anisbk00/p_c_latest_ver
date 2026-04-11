@@ -381,7 +381,17 @@ function useProfileData() {
             ? Math.round(Number(result.settings?.customFatTarget))
             : null,
         },
-        bodyComposition: null,
+        bodyComposition: result.bodyComposition ? {
+          id: result.bodyComposition.id,
+          date: result.bodyComposition.date,
+          bodyFatMin: Number(result.bodyComposition.bodyFatMin),
+          bodyFatMax: Number(result.bodyComposition.bodyFatMax),
+          muscleTone: result.bodyComposition.muscleTone != null ? Number(result.bodyComposition.muscleTone) : 0,
+          confidence: Number(result.bodyComposition.confidence),
+          photoCount: Number(result.bodyComposition.photoCount) || 0,
+          source: result.bodyComposition.source as 'model' | 'device' | 'manual',
+          commentary: result.bodyComposition.commentary || '',
+        } : null,
         progressPhotos: result.progressPhotos?.map((p: {
           id: string;
           capturedAt: Date | string;

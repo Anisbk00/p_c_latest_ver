@@ -369,11 +369,12 @@ export interface PhotoAnalysisResult {
  */
 export async function analyzePhoto(
   imageUrl: string,
-  analysisType: PhotoAnalysisType = 'body-composition'
+  analysisType: PhotoAnalysisType = 'body-composition',
+  customPrompt?: string,
 ): Promise<PhotoAnalysisResult> {
   try {
     return await withRateLimitRetry(async () => {
-      const prompt = PHOTO_ANALYSIS_PROMPTS[analysisType];
+      const prompt = customPrompt || PHOTO_ANALYSIS_PROMPTS[analysisType];
 
       let imageContent: GroqContentPart;
 

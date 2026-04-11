@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
       // Also create user_settings
       await (supabase.from('user_settings') as any).upsert({ user_id: user.id }, { onConflict: 'user_id' })
 
-      const response = NextResponse.json(buildResponse(user, newProfile, null, null, [], [], null, 0, 0, 0, []))
+      const response = NextResponse.json(buildResponse(user, newProfile, null, null, [], [], null, 0, 0, 0, [], 0, 1, 0, 0, null))
       // Add version headers for optimistic locking
       Object.entries(getVersionHeaders(newProfile)).forEach(([key, value]) => {
         response.headers.set(key, value)
@@ -115,6 +115,8 @@ export async function GET(request: NextRequest) {
       { data: recentMetrics },
       { data: experiments },
       { data: todayFoodLogs },
+      { data: latestBodyFat },
+      { data: latestMuscleMass },
     ] = await Promise.all([
       supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle(),
       supabase.from('user_settings').select('*').eq('user_id', user.id).maybeSingle(),
@@ -127,6 +129,9 @@ export async function GET(request: NextRequest) {
       supabase.from('ai_insights').select('*').eq('user_id', user.id).eq('insight_type', 'experiment').order('created_at', { ascending: false }),
       // Get today's food logs for nutrition score calculation
       supabase.from('food_logs').select('calories, protein, carbs, fat').eq('user_id', user.id).gte('logged_at', new Date(new Date().setHours(0,0,0,0)).toISOString()),
+      // Body composition data for profile
+      supabase.from('body_metrics').select('*').eq('user_id', user.id).eq('metric_type', 'body_fat').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
+      supabase.from('body_metrics').select('*').eq('user_id', user.id).eq('metric_type', 'muscle_mass').order('captured_at', { ascending: false }).limit(1).maybeSingle(),
     ])
 
     // ─── Admin fallback for progressPhotos if RLS blocks SELECT ────
@@ -279,7 +284,20 @@ export async function GET(request: NextRequest) {
       })
     )
 
-    const response = NextResponse.json(buildResponse(user, profile, userProfile, settings, goals ?? [], photosWithUrls, latestWeight ?? null, recentWorkouts?.length ?? 0, currentStreak, consistencyScore, experiments ?? [], xp, level, nutritionScore, recentFoodLogs?.length ?? 0))
+    // Build body composition object from latest metrics
+    const bodyCompositionData = latestBodyFat ? {
+      id: latestBodyFat.id,
+      date: latestBodyFat.captured_at,
+      bodyFatMin: Math.max(3, Number(latestBodyFat.value) - 3),
+      bodyFatMax: Math.min(55, Number(latestBodyFat.value) + 3),
+      muscleTone: latestMuscleMass?.value ? Number(latestMuscleMass.value) : null,
+      confidence: Number(latestBodyFat.confidence ?? 0.5),
+      photoCount: 0,
+      source: (latestBodyFat.source as 'model' | 'device' | 'manual') ?? 'model',
+      commentary: `Estimated body fat: ${Math.round(Number(latestBodyFat.value) - 3)}%–${Math.round(Number(latestBodyFat.value) + 3)}%. Source: AI model analysis.`,
+    } : null
+
+    const response = NextResponse.json(buildResponse(user, profile, userProfile, settings, goals ?? [], photosWithUrls, latestWeight ?? null, recentWorkouts?.length ?? 0, currentStreak, consistencyScore, experiments ?? [], xp, level, nutritionScore, recentFoodLogs?.length ?? 0, bodyCompositionData))
     // Add version headers for optimistic locking
     Object.entries(getVersionHeaders(profile)).forEach(([key, value]) => {
       response.headers.set(key, value)
@@ -714,6 +732,7 @@ function buildResponse(
   level = 1,
   nutritionScore = 0,
   totalFoodLogs = 0,
+  bodyComposition: Record<string, unknown> | null = null,
 ) {
   // Calculate XP progress within current level
   const xpForCurrentLevel = (level - 1) * 100
@@ -838,6 +857,17 @@ function buildResponse(
       value: latestWeight.value,
       unit: latestWeight.unit ?? 'kg',
       capturedAt: latestWeight.captured_at,
+    } : null,
+    bodyComposition: bodyComposition ? {
+      id: bodyComposition.id,
+      date: bodyComposition.date,
+      bodyFatMin: bodyComposition.bodyFatMin,
+      bodyFatMax: bodyComposition.bodyFatMax,
+      muscleTone: bodyComposition.muscleTone,
+      confidence: bodyComposition.confidence,
+      photoCount: bodyComposition.photoCount,
+      source: bodyComposition.source,
+      commentary: bodyComposition.commentary,
     } : null,
   }
 }
