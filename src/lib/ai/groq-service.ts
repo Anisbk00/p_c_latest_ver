@@ -90,7 +90,8 @@ function isRateLimitError(error: unknown): boolean {
     return error.message.includes('429') ||
            error.message.includes('Too Many Requests') ||
            error.message.includes('quota') ||
-           error.message.includes('rate limit');
+           error.message.includes('rate limit') ||
+           error.message.includes('high demand');
   }
   return false;
 }

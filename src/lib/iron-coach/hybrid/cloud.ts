@@ -175,7 +175,7 @@ Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific qu
     
     const errorMessage = error instanceof Error ? error.message : String(error);
     
-    if (errorMessage.includes('rate limit') || errorMessage.includes('busy') || errorMessage.includes('quota') || errorMessage.includes('429')) {
+    if (errorMessage.includes('rate limit') || errorMessage.includes('busy') || errorMessage.includes('quota') || errorMessage.includes('429') || errorMessage.includes('high demand')) {
       const rateLimitMsg = "Whoa there, soldier! 🛑 The AI is getting hammered right now. Wait 15-30 seconds and try again. The free tier has limits, but I'll be back to roast you soon! 💪";
       for (const ch of rateLimitMsg) onToken(ch);
       return rateLimitMsg;
