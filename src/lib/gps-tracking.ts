@@ -326,6 +326,9 @@ export function calculateCalories(
   maxHeartRate?: number | null,
   speed?: number | null
 ): number {
+  // Guard against invalid duration (e.g. reversed timestamps)
+  if (durationSeconds <= 0) return 0;
+  
   // Get base MET value
   let met = MET_VALUES[activityType] || MET_VALUES.other;
   
@@ -354,7 +357,7 @@ export function calculateCalories(
     // Zone 3 (70-80%): 1.0-1.1 × MET
     // Zone 4 (80-90%): 1.1-1.2 × MET
     // Zone 5 (90-100%): 1.2-1.3 × MET
-    const hrCorrection = 0.7 + (hrRatio * 0.6);
+    const hrCorrection = 0.5 + (hrRatio * 0.8);
     met *= Math.min(1.3, Math.max(0.8, hrCorrection));
   }
   
@@ -670,21 +673,21 @@ export function calculateAllMetrics(
     if (time > 0) currentSpeed = dist / time;
   }
   
-  // Calculate calories (using actual activity type and avg speed for MET adjustment)
-  const calories = calculateCalories(
-    activityType,
-    movingTime,
-    weightKg,
-    null, // avgHeartRate calculated below
-    maxHeartRate,
-    avgSpeed
-  );
-  
-  // Average heart rate
+  // Average heart rate (needed for calorie HR correction)
   const hrPoints = points.filter(p => p.heartRate != null);
   const avgHeartRate = hrPoints.length > 0
     ? hrPoints.reduce((sum, p) => sum + (p.heartRate || 0), 0) / hrPoints.length
     : null;
+  
+  // Calculate calories (using actual activity type, avg speed, and HR for MET adjustment)
+  const calories = calculateCalories(
+    activityType,
+    movingTime,
+    weightKg,
+    avgHeartRate,
+    maxHeartRate,
+    avgSpeed
+  );
   
   // Average cadence
   const cadPoints = points.filter(p => p.cadence != null);

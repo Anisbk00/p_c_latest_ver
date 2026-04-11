@@ -121,7 +121,6 @@ export default function RootLayout({
               };
               // Force hide splash after 15 seconds max
               setTimeout(function() {
-                console.log('[Safety] Force hiding splash after 15s');
                 document.body.style.opacity = '1';
               }, 15000);
             `,

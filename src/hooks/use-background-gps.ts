@@ -194,8 +194,6 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
       // Rate-limit logging to avoid console spam (max once every 5 seconds)
       const now = Date.now();
       if (now - lastTimeoutLogRef.current > 5000) {
-        const timeoutCount = consecutiveTimeoutsRef.current;
-        console.warn(`[BackgroundGPS] Geolocation timeout (#${timeoutCount}) - GPS acquiring signal, will retry automatically`);
         lastTimeoutLogRef.current = now;
       }
       
@@ -206,7 +204,7 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
     
     // Reset timeout counter on non-timeout errors or success
     consecutiveTimeoutsRef.current = 0;
-    console.error('[BackgroundGPS] Web Geolocation error:', error.message);
+    // Geolocation error (not timeout) — non-recoverable
   }, []);
 
   // ═══════════════════════════════════════════════════════════════
@@ -222,7 +220,6 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
       if (document.hidden) {
         // App went to background
         setTrackingState('background');
-        console.log('[BackgroundGPS] App moved to background');
         
         // Adjust tracking based on config
         if (config.saveBatteryOnBackground) {
@@ -244,7 +241,6 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
       } else {
         // App came to foreground
         setTrackingState('foreground');
-        console.log('[BackgroundGPS] App moved to foreground');
         
         // Restore high accuracy tracking
         if (watchIdRef.current !== null) {
@@ -283,7 +279,7 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
         // Request permission on native
         const perms = await Geolocation.requestPermissions();
         if (perms.location === 'denied') {
-          console.error('[BackgroundGPS] Location permission denied (native)');
+          // Permission denied (native)
           setIsTracking(false);
           setTrackingState('idle');
           return;
@@ -300,7 +296,7 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
           (position, err) => {
             if (err) {
               // Don't log timeout errors as errors - they're common during initial acquisition
-              console.warn('[BackgroundGPS] Capacitor Geolocation warning:', err);
+              // Capacitor geolocation warning — will retry
               return;
             }
             if (position) {
@@ -309,10 +305,9 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
           }
         );
         capWatchIdRef.current = capWatchId;
-        console.log('[BackgroundGPS] Started Capacitor geolocation tracking');
         return;
       } catch (e) {
-        console.error('[BackgroundGPS] Capacitor geolocation failed, falling back to web', e);
+        // Fall back to web geolocation
       }
     }
 
@@ -328,7 +323,7 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
         });
         setPermissionStatus('granted');
       } catch {
-        console.error('[BackgroundGPS] Location permission denied');
+        // Permission denied (web)
         setIsTracking(false);
         setTrackingState('idle');
         return;
@@ -347,7 +342,7 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
       }
     );
 
-    console.log('[BackgroundGPS] Started web geolocation tracking');
+    // Web geolocation tracking started
   }, [isTracking, permissionStatus, config, handleWebPosition, handleWebError]);
 
   // ═══════════════════════════════════════════════════════════════
@@ -371,7 +366,7 @@ export function useBackgroundGPS(): UseBackgroundGPSReturn {
 
     setIsTracking(false);
     setTrackingState('idle');
-    console.log('[BackgroundGPS] Stopped tracking');
+    // Background GPS tracking stopped
   }, []);
 
   // ═══════════════════════════════════════════════════════════════

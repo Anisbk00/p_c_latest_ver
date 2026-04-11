@@ -360,6 +360,12 @@ export function useGPSTracking(
         
         // Only add point if fusion accepted it (not an outlier)
         if (!fused.isPredicted) {
+          // Auto-pause detection (using fused speed) — check BEFORE accumulating distance
+          // to prevent the engine's internal distance from drifting ahead of session points.
+          if (currentConfig.autoPause && fused.speed < 0.3 && currentSession.points.length > 5) {
+            return;
+          }
+          
           const point: GPSPoint = {
             lat: fused.lat,
             lon: fused.lon,
@@ -372,12 +378,6 @@ export function useGPSTracking(
           
           // Get distance from fusion engine
           const totalDistance = engine.getTotalDistance();
-          
-          // Auto-pause detection (using fused speed)
-          if (currentConfig.autoPause && fused.speed < 0.3 && currentSession.points.length > 5) {
-            // Very slow movement, might be stationary
-            return;
-          }
           
           // Update session with fused point
           setSession(prev => {
@@ -526,6 +526,10 @@ export function useGPSTracking(
   
   const resumeIncompleteSession = useCallback(async () => {
     if (!incompleteSession) return;
+    
+    // Reset fusion engine to avoid inheriting stale distance/velocity from previous session
+    resetGPSFusionEngine();
+    fusionEngineRef.current = getGPSFusionEngine();
     
     const points = incompleteSession.routeData ? JSON.parse(incompleteSession.routeData) : [];
     const laps = incompleteSession.splits ? JSON.parse(incompleteSession.splits) : [];
@@ -1030,10 +1034,9 @@ export function useGPSTracking(
     // Final metrics calculation
     const finalMetrics = calculateAllMetrics(finalPoints, userWeight, userMaxHR, currentSession.activityType);
     
-    // Get distance from fusion engine if available
-    const finalDistance = fusionEngineRef.current 
-      ? fusionEngineRef.current.getTotalDistance() 
-      : finalMetrics.distance;
+    // Use distance computed from the actual stored points (consistent with trajectory)
+    // rather than the fusion engine's internal accumulator which may drift due to auto-pause.
+    const finalDistance = finalMetrics.distance;
     
     const completedSession: TrackingSession = {
       ...currentSession,

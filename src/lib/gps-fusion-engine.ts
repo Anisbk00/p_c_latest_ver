@@ -237,11 +237,19 @@ class KalmanFilter2D {
     x[2] = x[2] + ax * dt;                          // x velocity
     x[3] = x[3] + ay * dt;                          // y velocity
     
-    // Update covariance: P = F*P*F' + Q
-    // Simplified: just increase uncertainty
-    for (let i = 0; i < 4; i++) {
-      this.P[i][i] += this.Q[i][i] * dt;
-    }
+    // Update covariance: P = F*P*F' + Q (full 4x4)
+    // F = [1, 0, dt, 0;  0, 1, 0, dt;  0, 0, 1, 0;  0, 0, 0, 1]
+    // We need cross-covariance propagation so that velocity is corrected by GPS observations.
+    // Before this update, P[0][2], P[2][0], P[1][3], P[3][1] were zero or stale.
+    this.P[0][0] += 2 * this.P[0][2] * dt + this.P[2][2] * dt * dt + this.Q[0][0] * dt;
+    this.P[1][1] += 2 * this.P[1][3] * dt + this.P[3][3] * dt * dt + this.Q[1][1] * dt;
+    // Cross-covariance: after F*P*F', P_pos_vel = P_pos_vel + P_vel_vel * dt
+    this.P[0][2] += this.P[2][2] * dt;
+    this.P[2][0] = this.P[0][2];
+    this.P[1][3] += this.P[3][3] * dt;
+    this.P[3][1] = this.P[1][3];
+    this.P[2][2] += this.Q[2][2] * dt;
+    this.P[3][3] += this.Q[3][3] * dt;
   }
   
   /**
@@ -281,10 +289,21 @@ class KalmanFilter2D {
     const I_KH00 = 1 - K00;
     const I_KH11 = 1 - K11;
     
-    this.P[0][0] *= I_KH00;
-    this.P[1][1] *= I_KH11;
-    this.P[2][2] *= 0.95; // Slight reduction in velocity uncertainty
-    this.P[3][3] *= 0.95;
+    this.P[0][0] = this.P[0][0] * I_KH00;
+    this.P[0][1] = this.P[0][1] * I_KH00;
+    this.P[1][0] = this.P[1][0] - K10 * K00 * this.P[0][0];
+    this.P[1][1] = this.P[1][1] * I_KH11;
+    // Cross-covariance: velocity-position must also be updated
+    this.P[2][0] = this.P[2][0] - K20 * K00 * this.P[0][0];
+    this.P[0][2] = this.P[2][0];
+    this.P[2][1] = this.P[2][1] - K21 * K11 * this.P[1][1];
+    this.P[1][2] = this.P[2][1];
+    this.P[3][0] = this.P[3][0] - K30 * K00 * this.P[0][0];
+    this.P[0][3] = this.P[3][0];
+    this.P[3][1] = this.P[3][1] - K31 * K11 * this.P[1][1];
+    this.P[1][3] = this.P[3][1];
+    this.P[2][2] = this.P[2][2] - K20 * K00 * this.P[0][2] - K21 * K11 * this.P[1][2];
+    this.P[3][3] = this.P[3][3] - K30 * K00 * this.P[0][3] - K31 * K11 * this.P[1][3];
   }
   
   /**
