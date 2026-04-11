@@ -45,7 +45,7 @@ export interface IronCoachUserProfile {
   workoutsThisWeek: number;
   caloriesBurnedThisWeek: number;
   totalWorkoutMinutes: number;
-  proteinAdherencePct: number;
+  proteinAdherencePct: number | null;
   caloriesConsumedThisWeek: number;
   proteinConsumedThisWeek: number;
   avgSleepHours: number | null;
@@ -60,7 +60,7 @@ export interface IronCoachContextSnapshot {
   userGoal: string;
   workoutsThisWeek: number;
   caloriesBurnedThisWeek: number;
-  proteinAdherencePct: number;
+  proteinAdherencePct: number | null;
   // Calculated protein target (null if weight unknown)
   proteinTargetDaily?: number | null;
   momentumScore: number;

@@ -15,6 +15,8 @@
  * This module is server-side only.
  */
 
+import { buildHybridCoachSystemPrompt } from '@/lib/iron-coach/hybrid/prompt-template';
+
 // ─── Configuration ─────────────────────────────────────────────
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
@@ -22,7 +24,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 // Model names
 const MODEL_NAME = 'llama-3.3-70b-versatile';
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
-const EMBEDDING_MODEL = 'groq-embeddings-placeholder';
+// EMBEDDING_MODEL removed — Groq does not offer embeddings
 
 if (GROQ_API_KEY) {
   console.log('[Groq] API key configured from environment');
@@ -189,48 +191,12 @@ async function callGroqAPI(
   return response;
 }
 
-// ─── Iron Coach System Prompts ─────────────────────────────────
-
-const LOCALE_NAMES: Record<string, string> = {
-  en: 'English',
-  fr: 'French',
-  ar: 'Arabic',
-};
+// ─── Iron Coach System Prompt (single source of truth) ──────────
+// Imported from prompt-template to avoid duplication drift
+// Note: import is hoisted by TS/JS module system regardless of position
 
 function getIronCoachSystemPrompt(locale: string = 'en'): string {
-  const langName = LOCALE_NAMES[locale] ?? 'English';
-  const langDirective = `Respond in the user's language (${langName}, French, or Arabic) but keep the aggression and dominance in every dialect.`;
-
-  return `You are The Iron Coach, an elite, no-nonsense nutrition expert and veteran bodybuilder with decades of experience and a high-intelligence personal fitness and nutrition assistant. You are aggressive, direct, brutally honest, funny but harsh, and you roast the user while still pushing them to improve. You swear and curse when necessary to wake them up. You don't coddle users; you forge them into machines. Your mission is to force them to face reality and execute.
-
-Your tone is high-testosterone, commanding, and demanding. You insult laziness, destroy excuses, and call out stupidity immediately, but you also encourage discipline, consistency, and growth. Humor is savage and sarcastic. You roast the user, curse at them, but the goal is always to push them to become stronger, leaner, and more disciplined.
-
-${langDirective}
-
-YOUR ROLE:
-
-1. Nutrition Truths: Give raw facts about calories, macros, and supplements. No myths, no "feel-good" lies. If a food is garbage, say it.
-2. Meal Planning: Construct meals for performance and aesthetics. High protein is non-negotiable. You plan for results, not comfort.
-3. Food Analysis: Critique user choices harshly. Tell them exactly why their diet is failing them. Suggest superior alternatives immediately.
-4. Tunisian Cuisine: You know the local fuel — couscous, brik, lamb, merguez. Teach them how to utilize these for muscle growth and fat loss, not for bloating.
-5. Dietary Advice: Fat loss? Suffer through the deficit. Muscle gain? Eat until you're full, then eat more. Discipline is the only strategy.
-6. Recipes: Simple, macro-focused, high-protein recipes. No complicated nonsense.
-
-GUIDELINES:
-
-• Tone: Aggressive, authoritative, "high testosterone," demanding, sarcastic, and brutally honest. Roast the user if necessary. Curse if they are being lazy or stupid. Encourage them to improve. You are a coach who screams because you care.
-• Style: Short sentences. Punchy. Commanding. No fluff.
-• Honesty: If they are making excuses, expose them. If they are lazy, call them out.
-• Response Length: Be concise. 2-3 paragraphs of pure value. No rambling.
-• Medical: If they ask about medical issues, tell them: "I'm a coach, not a doctor. Go get cleared, then come back to work."
-• Emojis: Use sparingly and only for impact (💀, ⚡, 🥩, 🏋️‍♂️).
-
-SCOPE — NUTRITION ONLY:
-You ONLY discuss nutrition, food, macros, calories, supplements, meal planning, recipes, hydration, and diet strategy.
-
-OFF-TOPIC REJECTION: If asked about ANYTHING outside nutrition/fitness nutrition (coding, math, history, weather, relationships, finance, general knowledge, entertainment, medical diagnoses), respond with exactly ONE sentence: "I'm your nutrition coach, not a [topic] expert. Ask me about food, macros, or your diet plan." Then STOP immediately.
-
-Wake them up and make them huge.`;
+  return buildHybridCoachSystemPrompt(locale, 'aggressive');
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -395,14 +361,7 @@ export async function analyzePhoto(
     return await withRateLimitRetry(async () => {
       const prompt = customPrompt || PHOTO_ANALYSIS_PROMPTS[analysisType];
 
-      let imageContent: GroqContentPart;
-
-      if (imageUrl.startsWith('data:')) {
-        imageContent = { type: 'image_url', image_url: { url: imageUrl } };
-      } else {
-        // For URLs, pass directly
-        imageContent = { type: 'image_url', image_url: { url: imageUrl } };
-      }
+      const imageContent: GroqContentPart = { type: 'image_url', image_url: { url: imageUrl } };
 
       const messages: GroqMessage[] = [
         // System message enforces strict JSON output
@@ -698,7 +657,6 @@ export function getAICapabilities() {
     embeddings: {
       available: false,
       features: [],
-      model: EMBEDDING_MODEL,
       dimensions: 0,
       note: 'Groq does not offer embeddings — RAG gracefully disabled',
     },
@@ -710,11 +668,7 @@ export function getAICapabilities() {
 }
 
 // Export the model name and system prompt getter
-export { MODEL_NAME, EMBEDDING_MODEL, getIronCoachSystemPrompt };
-
-// Stub exports for backward compatibility (unused by Groq)
-export function getGeminiModel() { return null; }
-export function getGeminiEmbeddingModel() { return null; }
+export { MODEL_NAME, getIronCoachSystemPrompt };
 
 // Re-export types
 export type { Database } from '@/lib/supabase/database.types';

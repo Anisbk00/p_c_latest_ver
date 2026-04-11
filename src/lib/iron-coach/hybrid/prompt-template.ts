@@ -144,7 +144,8 @@ export function buildHybridCoachUserPrompt(input: {
   lines.push('');
   lines.push('=== THIS WEEK (Current) ===');
   lines.push(`Calories consumed: ${profile?.caloriesConsumedThisWeek || 0}`);
-  lines.push(`Protein consumed: ${profile?.proteinConsumedThisWeek || 0}g / ${profile?.proteinTargetWeekly || '?'}g target (${profile?.proteinAdherencePct || 0}% adherence)`);
+  const adherenceStr = profile?.proteinAdherencePct != null ? `${profile.proteinAdherencePct}%` : 'unknown';
+  lines.push(`Protein consumed: ${profile?.proteinConsumedThisWeek || 0}g / ${profile?.proteinTargetWeekly || '?'}g target (${adherenceStr} adherence)`);
   lines.push(`Workouts: ${ctx.workoutsThisWeek || 0} (${profile?.totalWorkoutMinutes || 0}min total)`);
   lines.push(`Calories burned: ${ctx.caloriesBurnedThisWeek || 0}`);
   if (profile?.avgHydrationMl) lines.push(`Hydration avg: ${profile.avgHydrationMl}ml/day`);
@@ -214,8 +215,12 @@ export function buildHybridCoachUserPrompt(input: {
     });
   }
   
-  // Weekly Plan Data - CRITICAL for answering questions about the plan
-  if (weeklyPlan?.exists) {
+  // Weekly Plan Data — only include when question references plans/workouts/today
+  // Saves ~500-2500 tokens on unrelated questions (protein, recipes, etc.)
+  const planKeywords = /\b(plan|week|today|schedule|workout|exercise|training|routine|program)\b/i;
+  const questionNeedsPlan = planKeywords.test(input.question);
+  
+  if (questionNeedsPlan && weeklyPlan?.exists) {
     lines.push('');
     lines.push('=== PRECISION WEEKLY PLAN (ACTIVE) ===');
     lines.push(`Week: ${weeklyPlan.weekStart} to ${weeklyPlan.weekEnd}`);
@@ -287,7 +292,7 @@ export function buildHybridCoachUserPrompt(input: {
         lines.push(`   Reason: ${rec.reasoning}`);
       });
     }
-  } else {
+  } else if (questionNeedsPlan && !weeklyPlan?.exists) {
     lines.push('');
     lines.push('=== WEEKLY PLAN: NOT YET GENERATED ===');
     lines.push('The user can generate a precision weekly plan from the Weekly Plan tab.');

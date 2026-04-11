@@ -7,12 +7,12 @@
  * This provides AI-powered coaching responses.
  */
 
-import { generateText, MODEL_NAME } from '@/lib/ai/gemini-service';
+import { generateText, streamText, MODEL_NAME } from '@/lib/ai/gemini-service';
 import { getCachedPromptResult, setCachedPromptResult } from './prompt-cache';
 import { buildHybridCoachSystemPrompt, type CoachingTone } from './prompt-template';
 
 export interface CloudStreamOptions {
-  prompt: string;
+  prompt: string | { system: string; user: string };
   signal?: AbortSignal;
   onToken: (token: string) => void;
   /** The user's actual question */
@@ -83,22 +83,15 @@ export async function completeCloudPrompt(
 }
 
 /**
- * Stream a prompt completion using Groq
+ * Stream a prompt completion using Groq with real token streaming
  */
 export async function streamCloudPrompt(options: CloudStreamOptions & { locale?: string; tone?: CoachingTone }): Promise<string> {
   const { prompt, onToken, signal, locale = 'en', userQuestion } = options;
   
   // Extract the user's actual question
-  const actualQuestion = userQuestion || extractUserQuestion(prompt) || 'fitness question';
+  const actualQuestion = userQuestion || (typeof prompt === 'string' ? extractUserQuestion(prompt) : 'fitness question') || 'fitness question';
   
   console.log('[streamCloudPrompt] Starting for question:', actualQuestion?.slice(0, 100));
-  
-  // Helper to stream text character by character
-  const streamText = (text: string) => {
-    for (const ch of text) {
-      onToken(ch);
-    }
-  };
   
   // Check if aborted before starting
   if (signal?.aborted) {
@@ -106,86 +99,90 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
     return '';
   }
   
-  // Detect if prompt contains rich context (from buildContextPrompt)
-  // Rich prompts include system instructions + user data + question (>200 chars)
-  // Simple prompts are just raw questions from non-context paths
-  const hasRichContext = prompt.length > Math.max((userQuestion?.length || 50) + 100, 200);
+  let effectiveSystemPrompt: string | undefined;
+  let effectiveUserPrompt: string;
+  let hasRichContext = false;
+
+  if (typeof prompt === 'object' && prompt.system && prompt.user) {
+    // Rich context from buildContextPrompt — already split into system + user
+    hasRichContext = true;
+    effectiveSystemPrompt = prompt.system;
+    effectiveUserPrompt = prompt.user;
+    console.log('[streamCloudPrompt] Using rich context prompt (pre-split), user part length:', effectiveUserPrompt.length);
+  } else {
+    // Plain string prompt (legacy path or simple prompts)
+    const promptStr = typeof prompt === 'string' ? prompt : String(prompt);
+    hasRichContext = promptStr.length > Math.max((userQuestion?.length || 50) + 100, 200);
+    
+    if (hasRichContext) {
+      // Legacy rich prompt — split on USER'S QUESTION delimiter
+      const questionIdx = promptStr.indexOf("=== USER'S QUESTION ===");
+      if (questionIdx > 0) {
+        effectiveSystemPrompt = promptStr.slice(0, questionIdx).trim();
+        effectiveUserPrompt = promptStr.slice(questionIdx).trim();
+      } else {
+        effectiveUserPrompt = promptStr;
+      }
+      console.log('[streamCloudPrompt] Using legacy rich context prompt, user part length:', effectiveUserPrompt.length);
+    } else {
+      effectiveSystemPrompt = getDefaultSystemPrompt(locale, 'aggressive');
+      effectiveUserPrompt = `USER QUESTION: ${actualQuestion}
+
+Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific question directly.`;
+      console.log('[streamCloudPrompt] Using simple prompt (no context), length:', effectiveUserPrompt.length);
+    }
+  }
 
   // Only use cache for simple prompts WITHOUT user data context
-  // Context-rich prompts always have fresh data and should never be cached
-  // to avoid returning stale nutrition/workout/body metrics info
-  const cached = !hasRichContext ? getCachedPromptResult(MODEL_NAME, prompt, locale) : null;
+  const cached = !hasRichContext ? getCachedPromptResult(MODEL_NAME, typeof prompt === 'string' ? prompt : JSON.stringify(prompt), locale) : null;
   if (cached) {
     console.log('[streamCloudPrompt] Using cached response (simple prompt)');
-    streamText(cached);
+    for (const ch of cached) onToken(ch);
     return cached;
   }
 
-  let effectiveUserPrompt: string;
-  let effectiveSystemPrompt: string | undefined;
-
-  if (hasRichContext) {
-    // Rich context from buildContextPrompt — it already contains system + user data
-    // Extract just the user prompt part (after the first system prompt block)
-    // buildContextPrompt returns: systemPrompt + "\n\n" + userPromptWithAllData
-    const systemEnd = prompt.indexOf('\n\n');
-    if (systemEnd > 0 && systemEnd < 500) {
-      // Split into system and user parts to use proper message roles
-      effectiveSystemPrompt = prompt.slice(0, systemEnd);
-      effectiveUserPrompt = prompt.slice(systemEnd + 2);
-    } else {
-      // Fallback: use entire prompt as user message
-      effectiveUserPrompt = prompt;
-    }
-    console.log('[streamCloudPrompt] Using rich context prompt, user part length:', effectiveUserPrompt.length);
-  } else {
-    // No context — use system prompt + simple question (original behavior)
-    effectiveSystemPrompt = getDefaultSystemPrompt(locale, 'aggressive');
-    effectiveUserPrompt = `USER QUESTION: ${actualQuestion}
-
-Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific question directly.`;
-    console.log('[streamCloudPrompt] Using simple prompt (no context), length:', effectiveUserPrompt.length);
-  }
-
   try {
-    // Generate response using AI
-    const fullText = await generateText(effectiveUserPrompt, effectiveSystemPrompt);
-    console.log('[streamCloudPrompt] AI response length:', fullText?.length || 0);
-
-    if (signal?.aborted) {
-      console.log('[streamCloudPrompt] Aborted after generation');
-      return '';
-    }
-
-    // Stream and cache the response (only cache simple prompts without user data)
-    if (fullText && fullText.trim()) {
-      streamText(fullText);
-      if (!hasRichContext) {
-        setCachedPromptResult(MODEL_NAME, prompt, fullText, undefined, locale);
+    let fullText = '';
+    
+    // Use real streaming for premium UX — tokens appear as they're generated
+    const stream = streamText(effectiveUserPrompt, effectiveSystemPrompt);
+    
+    for await (const token of stream) {
+      if (signal?.aborted) {
+        console.log('[streamCloudPrompt] Aborted during streaming');
+        return fullText;
       }
-      return fullText;
+      fullText += token;
+      onToken(token);
     }
     
-    // Return fallback if empty response
-    console.log('[streamCloudPrompt] Empty AI response, returning fallback');
-    const fallback = "Listen up! I'm having a moment here. Try asking me again in a few seconds. The AI gods are taking a quick breather. 💪";
-    streamText(fallback);
-    return fallback;
+    console.log('[streamCloudPrompt] AI response length:', fullText?.length || 0);
+
+    if (!fullText?.trim()) {
+      console.log('[streamCloudPrompt] Empty AI response, returning fallback');
+      const fallback = "Listen up! I'm having a moment here. Try asking me again in a few seconds. The AI gods are taking a quick breather. 💪";
+      for (const ch of fallback) onToken(ch);
+      return fallback;
+    }
+
+    // Cache simple prompts only (not context-rich)
+    if (!hasRichContext) {
+      setCachedPromptResult(MODEL_NAME, typeof prompt === 'string' ? prompt : JSON.stringify(prompt), fullText, undefined, locale);
+    }
+    return fullText;
   } catch (error) {
     console.error('[streamCloudPrompt] Error:', error);
     
-    // Check if it's a rate limit error
     const errorMessage = error instanceof Error ? error.message : String(error);
     
     if (errorMessage.includes('rate limit') || errorMessage.includes('busy') || errorMessage.includes('quota') || errorMessage.includes('429')) {
       const rateLimitMsg = "Whoa there, soldier! 🛑 The AI is getting hammered right now. Wait 15-30 seconds and try again. The free tier has limits, but I'll be back to roast you soon! 💪";
-      streamText(rateLimitMsg);
+      for (const ch of rateLimitMsg) onToken(ch);
       return rateLimitMsg;
     }
     
-    // Generic error fallback
     const errorFallback = `Damn it! Something went wrong: ${errorMessage.slice(0, 100)}. Try again in a moment. 💀`;
-    streamText(errorFallback);
+    for (const ch of errorFallback) onToken(ch);
     return errorFallback;
   }
 }

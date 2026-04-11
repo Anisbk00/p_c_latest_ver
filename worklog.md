@@ -210,3 +210,27 @@ Work Log:
 ### Verification:
 - `bun run lint` passes with 0 errors (23 pre-existing warnings unchanged)
 - All existing GET handler and other features remain untouched
+
+---
+Task ID: 1
+Agent: main
+Task: Fix critical AI system bugs for premium performance
+
+Work Log:
+- Fixed cloud.ts prompt splitting bug (system prompt was sent as user message)
+- Added real streaming support via `streamText` generator (was fake char-by-char after full response)
+- Consolidated duplicate system prompts (groq-service.ts → prompt-template.ts single source of truth)
+- Removed dead code: embeddingSnippets variable/map, Gemini stub exports, EMBEDDING_MODEL placeholder constant
+- Fixed dead if/else in analyzePhoto (both branches identical → single assignment)
+- Fixed proteinAdherencePct null handling (was 0, AI thought 0% adherence; now null → "unknown")
+- Changed buildContextPrompt to return {system, user} object instead of concatenated string
+- Renamed foodRes30d → foodRes90d for accuracy (it fetches from ninetyDaysAgo)
+- Updated CloudStreamOptions.prompt type to accept `string | { system: string; user: string }`
+- Updated route.ts caller to handle new return type
+
+Stage Summary:
+- 3 critical bugs fixed: prompt splitting, fake streaming, duplicate prompts
+- AI now receives proper system message role for persona instructions
+- Real streaming gives instant token feedback to users
+- Dead code removed reduces bundle size and maintenance burden
+- 0 lint errors

@@ -156,7 +156,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
     goalsRes,
     workoutsRes,
     foodRes7d,
-    foodRes30d,
+    foodRes90d,
     insightsRes,
     bodyMetricsRes,
     sleepRes,
@@ -223,11 +223,11 @@ export async function buildIronCoachContext(userId: string, question: string): P
     // Body metrics (90 days for deep weight/body comp trend)
     supabase
       .from('body_metrics')
-      .select('metric_type, value, unit, logged_at')
+      .select('metric_type, value, unit, captured_at')
       .eq('user_id', userId)
       .in('metric_type', ['weight', 'body_fat', 'muscle_mass', 'waist', 'chest', 'arms'])
-      .gte('logged_at', ninetyDaysAgo.toISOString())
-      .order('logged_at', { ascending: false })
+      .gte('captured_at', ninetyDaysAgo.toISOString())
+      .order('captured_at', { ascending: false })
       .limit(40),
     // Sleep logs (7 days)
     supabase
@@ -310,7 +310,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
     logged_at?: string | null;
   }>;
 
-  const foodLogsHistorical = (foodRes30d.data ?? []) as Array<{
+  const foodLogsHistorical = (foodRes90d.data ?? []) as Array<{
     protein?: number | null;
     calories?: number | null;
     carbs?: number | null;
@@ -330,7 +330,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
     metric_type?: string | null;
     value?: number | null;
     unit?: string | null;
-    logged_at?: string | null;
+    captured_at?: string | null;
   }>;
 
   const sleepLogs = (sleepRes.data ?? []) as Array<{
@@ -446,7 +446,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
   const weightHistory = allWeightEntries
     .slice(0, 15)
     .map(m => ({
-      date: (m.logged_at as string)?.split('T')[0] || '',
+      date: (m.captured_at as string)?.split('T')[0] || '',
       weightKg: m.value as number,
     }))
     .reverse(); // oldest first
@@ -460,11 +460,11 @@ export async function buildIronCoachContext(userId: string, question: string): P
   if (latestWeightEntry) {
     const latestW = latestWeightEntry.value as number;
     const entry7dAgo = allWeightEntries.find(m => {
-      const entryDate = new Date(m.logged_at as string).getTime();
+      const entryDate = new Date(m.captured_at as string).getTime();
       return entryDate <= sevenDaysAgo.getTime();
     });
     const entry30dAgo = allWeightEntries.find(m => {
-      const entryDate = new Date(m.logged_at as string).getTime();
+      const entryDate = new Date(m.captured_at as string).getTime();
       return entryDate <= thirtyDaysAgo.getTime();
     });
 
@@ -490,10 +490,10 @@ export async function buildIronCoachContext(userId: string, question: string): P
   // Calculate adherence only if we have a valid target
   const proteinAdherencePct = proteinTargetWeekly 
     ? clampPercent((proteinConsumed / proteinTargetWeekly) * 100)
-    : 0; // 0 means "unknown", not actual adherence
+    : null; // null means unknown (no target available)
 
   const latestInsightConfidence = insights[0]?.confidence ?? 0.75;
-  const momentumScore = clampPercent((workoutsThisWeek * 15) + (proteinAdherencePct * 0.55) + (latestInsightConfidence * 20));
+  const momentumScore = clampPercent((workoutsThisWeek * 15) + ((proteinAdherencePct ?? 0) * 0.55) + (latestInsightConfidence * 20));
 
   const recentInsights = insights.map((insight) => insight.title || insight.content || 'AI insight');
 
@@ -505,15 +505,11 @@ export async function buildIronCoachContext(userId: string, question: string): P
     ? Math.round(sleepLogs.reduce((sum, s) => sum + (s.quality ?? 0), 0) / sleepLogs.length)
     : null;
 
-  // Build embedding snippets — DISABLED: createCloudEmbedding returns empty arrays (Groq doesn't support embeddings)
-  // This was wasting compute on every request. Re-enable if a working embedding provider is added.
-  // const vector = await createCloudEmbedding(question);
-  // ... searchAIEmbeddings logic ...
-  let embeddingSnippets: Array<{ source: string; text: string; similarity: number }> = [];
+  // Embedding snippets — DISABLED: Groq doesn't support embeddings
+  // Re-enable if a working embedding provider is added.
 
   const retrievalContext = [
     ...docs.map((d) => d.content),
-    ...embeddingSnippets.map((snippet) => snippet.text),
   ].slice(0, 10);
 
   // Process weekly plan data
@@ -649,7 +645,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
     recentInsights,
     retrievalContext,
     memoryContext,
-    ragSnippets: embeddingSnippets,
+    ragSnippets: [],
     
     // Full user profile for AI
     userProfile,
@@ -705,7 +701,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
   };
 }
 
-export function buildContextPrompt(context: IronCoachContextSnapshot, question: string, locale = 'en', adaptiveBlock?: string): string {
+export function buildContextPrompt(context: IronCoachContextSnapshot, question: string, locale = 'en', adaptiveBlock?: string): { system: string; user: string } {
   const systemPrompt = buildHybridCoachSystemPrompt(locale);
   const userPrompt = buildHybridCoachUserPrompt({
     question,
@@ -715,7 +711,5 @@ export function buildContextPrompt(context: IronCoachContextSnapshot, question: 
   });
 
   const adaptiveSection = adaptiveBlock ? `\n\n${adaptiveBlock}` : '';
-  return `${systemPrompt}
-
-${userPrompt}${adaptiveSection}`;
+  return { system: systemPrompt, user: `${userPrompt}${adaptiveSection}` };
 }

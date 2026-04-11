@@ -186,7 +186,6 @@ export function useSettings() {
       resolveFetch!();
     }
   // CRITICAL: Empty dependency array with refs for volatile values
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
   // Only fetch when user ID changes - use ref to prevent re-fetch loops
@@ -195,7 +194,6 @@ export function useSettings() {
       fetchSettings();
     }
   // CRITICAL: Don't include fetchSettings in deps - it's stable via empty deps
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
   const updateSettings = useCallback(async (updates: Partial<UserSettings>) => {

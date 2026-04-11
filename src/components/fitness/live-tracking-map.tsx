@@ -530,6 +530,7 @@ export function LiveTrackingMap({
 
   useEffect(() => {
     if (isTracking && !isPaused && totalDuration > 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLocalDuration(totalDuration);
       trackingStartRef.current = Date.now() - (totalDuration * 1000);
     } else if (!isTracking || isPaused) {
@@ -546,7 +547,6 @@ export function LiveTrackingMap({
       setLocalDuration(Math.max(0, elapsed));
     }, 1000);
     return () => clearInterval(interval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isTracking, isPaused, isFullscreen]);
 
   const route = routeProp;

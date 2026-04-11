@@ -49,8 +49,7 @@ export function useNotificationSettings(): UseNotificationSettingsReturn {
 
   // Fetch preferences on mount
   useEffect(() => {
-    void refreshPreferences();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    void refreshPreferences(); // eslint-disable-line react-hooks/set-state-in-effect
   }, []);
 
   const updatePreferences = useCallback(async (

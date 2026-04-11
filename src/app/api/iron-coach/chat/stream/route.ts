@@ -176,7 +176,7 @@ export async function POST(request: NextRequest) {
             console.log('[iron-coach/stream] Building context for user:', user.id);
             context = await buildIronCoachContext(user.id, message)
             prompt = buildContextPrompt(context, message, locale)
-            console.log('[iron-coach/stream] Context built, prompt length:', prompt.length);
+            console.log('[iron-coach/stream] Context built, prompt type:', typeof prompt === 'object' ? 'split system+user' : 'string', ', user part length:', typeof prompt === 'object' ? prompt.user.length : prompt.length);
           } catch (ctxError) {
             console.error('[iron-coach/stream] Context build error:', ctxError)
             prompt = `You are Iron Coach, an aggressive no-nonsense fitness and nutrition coach. Be direct and helpful. Respond to: ${message}`

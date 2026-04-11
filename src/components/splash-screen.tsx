@@ -268,10 +268,10 @@ export function SplashScreen({ isLoading = true }: SplashScreenProps) {
   useLayoutEffect(() => {
     if (clientReady) return; // Only run once
     // Generate client-only random data
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setParticles(generateParticles(30));
     setGreeting(getTimeBasedGreeting());
     setClientReady(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   
   // ═══════════════════════════════════════════════════════════
@@ -305,6 +305,7 @@ export function SplashScreen({ isLoading = true }: SplashScreenProps) {
       exitTriggeredRef.current = true;
 
       // Start transition smoothly
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setPhase('transitioning');
 
       // Smooth fade out with proper timing

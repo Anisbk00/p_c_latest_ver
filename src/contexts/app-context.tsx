@@ -852,7 +852,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (isMounted.current) setUserLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — volatile values read from refs
   
   // Fetch Personalized Targets
@@ -1072,7 +1071,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (isMounted.current) setTargetsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — user.id read from userIdRef
   
   // Store targets in ref for stable fetch callbacks
@@ -1142,7 +1140,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (isMounted.current) setNutritionLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — volatile values read from refs
   
   // Fetch Food Log
@@ -1195,7 +1192,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setFoodLogSyncing(false);
       }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — user.id read from userIdRef
   
   // Fetch Measurements
@@ -1235,7 +1231,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (isMounted.current) setMeasurementsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — user.id read from userIdRef
   
   // Fetch Workouts
@@ -1300,7 +1295,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (isMounted.current) setWorkoutsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — user.id read from userIdRef
   
   // Fetch Hydration
@@ -1357,7 +1351,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (isMounted.current) setHydrationLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — volatile values read from refs
 
   const fetchSteps = useCallback(async (showLoading = true) => {
@@ -1411,7 +1404,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (isMounted.current) setStepsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — volatile values read from refs
 
   const fetchAnalytics = useCallback(async () => {
@@ -1666,7 +1658,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     } finally {
       if (isMounted.current) setAnalyticsLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Stable — user.id read from userIdRef
   
   // ═══════════════════════════════════════════════════════════════
