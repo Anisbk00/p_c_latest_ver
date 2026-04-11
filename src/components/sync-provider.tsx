@@ -188,10 +188,24 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
+    const handleCapacitorResume = () => {
+      console.log('[SyncProvider] Capacitor resume — triggering sync');
+      forceSync();
+    };
+
+    const handleLowMemory = () => {
+      console.warn('[SyncProvider] Low memory — flushing sync queue');
+      forceSync();
+    };
+
     document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('capacitor-resume', handleCapacitorResume);
+    window.addEventListener('capacitor-low-memory', handleLowMemory);
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('capacitor-resume', handleCapacitorResume);
+      window.removeEventListener('capacitor-low-memory', handleLowMemory);
     };
   }, [isAuthenticated, forceSync]);
 

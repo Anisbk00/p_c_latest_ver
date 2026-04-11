@@ -13,7 +13,18 @@ async function ensureSession(
   titleSeed: string,
 ): Promise<string> {
   const sb = supabase as any
-  if (sessionId) return sessionId
+  if (sessionId) {
+    // SECURITY: Verify this session belongs to the current user
+    const { data: existingSession } = await sb
+      .from('chat_sessions')
+      .select('id')
+      .eq('id', sessionId)
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (existingSession) return sessionId
+    // If session doesn't belong to this user, fall through to create new
+  }
 
   const { data: session, error: sessionErr } = await sb
     .from('chat_sessions')

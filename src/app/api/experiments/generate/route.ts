@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
   try {
     const { supabase, user } = await getSupabaseUser();
     const body = await request.json();
-    const requestedCount = body.count || 4; // Default to 4 experiments
+    const requestedCount = Math.min(Math.max(Number(body.count) || 4, 1), 10); // Cap between 1–10
     
     // Fetch user data for personalization
     const [

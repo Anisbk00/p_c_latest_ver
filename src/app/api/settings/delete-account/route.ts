@@ -1,7 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseUser } from '@/lib/supabase/supabase-data';
+import { withDistributedRateLimit } from '@/lib/distributed-rate-limit';
 
-export async function POST(_request: NextRequest) {
+export async function POST(request: NextRequest) {
+  // SECURITY: Rate limit to prevent abuse
+  const rateCheck = await withDistributedRateLimit(request, {
+    windowMs: 60 * 60 * 1000, // 1 hour
+    maxRequests: 3,
+    blockDurationMs: 60 * 60 * 1000,
+    message: 'Too many requests. Please try again later.',
+    prefix: 'delete-account',
+  });
+  if (!rateCheck.allowed) return rateCheck.response;
+
   try {
     const { supabase, user } = await getSupabaseUser();
     

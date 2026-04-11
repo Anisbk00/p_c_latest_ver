@@ -65,7 +65,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const body: RegisterDeviceRequest = await request.json();
+    let body: RegisterDeviceRequest;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, { status: 400 });
+    }
+
     const { device_token, device_type, device_name, device_id } = body;
 
     if (!device_token || !device_type) {

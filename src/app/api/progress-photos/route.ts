@@ -146,6 +146,24 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: 'No file provided' }, { status: 400 });
       }
 
+      // Validate file type
+      const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+      if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+        return NextResponse.json(
+          { error: `Invalid file type. Allowed: ${ALLOWED_MIME_TYPES.join(', ')}` },
+          { status: 400 }
+        );
+      }
+
+      // Validate file size (max 10MB)
+      const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+      if (file.size > MAX_FILE_SIZE) {
+        return NextResponse.json(
+          { error: 'File too large. Maximum size: 10MB' },
+          { status: 400 }
+        );
+      }
+
       const fileExt = file.name.split('.').pop() || 'jpg';
       filename = file.name;
       mimeType = file.type || 'image/jpeg';

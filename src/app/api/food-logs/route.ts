@@ -431,10 +431,10 @@ export async function POST(request: NextRequest) {
         const xpService = new XPService(supabase);
         
         // Determine if this is a complete meal (all macros logged)
-        const protein = entry.protein || 0;
-        const carbs = entry.carbs || 0;
-        const fat = entry.fat || 0;
-        const isComplete = isCompleteMealLog(protein, carbs, fat);
+        const entryProtein = entry.protein || 0;
+        const entryCarbs = entry.carbs || 0;
+        const entryFat = entry.fat || 0;
+        const isComplete = isCompleteMealLog(entryProtein, entryCarbs, entryFat);
         
         const xpAction = isComplete ? 'food_log_complete_meal' : 'food_log';
         

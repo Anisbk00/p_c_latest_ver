@@ -149,10 +149,27 @@ export function CapacitorInit() {
         const { App } = await import('@capacitor/app');
         const listener = await App.addListener('appStateChange', ({ isActive }) => {
           console.log(`[Cap] App ${isActive ? 'resumed' : 'paused'}`);
+
+          if (isActive) {
+            // App returned to foreground — trigger sync and data refresh
+            window.dispatchEvent(new CustomEvent('capacitor-resume'));
+          }
         });
         cleanupFns.push(() => listener.remove());
       } catch (e) {
         console.warn('[Cap] App state listener failed', e);
+      }
+
+      // ── Low memory handler — flush sync queue ───────────
+      try {
+        const { App } = await import('@capacitor/app');
+        const memListener = await App.addListener('lowMemory', () => {
+          console.warn('[Capacitor] Low memory warning — flushing sync queue');
+          window.dispatchEvent(new CustomEvent('capacitor-low-memory'));
+        });
+        cleanupFns.push(() => memListener.remove());
+      } catch (e) {
+        console.warn('[Cap] Low memory listener failed', e);
       }
 
       // ── Keyboard adjustments on iOS ────────────────────────

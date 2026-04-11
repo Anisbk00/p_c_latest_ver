@@ -60,8 +60,10 @@ export async function POST(request: NextRequest) {
         try {
           const admin = createAdminClient()
           // Parallelize all three inserts for faster new-user setup
+          // Use upsert for all three tables to handle the race condition where
+          // the auth callback is invoked twice in quick succession.
           await Promise.all([
-            admin.from('profiles').insert({
+            admin.from('profiles').upsert({
               id: data.user.id,
               email: data.user.email ?? '',
               name: (data.user.user_metadata?.name ?? data.user.user_metadata?.full_name ?? null) as string | null,
@@ -69,18 +71,18 @@ export async function POST(request: NextRequest) {
               locale: 'en',
               coaching_tone: 'encouraging',
               privacy_mode: false,
-            }) as unknown as Promise<any>,
-            admin.from('user_settings').insert({ user_id: data.user.id }) as unknown as Promise<any>,
-            admin.from('user_profiles').insert({ user_id: data.user.id }) as unknown as Promise<any>,
+            }, { onConflict: 'id' }) as unknown as Promise<any>,
+            admin.from('user_settings').upsert({ user_id: data.user.id }, { onConflict: 'user_id' }) as unknown as Promise<any>,
+            admin.from('user_profiles').upsert({ user_id: data.user.id }, { onConflict: 'user_id' }) as unknown as Promise<any>,
           ])
         } catch (adminErr) {
           // Fall back to anon client — only works if RLS allows own-user insert
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          await supabase.from('profiles').insert({
+          await supabase.from('profiles').upsert({
             id: data.user.id,
             email: data.user.email ?? '',
             name: (data.user.user_metadata?.name ?? null),
-          } as any)
+          }, { onConflict: 'id' } as any)
           void adminErr
         }
       }

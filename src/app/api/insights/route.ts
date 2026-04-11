@@ -5,7 +5,16 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getSupabaseUser } from '@/lib/supabase/supabase-data'
+
+const InsightCreateSchema = z.object({
+  insight_type: z.string().max(50).optional().default('general'),
+  content: z.string().max(5000).min(1),
+  confidence: z.number().min(0).max(1).optional().nullable(),
+  source: z.string().max(50).optional(),
+  model_version: z.string().max(50).optional(),
+})
 
 export async function GET(_request: NextRequest) {
   try {
@@ -40,14 +49,27 @@ export async function POST(request: NextRequest) {
     const { supabase, user } = await getSupabaseUser()
     const body = await request.json()
 
+    // SECURITY: Validate input with Zod
+    const parsed = InsightCreateSchema.safeParse({
+      insight_type: body.insightType ?? body.insight_type,
+      content: body.content ?? body.message,
+      confidence: body.confidence,
+      source: body.source,
+      model_version: body.modelVersion ?? body.model_version,
+    })
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 })
+    }
+    const validated = parsed.data
+
     const { data, error } = await (supabase.from('ai_insights') as any).insert({
       user_id: user.id,
-      insight_type: body.insightType ?? body.insight_type ?? 'general',
-      content: body.content ?? body.message,
-      confidence: body.confidence ?? null,
-      source: body.source ?? 'system',
+      insight_type: validated.insight_type,
+      content: validated.content,
+      confidence: validated.confidence,
+      source: validated.source ?? 'system',
       // BUG-H003 FIX: Store model_version for provenance tracking
-      model_version: body.modelVersion ?? body.model_version ?? 'internal-v1',
+      model_version: validated.model_version ?? 'internal-v1',
     }).select().single()
 
     if (error) throw error

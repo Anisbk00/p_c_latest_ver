@@ -5,7 +5,18 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server'
+import { z } from 'zod'
 import { getSupabaseUser } from '@/lib/supabase/supabase-data'
+
+const GoalCreateSchema = z.object({
+  goal_type: z.string().max(50),
+  target_value: z.number().optional().nullable(),
+  current_value: z.number().optional().nullable(),
+  unit: z.string().max(20).optional().default('kg'),
+  target_date: z.string().optional().nullable(),
+  deadline: z.string().optional().nullable(),
+  status: z.enum(['active', 'achieved', 'paused', 'abandoned']).optional().default('active'),
+})
 
 export async function GET(_request: NextRequest) {
   try {
@@ -32,15 +43,30 @@ export async function POST(request: NextRequest) {
     const { supabase, user } = await getSupabaseUser()
     const body = await request.json()
 
+    // SECURITY: Validate input with Zod
+    const parsed = GoalCreateSchema.safeParse({
+      goal_type: body.goalType ?? body.goal_type,
+      target_value: body.targetValue ?? body.target_value,
+      current_value: body.currentValue ?? body.current_value,
+      unit: body.unit,
+      target_date: body.targetDate ?? body.target_date,
+      deadline: body.deadline,
+      status: body.status,
+    })
+    if (!parsed.success) {
+      return NextResponse.json({ error: 'Invalid input', details: parsed.error.flatten() }, { status: 400 })
+    }
+    const validated = parsed.data
+
     // P0 FIX: Use correct field name 'deadline' (not 'target_date') to match DB schema
     const goalPayload = {
       user_id: user.id,
-      goal_type: body.goalType ?? body.goal_type,
-      target_value: body.targetValue ?? body.target_value ?? null,
-      current_value: body.currentValue ?? body.current_value ?? null,
-      unit: body.unit ?? 'kg',
-      status: body.status ?? 'active',
-      deadline: body.targetDate ?? body.target_date ?? body.deadline ?? null,
+      goal_type: validated.goal_type,
+      target_value: validated.target_value,
+      current_value: validated.current_value,
+      unit: validated.unit,
+      status: validated.status,
+      deadline: validated.deadline ?? validated.target_date,
     }
 
     // NOTE: goals table requires UNIQUE INDEX on (user_id, goal_type) for clean upsert.

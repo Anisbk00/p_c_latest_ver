@@ -41,7 +41,6 @@ const nextConfig: NextConfig = {
     optimizePackageImports: [
       'lucide-react',
       'date-fns',
-      'framer-motion',
     ],
   },
   // Disable source maps to prevent 403 errors on __nextjs_original-stack-frames in preview

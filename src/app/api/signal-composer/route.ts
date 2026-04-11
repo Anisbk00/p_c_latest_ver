@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireAuth } from '@/lib/supabase/server';
 
 // Signal Composer API
 // Algorithmic assistant that lists three precise inputs that would most improve insight confidence
@@ -116,6 +117,8 @@ function analyzeDataGaps(profile: UserProfile): DataGap[] {
 
 export async function POST(request: NextRequest) {
   try {
+    // SECURITY: Require authentication
+    const user = await requireAuth(request);
     const body = await request.json();
     const { userProfile, currentInsightId } = body;
 
@@ -195,7 +198,9 @@ function calculateDataQuality(profile: UserProfile): { score: number; level: str
   return { score: Math.min(score, maxScore), level };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  // SECURITY: Require authentication
+  await requireAuth(request);
   return NextResponse.json({
     endpoint: "Signal Composer API",
     description: "Recommends specific data inputs that would most improve insight confidence",

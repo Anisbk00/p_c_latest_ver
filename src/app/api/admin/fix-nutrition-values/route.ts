@@ -18,6 +18,13 @@ import { checkRateLimit, getRateLimitHeaders, createRateLimitKey } from '@/lib/r
  * Only fixes unverified/draft records (verified is null or false) to avoid corrupting verified data
  */
 export async function POST(request: NextRequest) {
+  // SECURITY: Verify admin access
+  const adminSecret = request.headers.get('x-admin-secret');
+  const expectedSecret = process.env.AI_WORKER_SECRET;
+  if (!adminSecret || adminSecret !== expectedSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   // Rate limiting
   const rateLimitKey = createRateLimitKey(request, 'admin');
   const rateLimit = checkRateLimit(rateLimitKey, {
@@ -158,6 +165,13 @@ export async function POST(request: NextRequest) {
  * Preview the records that would be fixed without actually fixing them
  */
 export async function GET(request: NextRequest) {
+  // SECURITY: Verify admin access
+  const adminSecret = request.headers.get('x-admin-secret');
+  const expectedSecret = process.env.AI_WORKER_SECRET;
+  if (!adminSecret || adminSecret !== expectedSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
   try {
     const supabase = await createClient();
     

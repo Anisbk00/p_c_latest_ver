@@ -27,7 +27,7 @@ export const SupplementLogCreateSchema = z.object({
   loggedAt: z.string().max(64).optional(),
   notes: z.string().max(1024).optional().nullable(),
   timeOfDay: z.string().max(32).optional().nullable(),
-}).passthrough(); // Allow extra fields for flexibility
+}).strict(); // Strict mode — reject unknown fields to prevent injection
 // Supplement Create Schema
 export const SupplementCreateSchema = z.object({
   name: z.string().min(1).max(128),
