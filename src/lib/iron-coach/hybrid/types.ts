@@ -50,6 +50,9 @@ export interface IronCoachUserProfile {
   proteinConsumedThisWeek: number;
   avgSleepHours: number | null;
   avgSleepQuality: number | null;
+  avgHydrationMl: number | null;
+  supplements: Array<{ name: string; dose: string; timing: string }>;
+  currentStreak: number;
   momentumScore: number;
 }
 
@@ -141,6 +144,12 @@ export interface IronCoachContextSnapshot {
       reasoning: string;
     }>;
   };
+
+  // Recent chat history for conversational continuity
+  recentChatHistory?: Array<{
+    role: string;
+    content: string;
+  }>;
 }
 
 export interface IronCoachStreamChunk {

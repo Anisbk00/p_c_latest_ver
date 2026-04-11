@@ -41,19 +41,62 @@ export function buildHybridCoachUserPrompt(input: {
   const lines: string[] = [];
   
   // User's key stats
-  lines.push('=== USER DATA ===');
+  lines.push('=== USER PROFILE ===');
   if (profile?.name) lines.push(`Name: ${profile.name}`);
+  if (profile?.age) lines.push(`Age: ${profile.age}`);
+  if (profile?.sex) lines.push(`Sex: ${profile.sex}`);
+  if (profile?.heightCm) lines.push(`Height: ${profile.heightCm}cm`);
   if (profile?.currentWeightKg) lines.push(`Weight: ${profile.currentWeightKg} kg`);
   if (profile?.targetWeightKg) lines.push(`Target: ${profile.targetWeightKg} kg`);
+  if (profile?.bodyFatPercent) lines.push(`Body Fat: ${profile.bodyFatPercent}%`);
+  if (profile?.muscleMassKg) lines.push(`Muscle Mass: ${profile.muscleMassKg}kg`);
+  if (profile?.activityLevel) lines.push(`Activity: ${profile.activityLevel}`);
+  if (profile?.fitnessLevel) lines.push(`Fitness: ${profile.fitnessLevel}`);
   if (profile?.primaryGoal) lines.push(`Goal: ${profile.primaryGoal}`);
+  if (profile?.goalTargetDate) lines.push(`Target Date: ${profile.goalTargetDate}`);
+  if (profile?.proteinTargetDaily) lines.push(`Protein Target: ${profile.proteinTargetDaily}g/day`);
+  if (profile?.allergies?.length) lines.push(`Allergies: ${profile.allergies.join(', ')}`);
+  if (profile?.dietaryRestrictions?.length) lines.push(`Restrictions: ${profile.dietaryRestrictions.join(', ')}`);
+  if (profile?.supplements?.length) lines.push(`Supplements: ${profile.supplements.map(s => `${s.name} (${s.dose}, ${s.timing})`).join(', ')}`);
+  if (profile?.currentStreak) lines.push(`Streak: ${profile.currentStreak} days`);
   
   // This week's numbers
   lines.push('');
   lines.push('=== THIS WEEK ===');
   lines.push(`Calories consumed: ${profile?.caloriesConsumedThisWeek || 0}`);
-  lines.push(`Protein consumed: ${profile?.proteinConsumedThisWeek || 0}g`);
-  lines.push(`Workouts: ${ctx.workoutsThisWeek || 0}`);
+  lines.push(`Protein consumed: ${profile?.proteinConsumedThisWeek || 0}g / ${profile?.proteinTargetWeekly || '?'}g target (${profile?.proteinAdherencePct || 0}% adherence)`);
+  lines.push(`Workouts: ${ctx.workoutsThisWeek || 0} (${profile?.totalWorkoutMinutes || 0}min total)`);
   lines.push(`Calories burned: ${ctx.caloriesBurnedThisWeek || 0}`);
+  if (profile?.avgHydrationMl) lines.push(`Hydration avg: ${profile.avgHydrationMl}ml/day`);
+  if (profile?.avgSleepHours) lines.push(`Sleep avg: ${profile.avgSleepHours}h (quality: ${profile.avgSleepQuality || '?'}/100)`);
+  
+  // Recent meals (for diet questions)
+  if (ctx.recentFoodLogs?.length) {
+    lines.push('');
+    lines.push('=== RECENT MEALS ===');
+    ctx.recentFoodLogs.slice(0, 5).forEach((f: any) => {
+      lines.push(`- ${f.food || 'Unknown'}: ${f.calories || 0} cal, ${f.protein || 0}g P, ${f.carbs || 0}g C, ${f.fat || 0}g F (${f.meal || '?'})`);
+    });
+  }
+  
+  // Recent workouts (for training questions)
+  if (ctx.recentWorkouts?.length) {
+    lines.push('');
+    lines.push('=== RECENT WORKOUTS ===');
+    ctx.recentWorkouts.slice(0, 3).forEach((w: any) => {
+      lines.push(`- ${w.type || 'Workout'}: ${w.duration || 0}min, ${w.calories || 0}cal burned`);
+    });
+  }
+  
+  // Recent chat history (for continuity)
+  if (ctx.recentChatHistory?.length) {
+    lines.push('');
+    lines.push('=== RECENT CONVERSATION ===');
+    ctx.recentChatHistory.forEach((msg) => {
+      const role = msg.role === 'user' ? 'User' : 'Coach';
+      lines.push(`${role}: ${msg.content.slice(0, 200)}${msg.content.length > 200 ? '...' : ''}`);
+    });
+  }
   
   // Weekly Plan Data - CRITICAL for answering questions about the plan
   if (weeklyPlan?.exists) {

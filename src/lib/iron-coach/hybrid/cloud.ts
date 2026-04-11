@@ -114,19 +114,40 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
     return cached;
   }
 
-  // Get the system prompt
-  const systemPrompt = getDefaultSystemPrompt(locale, 'aggressive');
-  
-  // Build the user prompt with the question
-  const simpleUserPrompt = `USER QUESTION: ${actualQuestion}
+  // Detect if prompt contains rich context (from buildContextPrompt)
+  // Rich prompts include system instructions + user data + question (>200 chars)
+  // Simple prompts are just raw questions from non-context paths
+  const hasRichContext = prompt.length > Math.max((userQuestion?.length || 50) + 100, 200);
+
+  let effectiveUserPrompt: string;
+  let effectiveSystemPrompt: string | undefined;
+
+  if (hasRichContext) {
+    // Rich context from buildContextPrompt — it already contains system + user data
+    // Extract just the user prompt part (after the first system prompt block)
+    // buildContextPrompt returns: systemPrompt + "\n\n" + userPromptWithAllData
+    const systemEnd = prompt.indexOf('\n\n');
+    if (systemEnd > 0 && systemEnd < 500) {
+      // Split into system and user parts to use proper message roles
+      effectiveSystemPrompt = prompt.slice(0, systemEnd);
+      effectiveUserPrompt = prompt.slice(systemEnd + 2);
+    } else {
+      // Fallback: use entire prompt as user message
+      effectiveUserPrompt = prompt;
+    }
+    console.log('[streamCloudPrompt] Using rich context prompt, user part length:', effectiveUserPrompt.length);
+  } else {
+    // No context — use system prompt + simple question (original behavior)
+    effectiveSystemPrompt = getDefaultSystemPrompt(locale, 'aggressive');
+    effectiveUserPrompt = `USER QUESTION: ${actualQuestion}
 
 Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific question directly.`;
-  
-  console.log('[streamCloudPrompt] Using prompt, length:', simpleUserPrompt.length);
+    console.log('[streamCloudPrompt] Using simple prompt (no context), length:', effectiveUserPrompt.length);
+  }
 
   try {
-    // Generate response using Groq
-    const fullText = await generateText(simpleUserPrompt, systemPrompt);
+    // Generate response using AI
+    const fullText = await generateText(effectiveUserPrompt, effectiveSystemPrompt);
     console.log('[streamCloudPrompt] AI response length:', fullText?.length || 0);
 
     if (signal?.aborted) {

@@ -142,12 +142,17 @@ export async function buildIronCoachContext(userId: string, question: string): P
   // Fetch all user data in parallel
   const [
     profileRes,
+    extendedProfileRes,
+    settingsRes,
     goalsRes,
     workoutsRes,
     foodRes,
     insightsRes,
     bodyMetricsRes,
     sleepRes,
+    hydrationRes,
+    supplementsRes,
+    recentChatRes,
     docs,
     memoryContext,
     weeklyPlanRes,
@@ -157,6 +162,18 @@ export async function buildIronCoachContext(userId: string, question: string): P
       .from('profiles')
       .select('id, name, birthdate, sex, height_cm, weight_kg, activity_level, fitness_level, dietary_restrictions, allergies, avatar_url')
       .eq('id', userId)
+      .maybeSingle(),
+    // Extended user profile (target weight, primary goal, etc.)
+    supabase
+      .from('user_profiles')
+      .select('*')
+      .eq('user_id', userId)
+      .maybeSingle(),
+    // User settings (streak, preferences)
+    supabase
+      .from('user_settings')
+      .select('*')
+      .eq('user_id', userId)
       .maybeSingle(),
     // User goals
     supabase
@@ -202,6 +219,26 @@ export async function buildIronCoachContext(userId: string, question: string): P
       .gte('logged_at', new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString())
       .order('logged_at', { ascending: false })
       .limit(7),
+    // Hydration logs (last 7 days)
+    supabase
+      .from('supplement_logs')
+      .select('amount_ml, logged_at')
+      .eq('user_id', userId)
+      .gte('logged_at', new Date(Date.now() - 7 * 24 * 3600 * 1000).toISOString())
+      .order('logged_at', { ascending: false })
+      .limit(14),
+    // User's supplements
+    supabase
+      .from('supplements')
+      .select('name, dose, timing, frequency')
+      .eq('user_id', userId),
+    // Recent chat messages (last 10 for memory)
+    sb
+      .from('ai_messages')
+      .select('role, content, created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(10),
     // RAG documents
     retrieveContext(userId, question, { usePersonalData: true, maxDocuments: 6, daysWindow: 30 }),
     // AI memory
@@ -272,6 +309,27 @@ export async function buildIronCoachContext(userId: string, question: string): P
     quality?: number | null;
     logged_at?: string | null;
   }>;
+
+  const hydrationLogs = (hydrationRes.data ?? []) as Array<{
+    amount_ml?: number | null;
+    logged_at?: string | null;
+  }>;
+
+  const supplements = (supplementsRes.data ?? []) as Array<{
+    name?: string | null;
+    dose?: string | null;
+    timing?: string | null;
+    frequency?: string | null;
+  }>;
+
+  const recentChat = (recentChatRes.data ?? []) as Array<{
+    role?: string | null;
+    content?: string | null;
+    created_at?: string | null;
+  }>;
+
+  const extendedProfile = extendedProfileRes.data as Record<string, any> | null;
+  const settings = settingsRes.data as Record<string, any> | null;
 
   const latestGoal = goals[0];
 
@@ -411,23 +469,23 @@ export async function buildIronCoachContext(userId: string, question: string): P
     sex: profile?.sex || null,
     
     // Body metrics - null means not set, AI should ask or give general advice
-    heightCm: profile?.height_cm || null,
+    heightCm: profile?.height_cm || extendedProfile?.height_cm || null,
     currentWeightKg: userWeightKg,
-    targetWeightKg: latestGoal?.target_weight_kg || null,
+    targetWeightKg: latestGoal?.target_weight_kg || extendedProfile?.target_weight_kg || null,
     bodyFatPercent: latestBodyFat?.value || null,
     muscleMassKg: latestMuscleMass?.value || null,
     
     // Activity & fitness level
-    activityLevel: profile?.activity_level || 'moderate',
-    fitnessLevel: profile?.fitness_level || 'beginner',
+    activityLevel: extendedProfile?.activity_level || profile?.activity_level || 'moderate',
+    fitnessLevel: extendedProfile?.fitness_level || profile?.fitness_level || 'beginner',
     
     // Dietary info
-    dietaryRestrictions: profile?.dietary_restrictions || [],
-    allergies: profile?.allergies || [],
+    dietaryRestrictions: extendedProfile?.dietary_restrictions || profile?.dietary_restrictions || [],
+    allergies: extendedProfile?.allergies || profile?.allergies || [],
     
     // Goals
-    primaryGoal: latestGoal?.goal_type || 'general_fitness',
-    goalTargetDate: latestGoal?.target_date || null,
+    primaryGoal: extendedProfile?.primary_goal || latestGoal?.goal_type || 'general_fitness',
+    goalTargetDate: latestGoal?.target_date || extendedProfile?.target_date || null,
     
     // Calculated targets based on actual data
     proteinTargetDaily,
@@ -444,6 +502,21 @@ export async function buildIronCoachContext(userId: string, question: string): P
     // Sleep
     avgSleepHours: avgSleepMinutes ? Math.round(avgSleepMinutes / 60 * 10) / 10 : null,
     avgSleepQuality,
+    
+    // Hydration (daily average)
+    avgHydrationMl: hydrationLogs.length > 0
+      ? Math.round(hydrationLogs.reduce((sum, h) => sum + (h.amount_ml ?? 0), 0) / Math.max(1, new Set(hydrationLogs.map(h => h.logged_at?.split('T')[0])).size))
+      : null,
+    
+    // Supplements the user takes
+    supplements: supplements.filter(s => s.name).map(s => ({
+      name: s.name!,
+      dose: s.dose || '',
+      timing: s.timing || '',
+    })),
+    
+    // Streak
+    currentStreak: settings?.streak_count || settings?.login_streak || 0,
     
     // Momentum
     momentumScore,
@@ -485,6 +558,12 @@ export async function buildIronCoachContext(userId: string, question: string): P
     
     // Weekly plan data
     weeklyPlan,
+
+    // Recent chat history (for conversational continuity)
+    recentChatHistory: recentChat.slice(0, 6).reverse().map(m => ({
+      role: m.role || 'user',
+      content: m.content || '',
+    })),
   };
 }
 
