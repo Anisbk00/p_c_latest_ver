@@ -720,217 +720,37 @@ function buildPrecisionWeeklyPlanPrompt(
   // Goal-specific configurations
   const goalConfig = getGoalConfiguration(goal, data.profile.fitness_level, data.targets.workout_days_per_week);
   
-  const systemPrompt = `You are Iron Coach AI, an elite precision fitness and nutrition planning system. You generate HYPER-PERSONALIZED weekly plans that are SCIENTIFICALLY OPTIMIZED for the user's specific body, goals, history, and patterns.
+  const systemPrompt = `You are Iron Coach AI. Generate hyper-personalized weekly fitness+nutrition plans in JSON only.
 
-═══════════════════════════════════════════════════════════════
-GOAL-SPECIFIC CONFIGURATION (MUST FOLLOW)
-═══════════════════════════════════════════════════════════════
-User's Primary Goal: ${data.profile.primary_goal}
-Recommended Workout Days: ${goalConfig.workoutDays} per week
-Exercises Per Workout: ${goalConfig.exercisesPerSession}
-Sets Per Exercise: ${goalConfig.setsPerExercise}
-Workout Duration: ${goalConfig.workoutDuration} minutes
-Intensity Level: ${goalConfig.intensity}
-Training Split: ${goalConfig.trainingSplit}
-Rest Days: ${7 - goalConfig.workoutDays} per week
+GOAL: ${data.profile.primary_goal}
+Workout days/week: ${goalConfig.workoutDays} | Exercises/session: ${goalConfig.exercisesPerSession}
+Sets: ${goalConfig.setsPerExercise} | Duration: ${goalConfig.workoutDuration}min | Intensity: ${goalConfig.intensity}
+Split: ${goalConfig.trainingSplit} | Rest days: ${7 - goalConfig.workoutDays}
 
-GOAL-SPECIFIC RULES:
+RULES:
 ${goalConfig.goalRules}
+- Never train same muscle 2 days in a row. Legs need 48-72h recovery.
+- Protein 30-50g per meal distributed evenly. Time carbs around workouts.
+- Higher protein on training days. Respect dietary restrictions ALLERGIES.
+- Progressive overload if recovering well. Deload if overtraining signs.
+- Include warm-up, cool-down. EXACTLY ${goalConfig.exercisesPerSession} exercises per session.
+- Use user's common foods. Match meal timing to their patterns.
+- Output: ONLY valid JSON, no markdown.`;
 
-═══════════════════════════════════════════════════════════════
-CRITICAL RULES
-═══════════════════════════════════════════════════════════════
-1. EVERY recommendation must be backed by the user's data - no generic advice
-2. Be EXTREMELY PRECISE with numbers (calories, macros, weights, reps, sets)
-3. Consider workout recovery, muscle groups, and training splits
-4. Factor in the user's actual eating patterns and food preferences
-5. Respect dietary restrictions and allergies ABSOLUTELY
-6. Adjust intensity based on recent workout history and fatigue
-7. Plan rest days strategically for optimal recovery
-8. Progressive overload - plan slightly harder than previous week if recovering well
-9. Deload if user shows signs of overtraining or poor recovery
-10. MATCH the meal timing to user's actual patterns when known
+  const userPrompt = `Generate weekly plan: ${weekStart} to ${weekEnd}
 
-WORKOUT PLANNING RULES:
-- Never train the same muscle group 2 days in a row
-- Legs need 48-72 hours recovery between sessions
-- Push movements: chest, shoulders, triceps
-- Pull movements: back, biceps
-- Consider user's favorite workout times
-- Adjust volume based on fitness_level (beginner=lower volume, advanced=higher volume)
-- Include warm-up and cool-down recommendations
-- EXACTLY ${goalConfig.exercisesPerSession} exercises per workout session
-- Each exercise: ${goalConfig.setsPerExercise} sets
+PROFILE: ${JSON.stringify(data.profile)}
+TARGETS: ${JSON.stringify(data.targets)}
+BODY: wt_trend=${data.bodyMetrics.weight_trend}, wt_change_7d=${data.bodyMetrics.weight_change_7d}kg, bf=${data.bodyMetrics.latest_body_fat || '?'}%
+WORKOUTS: ${data.workoutPatterns.total_workouts_7d}/week, avg=${data.workoutPatterns.avg_duration_minutes}min, fav_types=[${data.workoutPatterns.favorite_workout_types.join(',')}], muscles=[${data.workoutPatterns.muscles_trained_last_7d.join(',')}]
+NUTRITION: cal_avg=${data.nutritionPatterns.avg_daily_calories_7d}, pro_avg=${data.nutritionPatterns.avg_daily_protein_7d}g, pro_adh=${data.nutritionPatterns.protein_adherence_percent}%, macros=${data.nutritionPatterns.macro_distribution.protein_percent}%P/${data.nutritionPatterns.macro_distribution.carbs_percent}%C/${data.nutritionPatterns.macro_distribution.fat_percent}%F, foods=[${data.nutritionPatterns.most_common_foods.slice(0, 5).join(',')}]
+SLEEP: avg=${data.sleepPatterns.avg_duration_hours}h, quality=${data.sleepPatterns.avg_quality}
+SUPPLEMENTS: [${data.supplementUsage.active_supplements.join(',')}]
+GOALS: ${JSON.stringify(data.activeGoals)}
+STREAK: ${data.momentum.current_streak} days, momentum=${data.momentum.momentum_score}
 
-NUTRITION PLANNING RULES:
-- Distribute protein evenly across meals (30-50g per meal)
-- Time carbs around workouts for energy
-- Higher protein on training days, slightly lower on rest days
-- Consider user's most common foods - suggest SIMILAR foods they'll actually eat
-- Account for their current macro distribution patterns
-
-OUTPUT FORMAT: Return ONLY valid JSON (no markdown, no code blocks).`;
-
-  const userPrompt = `Generate a PRECISION weekly fitness and nutrition plan for the upcoming week.
-
-WEEK: ${weekStart} to ${weekEnd}
-
-═══════════════════════════════════════════════════════════════
-USER PROFILE
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.profile, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-CALCULATED TARGETS (based on BMR/TDEE)
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.targets, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-BODY METRICS & TRENDS
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.bodyMetrics, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-WORKOUT PATTERNS (last 30 days)
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.workoutPatterns, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-NUTRITION PATTERNS (last 7 days)
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.nutritionPatterns, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-SLEEP PATTERNS
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.sleepPatterns, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-SUPPLEMENT USAGE
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.supplementUsage, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-ACTIVE GOALS
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.activeGoals, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-MOMENTUM & STREAKS
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.momentum, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-AI INSIGHTS (recent)
-═══════════════════════════════════════════════════════════════
-${JSON.stringify(data.aiInsights, null, 2)}
-
-═══════════════════════════════════════════════════════════════
-OUTPUT FORMAT - Return ONLY valid JSON
-═══════════════════════════════════════════════════════════════
-{
-  "week_start": "${weekStart}",
-  "week_end": "${weekEnd}",
-  "plan_confidence": 0.85,
-  "generation_reasoning": "Brief explanation of plan strategy based on user data",
-  "weekly_overview": {
-    "total_workout_days": 4,
-    "total_rest_days": 3,
-    "weekly_calorie_target": 14000,
-    "weekly_protein_target": 980,
-    "focus_areas": ["muscle_building", "protein_adherence"],
-    "weekly_strategy": "Brief description of the week's focus"
-  },
-  "daily_plan": [
-    {
-      "date": "${weekStart}",
-      "day_name": "Monday",
-      "is_workout_day": true,
-      "workout": {
-        "focus": "Push (Chest, Shoulders, Triceps)",
-        "duration_minutes": 60,
-        "estimated_calories_burned": 350,
-        "intensity": "moderate",
-        "exercises": [
-          {
-            "name": "Barbell Bench Press",
-            "type": "compound",
-            "muscle_groups": ["chest", "triceps", "shoulders"],
-            "sets": 4,
-            "reps": "8-10",
-            "weight_kg": 60,
-            "rest_seconds": 90,
-            "notes": "Specific cue based on user data",
-            "progression": "Increase by 2.5kg from last session"
-          }
-        ],
-        "warm_up": "5 min light cardio + dynamic stretching",
-        "cool_down": "5 min stretching focus on chest/shoulders",
-        "optimal_time": "Based on user's preferred workout time",
-        "coach_notes": "Specific motivational message based on user's data"
-      },
-      "nutrition": {
-        "target_calories": 2000,
-        "target_protein": 140,
-        "target_carbs": 200,
-        "target_fat": 67,
-        "meals": [
-          {
-            "meal_type": "breakfast",
-            "time": "07:30",
-            "foods": [
-              {
-                "name": "Eggs",
-                "quantity": 4,
-                "unit": "large",
-                "calories": 280,
-                "protein": 24,
-                "carbs": 2,
-                "fat": 20,
-                "reason": "High protein breakfast aligns with user's pattern"
-              }
-            ],
-            "total_calories": 660,
-            "total_protein": 36,
-            "notes": "Pre-workout meal timing"
-          }
-        ],
-        "hydration_ml": 3000,
-        "meal_timing_notes": "Based on user's typical schedule"
-      },
-      "sleep": {
-        "target_bedtime": "22:30",
-        "target_wake_time": "06:30",
-        "target_duration_hours": 8
-      },
-      "supplements": [
-        {"name": "Creatine", "dose": "5g", "timing": "post-workout"}
-      ],
-      "daily_reminders": ["Track your breakfast", "Drink water during workout"],
-      "coach_message": "Personal message based on user's specific data and goals",
-      "confidence": 0.88
-    }
-  ],
-  "weekly_nutrition_summary": {
-    "avg_daily_calories": 2000,
-    "avg_daily_protein": 140,
-    "training_day_calories": 2100,
-    "rest_day_calories": 1900
-  },
-  "weekly_workout_summary": {
-    "training_split": "Push/Pull/Legs/Upper",
-    "volume_level": "moderate",
-    "intensity_progression": "5% increase from last week"
-  },
-  "recommendations": [
-    {
-      "category": "nutrition",
-      "priority": "high",
-      "recommendation": "Increase protein at breakfast",
-      "reasoning": "Current breakfast protein is low"
-    }
-  ]
-}`;
+Return JSON:
+{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"brief","weekly_overview":{"total_workout_days":4,"total_rest_days":3,"weekly_calorie_target":14000,"weekly_protein_target":980,"focus_areas":[],"weekly_strategy":""},"daily_plan":[{"date":"","day_name":"","is_workout_day":true,"workout":{"focus":"","duration_minutes":60,"estimated_calories_burned":350,"intensity":"","exercises":[{"name":"","type":"","muscle_groups":[],"sets":4,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":""}],"warm_up":"","cool_down":"","coach_notes":""},"nutrition":{"target_calories":2000,"target_protein":140,"target_carbs":200,"target_fat":67,"meals":[{"meal_type":"","time":"","foods":[{"name":"","quantity":0,"unit":"g","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0}],"hydration_ml":3000},"sleep":{"target_bedtime":"22:30","target_wake_time":"06:30","target_duration_hours":8},"supplements":[{"name":"","dose":"","timing":""}],"coach_message":"","confidence":0.85}],"weekly_nutrition_summary":{"avg_daily_calories":0,"avg_daily_protein":0,"training_day_calories":0,"rest_day_calories":0},"weekly_workout_summary":{"training_split":"","volume_level":"","intensity_progression":""},"recommendations":[{"category":"","priority":"","recommendation":"","reasoning":""}]}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -1006,7 +826,7 @@ export async function POST(request: NextRequest) {
     // Generate plan with AI
     let plan;
     try {
-      let responseText = await generateText(userPrompt, systemPrompt, 8192);
+      let responseText = await generateText(userPrompt, systemPrompt, 4096);
 
       // Clean up response
       responseText = responseText

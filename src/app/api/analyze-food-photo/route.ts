@@ -40,7 +40,7 @@ Important:
 async function callGroqVision(imageBase64: string, mimeType: string): Promise<Record<string, unknown>> {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) {
-    throw new Error('No Groq API key configured')
+    throw new Error('No AI API key configured')
   }
 
   const dataUrl = `data:${mimeType};base64,${imageBase64}`
@@ -70,13 +70,13 @@ async function callGroqVision(imageBase64: string, mimeType: string): Promise<Re
     const errorText = await response.text()
     if (response.status === 429) throw new Error('RATE_LIMIT')
     if (response.status === 401) throw new Error('API_KEY_INVALID')
-    throw new Error(`Groq API error ${response.status}: ${errorText.substring(0, 200)}`)
+    throw new Error(`AI API error ${response.status}: ${errorText.substring(0, 200)}`)
   }
 
   const result = await response.json()
   const textContent = result.choices?.[0]?.message?.content
 
-  if (!textContent) throw new Error('No content in Groq response')
+  if (!textContent) throw new Error('No content in AI response')
 
   // Parse JSON from response
   let cleanContent = textContent.trim()
@@ -164,7 +164,7 @@ export async function POST(request: NextRequest) {
       if (msg === 'API_KEY_INVALID') {
         return NextResponse.json({ error: 'AI API key is invalid.' }, { status: 503 })
       }
-      if (msg.includes('No Groq API key')) {
+      if (msg.includes('No AI API key')) {
         return NextResponse.json({ error: 'AI service not configured.' }, { status: 503 })
       }
 

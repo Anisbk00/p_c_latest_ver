@@ -649,15 +649,7 @@ export async function generateIronCoachResponse(
   const context = await buildUserContext(supabase, userId);
   
   // Build context prompt
-  const contextPrompt = `
-User Context:
-- Goal: ${context.userGoal || 'Not set'}
-- Workouts this week: ${context.workoutsThisWeek || 0}
-- Protein adherence: ${context.proteinAdherencePct || 0}%
-- Fatigue score: ${context.userState?.fatigueScore || 0}
-- Recovery score: ${context.userState?.recoveryScore || 0}
-- Momentum score: ${context.userState?.momentumScore || 0}
-`;
+  const contextPrompt = `User: goal=${context.userGoal || '?'}, workouts_wk=${context.workoutsThisWeek || 0}, pro_adh=${context.proteinAdherencePct || 0}%, fatigue=${context.userState?.fatigueScore || 0}, recovery=${context.userState?.recoveryScore || 0}, momentum=${context.userState?.momentumScore || 0}`;
   
   // Combine system prompt with context
   const fullSystemPrompt = `${getIronCoachSystemPrompt(userLocale)}\n\n${contextPrompt}`;
@@ -666,7 +658,7 @@ User Context:
   const content = await zaiGenerateChatCompletion({
     messages: [{ role: 'user', content: message }],
     temperature: 0.35,
-    maxTokens: 1024,
+    maxTokens: 768,
     locale: userLocale,
     systemPrompt: fullSystemPrompt,
   });
@@ -743,15 +735,7 @@ export async function* generateStreamingIronCoachResponse(
   // Build user context
   const context = await buildUserContext(supabase, userId);
   
-  const contextPrompt = `
-User Context:
-- Goal: ${context.userGoal || 'Not set'}
-- Workouts this week: ${context.workoutsThisWeek || 0}
-- Protein adherence: ${context.proteinAdherencePct || 0}%
-- Fatigue score: ${context.userState?.fatigueScore || 0}
-- Recovery score: ${context.userState?.recoveryScore || 0}
-- Momentum score: ${context.userState?.momentumScore || 0}
-`;
+  const contextPrompt = `User: goal=${context.userGoal || '?'}, workouts_wk=${context.workoutsThisWeek || 0}, pro_adh=${context.proteinAdherencePct || 0}%, fatigue=${context.userState?.fatigueScore || 0}, recovery=${context.userState?.recoveryScore || 0}, momentum=${context.userState?.momentumScore || 0}`;
   
   // Store user message
   await storeMessage(supabase, convId, userId, 'user', message, userLocale);
@@ -765,7 +749,7 @@ User Context:
   for await (const chunk of zaiGenerateStreamingChatCompletion({
     messages: [{ role: 'user', content: message }],
     temperature: 0.35,
-    maxTokens: 1024,
+    maxTokens: 768,
     locale: userLocale,
     systemPrompt: fullSystemPrompt,
   })) {
@@ -841,7 +825,7 @@ Respond with JSON:
 }`;
 
   const content = await zaiGenerateChatCompletion({
-    messages: [{ role: 'user', content: `You are a fitness expert. Respond with valid JSON only. Language: ${locale}\n\n${prompt}` }],
+    messages: [{ role: 'user', content: `You are a nutrition-focused fitness expert. Respond with valid JSON only. Language: ${locale}\n\n${prompt}` }],
     temperature: 0.4,
     maxTokens: 800,
     locale,

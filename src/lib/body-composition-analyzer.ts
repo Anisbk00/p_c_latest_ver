@@ -63,7 +63,7 @@ export async function analyzeBodyComposition(
       throw new Error('No image data provided for analysis');
     }
     
-    logger.info('Starting Groq body composition analysis', { 
+    logger.info('Starting AI body composition analysis', { 
       userId: input.userId,
       hasBase64: !!input.imageBase64,
       hasUrl: !!input.imageUrl 
@@ -73,16 +73,16 @@ export async function analyzeBodyComposition(
     const result = await analyzePhoto(imageData, 'body-composition');
     
     if (!result.success) {
-      logger.warn('Groq analysis failed, using fallback', { 
+      logger.warn('AI analysis failed, using fallback', { 
         userId: input.userId,
         error: result.error
       });
-      return getFallbackResult(result.error || 'Groq analysis failed');
+      return getFallbackResult(result.error || 'AI analysis failed');
     }
     
     const analysis = result.analysis;
     
-    logger.info('Groq response received', { 
+    logger.info('AI response received', { 
       userId: input.userId,
       durationMs: Date.now() - startTime 
     });
@@ -132,7 +132,7 @@ export async function analyzeBodyComposition(
     return finalResult;
     
   } catch (error) {
-    logger.error('Groq analysis failed, using fallback', error instanceof Error ? error : new Error(String(error)));
+    logger.error('AI analysis failed, using fallback', error instanceof Error ? error : new Error(String(error)));
     return getFallbackResult(error instanceof Error ? error.message : 'Unknown error');
   }
 }

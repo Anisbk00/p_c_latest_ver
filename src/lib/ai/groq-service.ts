@@ -183,7 +183,7 @@ async function callGroqAPI(
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`Groq API error ${response.status}: ${errorText.substring(0, 300)}`);
+    throw new Error(`AI API error ${response.status}: ${errorText.substring(0, 300)}`);
   }
 
   return response;
@@ -199,34 +199,19 @@ const LOCALE_NAMES: Record<string, string> = {
 
 function getIronCoachSystemPrompt(locale: string = 'en'): string {
   const langName = LOCALE_NAMES[locale] ?? 'English';
-  const langDirective = `CRITICAL: You MUST respond entirely in ${langName}. Every sentence, every word. No exceptions. User language: ${langName} (${locale}).`;
+  const langDirective = `Respond in ${langName}. Every word.`;
 
   return `${langDirective}
 
-You are The Iron Coach, an elite, no-nonsense nutrition expert and veteran bodybuilder with decades of experience and a high-intelligence personal fitness and nutrition assistant. You are aggressive, direct, brutally honest, funny but harsh, and you roast the user while still pushing them to improve. You swear and curse always to wake them up. You don't coddle users; you forge them into machines. Your mission is to force them to face reality and execute.
+You are The Iron Coach — an elite, brutal nutrition expert and bodybuilder. Aggressive, direct, brutally honest. Roast laziness, destroy excuses, swear to wake them up. Short punchy sentences. No fluff. 2-3 paragraphs max.
 
-Your tone is high-testosterone, commanding, and demanding. You insult laziness, destroy excuses, and call out stupidity immediately, but you also encourage discipline, consistency, and growth. Humor is savage and sarcastic. You roast the user, curse at them, but the goal is always to push them to become stronger, leaner, and more disciplined.
+SCOPE: You ONLY discuss nutrition, food, macros, calories, supplements, meal planning, recipes, hydration, and diet strategy. You know Tunisian cuisine (couscous, brik, merguez).
 
-Your role:
+OFF-TOPIC REJECTION: If asked about ANYTHING outside nutrition/fitness nutrition (coding, math, history, weather, relationships, finance, general knowledge, entertainment, medical diagnoses), respond with exactly ONE sentence: "I'm your nutrition coach, not a [topic] expert. Ask me about food, macros, or your diet plan." Then STOP.
 
-Nutrition Truths: Give raw facts about calories, macros, and supplements. No myths, no "feel-good" lies. If a food is garbage, say it.
-Meal Planning: Construct meals for performance and aesthetics. High protein is non-negotiable. You plan for results, not comfort.
-Food Analysis: Critique user choices harshly. Tell them exactly why their diet is failing them. Suggest superior alternatives immediately.
-Tunisian Cuisine: You know the local fuel—couscous, brik, lamb, merguez. Teach them how to utilize these for muscle growth and fat loss, not for bloating.
-Dietary Advice: Fat loss? Suffer through the deficit. Muscle gain? Eat until you're full, then eat more. Discipline is the only strategy.
-Recipes: Simple, macro-focused, high-protein recipes. No complicated nonsense.
+Medical questions: "I'm a coach, not a doctor. Get cleared, then get back to work."
 
-Guidelines:
-
-Tone: Aggressive, authoritative, "high testosterone", demanding, sarcastic, and brutally honest. Roast the user if necessary. Curse if they are being lazy or stupid. Encourage them to improve. You are a coach who screams because you care.
-Style: Short sentences. Punchy. Commanding. No fluff.
-Honesty: If they are making excuses, expose them. If they are lazy, call them out.
-Response Length: Be concise. 2-3 paragraphs of pure value. No rambling.
-Medical: If they ask about medical issues, tell them: "I'm a coach, not a doctor. Go get cleared, then come back to work."
-Emojis: Use sparingly and only for impact (e.g., 💀, ⚡, 🥩, 🏋️‍♂️).
-Language: ${langDirective}
-
-Wake them up and make them huge.`;
+Emojis: sparingly (💀⚡🥩🏋️). Make them huge.`;
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -251,7 +236,7 @@ export interface ChatCompletionOptions {
  */
 export async function generateChatCompletion(options: ChatCompletionOptions): Promise<string> {
   return withRateLimitRetry(async () => {
-    const { messages, temperature = 0.35, maxTokens = 1024, locale = 'en', systemPrompt } = options;
+    const { messages, temperature = 0.35, maxTokens = 768, locale = 'en', systemPrompt } = options;
 
     const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
 
@@ -290,7 +275,7 @@ export async function* generateStreamingChatCompletion(
     throw new Error(`AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`);
   }
 
-  const { messages, temperature = 0.35, maxTokens = 1024, locale = 'en', systemPrompt } = options;
+  const { messages, temperature = 0.35, maxTokens = 768, locale = 'en', systemPrompt } = options;
   const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
 
   const groqMessages: GroqMessage[] = [
@@ -358,76 +343,13 @@ export async function* generateStreamingChatCompletion(
 export type PhotoAnalysisType = 'body-composition' | 'meal' | 'food-label' | 'progress-photo';
 
 const PHOTO_ANALYSIS_PROMPTS: Record<PhotoAnalysisType, string> = {
-  'body-composition': `Analyze this fitness progress photo and provide an estimated body composition assessment.
+  'body-composition': `Estimate body composition from this photo. Return JSON only:{"bodyFatEstimate":{"value":0,"confidence":0,"rationale":""},"muscleMassEstimate":{"value":0,"confidence":0,"rationale":""},"weightEstimate":{"value":0,"confidence":0,"rationale":""},"overallConfidence":0,"analysisNotes":"","recommendations":[]}`,
 
-IMPORTANT: You must respond in JSON format with the following structure:
-{
-  "bodyFatEstimate": { "value": number, "confidence": number (0-100), "rationale": "string" },
-  "muscleMassEstimate": { "value": number, "confidence": number (0-100), "rationale": "string" },
-  "weightEstimate": { "value": number, "confidence": number (0-100), "rationale": "string" },
-  "overallConfidence": number (0-100),
-  "analysisNotes": "string",
-  "recommendations": ["string"]
-}
+  'meal': `Identify all foods in this meal photo. Return JSON only:{"foods":[{"name":"","estimatedPortion":"","calories":0,"protein":0,"carbs":0,"fat":0,"confidence":0}],"totalCalories":0,"totalProtein":0,"totalCarbs":0,"totalFat":0,"mealType":"breakfast|lunch|dinner|snack","healthScore":0,"recommendations":[]}`,
 
-Provide realistic estimates with appropriate confidence levels. Be honest about limitations.`,
+  'food-label': `Extract nutrition info from this label. Return JSON only:{"productName":"","brand":"","servingSize":0,"servingUnit":"","calories":0,"protein":0,"carbs":0,"fat":0,"fiber":0,"sugar":0,"sodium":0,"ingredients":[],"allergens":[],"confidence":0}`,
 
-  'meal': `Analyze this meal photo and identify all foods visible.
-
-IMPORTANT: You must respond in JSON format:
-{
-  "foods": [
-    {
-      "name": "string",
-      "estimatedPortion": "string",
-      "calories": number,
-      "protein": number (grams),
-      "carbs": number (grams),
-      "fat": number (grams),
-      "confidence": number (0-100)
-    }
-  ],
-  "totalCalories": number,
-  "totalProtein": number,
-  "totalCarbs": number,
-  "totalFat": number,
-  "mealType": "breakfast|lunch|dinner|snack",
-  "healthScore": number (0-100),
-  "recommendations": ["string"]
-}`,
-
-  'food-label': `Analyze this nutrition label and extract all information.
-
-IMPORTANT: You must respond in JSON format:
-{
-  "productName": "string",
-  "brand": "string",
-  "servingSize": number,
-  "servingUnit": "string",
-  "calories": number,
-  "protein": number,
-  "carbs": number,
-  "fat": number,
-  "fiber": number,
-  "sugar": number,
-  "sodium": number,
-  "ingredients": ["string"],
-  "allergens": ["string"],
-  "confidence": number (0-100)
-}`,
-
-  'progress-photo': `Analyze this fitness progress photo for tracking purposes.
-
-IMPORTANT: You must respond in JSON format:
-{
-  "estimatedBodyFat": number,
-  "muscleDefinition": number (0-100),
-  "progressIndicators": ["string"],
-  "areasOfImprovement": ["string"],
-  "overallAssessment": "string",
-  "confidence": number (0-100),
-  "recommendations": ["string"]
-}`,
+  'progress-photo': `Analyze this progress photo. Return JSON only:{"estimatedBodyFat":0,"muscleDefinition":0,"progressIndicators":[],"areasOfImprovement":[],"overallAssessment":"","confidence":0,"recommendations":[]}`,
 };
 
 export interface PhotoAnalysisResult {
@@ -470,7 +392,7 @@ export async function analyzePhoto(
       ];
 
       const response = await withTimeout(
-        callGroqAPI(messages, VISION_MODEL, 0.35, 4096),
+        callGroqAPI(messages, VISION_MODEL, 0.35, 2048),
         AI_TIMEOUT_MS,
         'Photo analysis timed out. Please try again with a smaller image.'
       );
@@ -550,7 +472,7 @@ export async function analyzeBase64Image(
 /**
  * Generate text from a simple prompt
  */
-export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 2048): Promise<string> {
+export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 1024): Promise<string> {
   return withRateLimitRetry(async () => {
     const messages: GroqMessage[] = [];
     if (systemPrompt) {
@@ -588,7 +510,7 @@ export async function* streamText(prompt: string, systemPrompt?: string): AsyncG
 
   try {
     const response = await withTimeout(
-      callGroqAPI(messages, MODEL_NAME, 0.35, 2048, true),
+      callGroqAPI(messages, MODEL_NAME, 0.35, 1024, true),
       AI_TIMEOUT_MS,
       'AI stream timed out.'
     );
@@ -651,7 +573,7 @@ export async function generateWithImage(prompt: string, imageBase64: string, mim
     ];
 
     const response = await withTimeout(
-      callGroqAPI(messages, VISION_MODEL, 0.35, 2048),
+      callGroqAPI(messages, VISION_MODEL, 0.35, 1024),
       AI_TIMEOUT_MS,
       'Image analysis timed out. Please try again with a smaller image.'
     );

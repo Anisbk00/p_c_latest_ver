@@ -381,21 +381,10 @@ export async function GET() {
     if (!deadline.aborted) {
       try {
         const { generateText } = await import('@/lib/ai/gemini-service');
-        const prompt = `You are a concise fitness AI. Based on this user data from the past 7 days, write ONE actionable insight sentence (max 15 words). Be specific.
+        const prompt = `Data: wk=${workoutsThisWeek} workouts, ${totalCaloriesBurned}cal burned, ${Math.round(totalProteinConsumed/7)}g pro/day, ${totalCaloriesConsumed}cal consumed, ${Math.round(hydrationAvg)}ml H2O/day, streak=${streak}, goal=${primaryGoal||'?'}, wt=${weightTrend}. ${hasFoodLogsToday?'Has food today.':'No food today.'} ${hasWorkoutToday?'Worked out today.':'No workout today.'}
+Write ONE actionable nutrition/fitness insight sentence (max 15 words). No explanation.`;
 
-Workouts: ${workoutsThisWeek} sessions, ${totalCaloriesBurned} cal burned
-Protein: ${totalProteinConsumed}g total this week (${Math.round(totalProteinConsumed / 7)}g/day avg)
-Calories: ${totalCaloriesConsumed} total consumed
-Hydration: ${Math.round(hydrationAvg)}ml/day avg
-Streak: ${streak} days
-Goal: ${primaryGoal || 'not set'}
-Weight trend: ${weightTrend}
-${hasFoodLogsToday ? 'Has food logs today.' : 'No food logged today.'}
-${hasWorkoutToday ? 'Worked out today.' : 'No workout today.'}
-
-Respond with ONLY the insight sentence. No explanation, no markdown.`;
-
-        aiInsight = await generateText(prompt, 'You are a fitness data analyst. Respond with one concise insight sentence only.');
+        aiInsight = await generateText(prompt, 'You are a fitness data analyst. One insight sentence only. No explanation.');
         if (aiInsight) {
           aiInsight = aiInsight
             .replace(/^["'`\u201C\u201D]+|["'`\u201C\u201D]+$/g, '')

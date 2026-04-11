@@ -121,12 +121,14 @@ Return ONLY valid JSON in this exact format, no markdown, no explanation:
       "tipsForSuccess": ["Tip 1", "Tip 2", "Tip 3"]
     }
   ]
-}`;
+}
+
+SCOPE: Only fitness, nutrition, training, and health habits. Reject all off-topic questions.`;
 
     const userPrompt = `Generate personalized micro-experiments for this user:
 
 USER DATA:
-${JSON.stringify(userContext, null, 2)}
+${JSON.stringify(userContext)}
 
 Create experiments that address their specific gaps and help them progress toward their goals. Focus on practical, actionable changes they can make today. Return ONLY the JSON object.`;
 
