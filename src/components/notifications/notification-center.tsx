@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { createClient } from '@/lib/supabase/client';
+import { getClient } from '@/lib/supabase/client';
 import {
   Bell,
   BellOff,
@@ -187,7 +187,7 @@ export function NotificationCenter({
       fetchNotifications();
       
       // Setup realtime subscription for new notifications
-      const supabase = createClient();
+      const supabase = getClient();
       
       // Get current user and subscribe
       supabase.auth.getUser().then(({ data: { user } }) => {
