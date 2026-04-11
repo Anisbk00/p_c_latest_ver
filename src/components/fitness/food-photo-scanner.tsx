@@ -35,8 +35,11 @@ import { Button } from "@/components/ui/button";
 const MAX_IMAGE_DIMENSION = 1280;
 const JPEG_QUALITY = 0.75;
 
-function compressImage(canvas: HTMLCanvasElement): string {
-  let { width, height } = canvas;
+function compressImage(sourceCanvas: HTMLCanvasElement): string | null {
+  let { width, height } = sourceCanvas;
+
+  // Guard: skip if canvas has no valid dimensions
+  if (!width || !height || width <= 0 || height <= 0) return null;
 
   // Scale down if larger than max dimension
   if (width > MAX_IMAGE_DIMENSION || height > MAX_IMAGE_DIMENSION) {
@@ -48,8 +51,9 @@ function compressImage(canvas: HTMLCanvasElement): string {
   const tempCanvas = document.createElement('canvas');
   tempCanvas.width = width;
   tempCanvas.height = height;
-  const ctx = tempCanvas.getContext('2d')!;
-  ctx.drawImage(canvas, 0, 0, width, height);
+  const ctx = tempCanvas.getContext('2d');
+  if (!ctx) return null;
+  ctx.drawImage(sourceCanvas, 0, 0, width, height);
 
   return tempCanvas.toDataURL('image/jpeg', JPEG_QUALITY);
 }
@@ -172,11 +176,35 @@ export function FoodPhotoScanner({
   const capturePhoto = useCallback(async () => {
     if (!videoRef.current || !canvasRef.current) return;
 
-    setStatus("capturing");
-
     const video = videoRef.current;
     const canvas = canvasRef.current;
-    
+
+    // Wait for video to have valid dimensions (camera stream may not be ready yet)
+    if (!video.videoWidth || !video.videoHeight) {
+      // Wait up to 2s for the video to be ready
+      try {
+        await new Promise<void>((resolve, reject) => {
+          let elapsed = 0;
+          const check = setInterval(() => {
+            if (video.videoWidth > 0 && video.videoHeight > 0) {
+              clearInterval(check);
+              resolve();
+            } else if (elapsed > 2000) {
+              clearInterval(check);
+              reject(new Error('Camera not ready'));
+            }
+            elapsed += 100;
+          }, 100);
+        });
+      } catch {
+        setError('Camera not ready. Please try again.');
+        setStatus('error');
+        return;
+      }
+    }
+
+    setStatus("capturing");
+
     // Set canvas to video dimensions
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
@@ -197,6 +225,11 @@ export function FoodPhotoScanner({
 
     // Compress image for API upload (reduces payload from ~5-20MB to ~200KB)
     const compressedImage = compressImage(canvas);
+    if (!compressedImage) {
+      setError('Failed to process image. Please try again.');
+      setStatus('error');
+      return;
+    }
 
     // Analyze the image
     try {
