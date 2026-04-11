@@ -60,43 +60,86 @@ export function CapacitorInit() {
       try {
         const { PushNotifications } = await import('@capacitor/push-notifications');
 
-        // Request permission and register
-        await PushNotifications.requestPermissions();
-
-        PushNotifications.addListener('registration', async (token) => {
+        // Android: create notification channels (required for Android 13+)
+        if (isAndroid) {
           try {
-            const { notificationService } = await import('@/lib/notifications/service');
-            const { Device } = await import('@capacitor/device');
-            const deviceInfo = await Device.getInfo();
-
-            await notificationService.registerDevice({
-              device_token: token.value,
-              device_type: isAndroid ? 'android' : 'ios',
-              device_name: `${deviceInfo.platform} ${deviceInfo.osVersion}`,
+            const { LocalNotifications } = await import('@capacitor/local-notifications');
+            const channelIds = ['default', 'workout_reminder', 'meal_reminder', 'streak_protection', 'achievement', 'daily_summary', 'motivational', 'hydration_reminder'];
+            const channelNames = {
+              default: 'General',
+              workout_reminder: 'Workout Reminders',
+              meal_reminder: 'Meal Reminders',
+              streak_protection: 'Streak Alerts',
+              achievement: 'Achievements',
+              daily_summary: 'Daily Summary',
+              motivational: 'Motivation',
+              hydration_reminder: 'Hydration Reminders',
+            };
+            await LocalNotifications.createChannel({
+              id: 'default',
+              name: 'General',
+              importance: 4, // HIGH
+              visibility: 1, // PUBLIC
+              vibration: true,
+              sound: 'default',
+              description: 'General notifications',
             });
-          } catch (err) {
-            console.warn('[Cap] Failed to register push token:', err);
+            for (const id of channelIds) {
+              await LocalNotifications.createChannel({
+                id,
+                name: channelNames[id as keyof typeof channelNames] || id,
+                importance: 4,
+                visibility: 1,
+                vibration: true,
+                sound: 'default',
+                description: `${channelNames[id as keyof typeof channelNames] || id} notifications`,
+              });
+            }
+          } catch (e) {
+            console.warn('[Cap] Failed to create notification channels:', e);
           }
-        });
+        }
 
-        PushNotifications.addListener('registrationError', (error) => {
-          console.warn('[Cap] Push registration error:', error);
-        });
+        // Request permission and register
+        const permStatus = await PushNotifications.requestPermissions();
 
-        PushNotifications.addListener('pushNotificationReceived', (notification) => {
-          // Handle foreground notification - update badge count via app context or event
-          // The NotificationCenter subscribes to realtime, so in-app updates are automatic
-        });
+        if (permStatus.receive === 'granted') {
+          PushNotifications.addListener('registration', async (token) => {
+            try {
+              const { notificationService } = await import('@/lib/notifications/service');
+              const { Device } = await import('@capacitor/device');
+              const deviceInfo = await Device.getInfo();
 
-        PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-          // Handle notification tap - navigate to deep link
-          const deepLink = action.notification.data?.deepLink;
-          if (deepLink) {
-            window.location.href = deepLink;
-          }
-        });
+              await notificationService.registerDevice({
+                device_token: token.value,
+                device_type: isAndroid ? 'android' : 'ios',
+                device_name: `${deviceInfo.platform} ${deviceInfo.osVersion}`,
+              });
+            } catch (err) {
+              console.warn('[Cap] Failed to register push token:', err);
+            }
+          });
 
-        await PushNotifications.register();
+          PushNotifications.addListener('registrationError', (error) => {
+            console.warn('[Cap] Push registration error:', error);
+          });
+
+          PushNotifications.addListener('pushNotificationReceived', (notification) => {
+            // Foreground notification - in-app updates happen via Supabase Realtime
+          });
+
+          PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+            // Handle notification tap - navigate to deep link
+            const deepLink = action.notification.data?.deepLink;
+            if (deepLink) {
+              window.location.href = deepLink;
+            }
+          });
+
+          await PushNotifications.register();
+        } else {
+          console.log('[Cap] Push permission not granted:', permStatus.receive);
+        }
       } catch (e) {
         console.warn('[Cap] Push notification setup failed:', e);
       }

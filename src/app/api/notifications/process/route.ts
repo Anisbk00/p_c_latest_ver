@@ -342,7 +342,8 @@ async function processNotification(
   }
 
   // Prepare notification payload
-  const pushData = notification.deep_link ? { deepLink: notification.deep_link } : undefined;
+  const pushData: Record<string, unknown> = { type: notification.type };
+  if (notification.deep_link) pushData.deepLink = notification.deep_link;
 
   // Send to all devices
   let sentCount = 0;

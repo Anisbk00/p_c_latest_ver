@@ -309,6 +309,59 @@ async function sendAPNsPush(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
+// FCM (Firebase Cloud Messaging) - For Capacitor Android
+// ═══════════════════════════════════════════════════════════════════════════════
+
+function isFCMConfigured(): boolean {
+  return !!Deno.env.get("FCM_SERVER_KEY");
+}
+
+async function sendFCMPush(
+  deviceToken: string,
+  notification: { title: string; body: string; data?: Record<string, unknown> },
+  channelId: string = "default"
+): Promise<PushResult> {
+  const serverKey = Deno.env.get("FCM_SERVER_KEY");
+  if (!serverKey) {
+    return { success: false, error: "FCM_SERVER_KEY not configured" };
+  }
+
+  try {
+    const response = await fetch("https://fcm.googleapis.com/fcm/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `key=${serverKey}`,
+      },
+      body: JSON.stringify({
+        to: deviceToken,
+        notification: { title: notification.title, body: notification.body, sound: "default" },
+        data: { ...notification.data, deepLink: notification.data?.deepLink || "" },
+        android: {
+          priority: "high",
+          notification: { channel_id: channelId, sound: "default", default_vibrate_timings: true },
+        },
+      }),
+    });
+
+    const result = await response.json();
+
+    if (response.ok && result.success === 1) {
+      return { success: true, messageId: String(result.message_id || result.multicast_id || "") };
+    } else {
+      console.error("[FCM] Error:", JSON.stringify(result));
+      if (result.results?.[0]?.error === "NotRegistered" || result.error === "NotRegistered") {
+        return { success: false, error: "DeviceNotRegistered" };
+      }
+      return { success: false, error: result.results?.[0]?.error || result.error || "FCM delivery failed" };
+    }
+  } catch (error) {
+    console.error("[FCM] Exception:", error);
+    return { success: false, error: error instanceof Error ? error.message : "FCM error" };
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
 // Web Push (VAPID) - Optional for browsers
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -425,12 +478,19 @@ Deno.serve(async (req: Request) => {
       }
       
       case "android": {
-        // For Android without Expo token, recommend using Expo
-        method = "local";
-        result = { 
-          success: true, 
-          error: "Use Expo Push Tokens for Android push notifications. Install expo-notifications in your app." 
-        };
+        if (isFCMConfigured()) {
+          // Use FCM for Capacitor Android
+          const notifType = notification.data?.type as string || "default";
+          const channel = ["workout_reminder", "meal_reminder", "streak_protection", "achievement", "daily_summary", "motivational", "hydration_reminder"].includes(notifType) ? notifType : "default";
+          method = "fcm";
+          result = await sendFCMPush(deviceToken, notification, channel);
+        } else if (isExpoPushToken(deviceToken)) {
+          method = "expo";
+          result = await sendExpoPush(deviceToken, notification);
+        } else {
+          method = "in-app";
+          result = { success: true, error: "Configure FCM_SERVER_KEY in Supabase for Android push. Notification stored for in-app delivery." };
+        }
         break;
       }
       
