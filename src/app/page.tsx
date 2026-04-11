@@ -1914,7 +1914,7 @@ const BodyIntelligenceCard = React.memo(function BodyIntelligenceCard({
                   <p className="text-xs font-medium text-amber-700 dark:text-amber-300">
                     AI Insight
                     {insightSource === 'ai' && (
-                      <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-600 dark:text-amber-400">Groq</span>
+                      <span className="ml-1.5 inline-flex items-center px-1.5 py-0 rounded-full text-[10px] font-medium bg-amber-500/20 text-amber-600 dark:text-amber-400">AI</span>
                     )}
                   </p>
                   {/* Tap-friendly info button for mobile — expands details inline */}

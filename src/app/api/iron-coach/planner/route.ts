@@ -183,18 +183,22 @@ OUTPUT FORMAT - Return ONLY valid JSON (no markdown, no code blocks):
 }`;
 
     // ═══════════════════════════════════════════════════════════════
-    // GENERATE PLAN WITH AI (using Groq)
+    // GENERATE PLAN WITH AI
     // ═══════════════════════════════════════════════════════════════
 
-    let responseText = await generateText(userPrompt, systemPrompt);
+    let responseText = await generateText(userPrompt, systemPrompt, 8192);
 
     // Clean up the response - remove markdown code blocks if present
     responseText = responseText.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
 
+    // Extract JSON from response (handle cases where LLM adds surrounding text)
+    const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+    const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
+
     // Parse JSON response
     let plan;
     try {
-      plan = JSON.parse(responseText);
+      plan = JSON.parse(jsonToParse);
     } catch (parseError) {
       console.error('[iron-coach/planner] JSON parse error:', parseError);
       console.error('[iron-coach/planner] Response text:', responseText.substring(0, 500));

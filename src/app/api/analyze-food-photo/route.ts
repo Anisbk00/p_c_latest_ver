@@ -120,8 +120,8 @@ function buildFoodResponse(food: any) {
       confidence: Math.min(1, Math.max(0, Number(food.confidence) || 0.5)),
       detectedItems: Array.isArray(food.detectedItems) ? food.detectedItems.slice(0, 10).map(String) : [],
     },
-    provider: 'groq',
-    model: 'llama-4-scout-17b-16e-instruct',
+    provider: 'ai',
+    model: 'AI Vision',
   }
 }
 

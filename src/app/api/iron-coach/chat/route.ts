@@ -221,8 +221,8 @@ export async function POST(request: NextRequest) {
       confidence: response.confidence,
       locale: finalLocale,
       provenance: {
-        source: 'groq-llm',
-        model: 'Iron Coach via Groq (llama-3.3-70b-versatile)',
+        source: 'ai-llm',
+        model: 'Iron Coach AI',
         timestamp: new Date().toISOString(),
         locale: finalLocale,
       },

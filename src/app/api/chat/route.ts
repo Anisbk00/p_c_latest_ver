@@ -145,8 +145,8 @@ export async function POST(request: NextRequest) {
       sessionId: coachResponse.conversationId,
       translations: coachResponse.translations,
       provenance: {
-        source: "groq-llm",
-        modelName: "Iron Coach via Groq (llama-3.3-70b-versatile)",
+        source: "ai-llm",
+        modelName: "Iron Coach AI",
         timestamp: new Date().toISOString(),
         coachingTone,
         contextUsed: Object.keys(context).length > 0,
@@ -183,8 +183,8 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     endpoint: "AI Coach Chat API",
-    engine: "Iron Coach AI (Groq)",
-    provider: "Groq (llama-3.3-70b-versatile)",
+    engine: "Iron Coach AI",
+    provider: "AI",
     coachingTones: ["strict", "supportive", "minimal"],
     languages: ["en", "fr", "ar"],
     usage: "POST with { message: string, coachingTone?: string, locale?: string, context?: object } - Authentication required"

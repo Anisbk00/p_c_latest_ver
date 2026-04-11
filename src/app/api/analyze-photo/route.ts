@@ -175,7 +175,7 @@ export async function POST(request: NextRequest) {
 
     const timestamp = new Date().toISOString();
     const provenance = {
-      source: 'groq-vlm',
+      source: 'ai-vlm',
       model: MODEL_NAME,
       timestamp,
       analysisType,
@@ -354,7 +354,7 @@ async function storeAnalysisResults(
 export async function GET() {
   return NextResponse.json({
     endpoint: 'Photo Analysis API',
-    provider: 'Groq (llama-4-scout)',
+    provider: 'AI',
     features: [
       'Multi-language support (EN, FR, AR)',
       'Automatic storage to database tables',

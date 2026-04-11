@@ -483,8 +483,8 @@ export async function analyzePhoto(
           success: false,
           analysis: {},
           provenance: {
-            source: 'groq-vlm',
-            modelName: VISION_MODEL,
+            source: 'ai-vlm',
+            modelName: 'AI Vision',
             timestamp: new Date().toISOString(),
             analysisType,
           },
@@ -509,8 +509,8 @@ export async function analyzePhoto(
         success: true,
         analysis: analysisResult,
         provenance: {
-          source: 'groq-vlm',
-          modelName: VISION_MODEL,
+          source: 'ai-vlm',
+          modelName: 'AI Vision',
           timestamp: new Date().toISOString(),
           analysisType,
         },
@@ -521,8 +521,8 @@ export async function analyzePhoto(
       success: false,
       analysis: {},
       provenance: {
-        source: 'groq-vlm',
-        modelName: VISION_MODEL,
+        source: 'ai-vlm',
+        modelName: 'AI Vision',
         timestamp: new Date().toISOString(),
         analysisType,
       },
@@ -550,7 +550,7 @@ export async function analyzeBase64Image(
 /**
  * Generate text from a simple prompt
  */
-export async function generateText(prompt: string, systemPrompt?: string): Promise<string> {
+export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 2048): Promise<string> {
   return withRateLimitRetry(async () => {
     const messages: GroqMessage[] = [];
     if (systemPrompt) {
@@ -559,7 +559,7 @@ export async function generateText(prompt: string, systemPrompt?: string): Promi
     messages.push({ role: 'user', content: prompt });
 
     const response = await withTimeout(
-      callGroqAPI(messages, MODEL_NAME, 0.35, 2048),
+      callGroqAPI(messages, MODEL_NAME, 0.35, maxTokens),
       AI_TIMEOUT_MS,
       'AI text generation timed out.'
     );

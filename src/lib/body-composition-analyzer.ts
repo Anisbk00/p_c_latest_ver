@@ -149,7 +149,7 @@ function getFallbackResult(reason: string): BodyCompositionResult {
     modelVersion: 'fallback-v1',
     analysisTimestamp: new Date(),
     warnings: [
-      'Groq analysis unavailable - using fallback estimate',
+      'AI analysis unavailable - using fallback estimate',
       'Results are not personalized',
       reason,
     ],

@@ -123,7 +123,7 @@ Note: This is a text description of the expected intermediate state.`;
       disclaimer: "This is an AI-analyzed transformation description for motivational purposes only. It represents an estimated intermediate state and may not reflect actual results. Image generation requires an additional image generation API.",
       
       provenance: {
-        source: "groq-vlm",
+        source: "ai-vlm",
         modelName: MODEL_NAME,
         timestamp: new Date().toISOString(),
         method: "Vision analysis of progress photos",
@@ -163,7 +163,7 @@ export async function GET() {
   return NextResponse.json({
     endpoint: "Morph Memory Generation API",
     description: "Generate AI intermediate progress photos between two states",
-    provider: "Groq (llama-4-scout-17b-16e-instruct)",
+    provider: "AI",
     authentication: "Required - Bearer token or session cookie",
     important: "Currently provides text-based transformation analysis. Image generation requires additional API.",
     usage: "POST with { startImageUrl: string, endImageUrl: string, progressPercentage?: number }",

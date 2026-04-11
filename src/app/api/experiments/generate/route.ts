@@ -189,7 +189,7 @@ Create experiments that address their specific gaps and help them progress towar
             endDate: null,
             adherence: 0,
           }),
-          source: 'groq-ai',
+          source: 'ai',
         });
       }
     }

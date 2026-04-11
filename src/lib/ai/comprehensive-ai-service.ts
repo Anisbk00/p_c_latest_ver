@@ -244,7 +244,7 @@ async function storeMessage(
       content,
       locale,
       translations: buildTranslatedContent(content, locale),
-      source: metadata.source || 'groq-llm',
+      source: metadata.source || 'ai-llm',
       confidence: metadata.confidence || 0.85,
       routing_reason: metadata.routingReason,
       tokens: metadata.tokens,
@@ -679,9 +679,9 @@ User Context:
   
   // Store assistant message
   const messageId = await storeMessage(supabase, convId, userId, 'assistant', content, userLocale, {
-    source: 'groq-llm',
+    source: 'ai-llm',
     confidence,
-    routingReason: 'Cloud completion via Groq',
+    routingReason: 'Cloud AI completion',
   });
   
   // Update conversation timestamp
@@ -776,9 +776,9 @@ User Context:
   // Store complete assistant message
   const confidence = calculateConfidence(context, fullContent.length);
   const messageId = await storeMessage(supabase, convId, userId, 'assistant', fullContent, userLocale, {
-    source: 'groq-llm',
+    source: 'ai-llm',
     confidence,
-    routingReason: 'Cloud streaming via Groq',
+    routingReason: 'Cloud AI streaming',
   });
   
   // Update conversation

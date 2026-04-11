@@ -1003,10 +1003,10 @@ export async function POST(request: NextRequest) {
       weekEndStr
     );
 
-    // Generate plan with AI (using Groq)
+    // Generate plan with AI
     let plan;
     try {
-      let responseText = await generateText(userPrompt, systemPrompt);
+      let responseText = await generateText(userPrompt, systemPrompt, 8192);
 
       // Clean up response
       responseText = responseText
@@ -1014,9 +1014,13 @@ export async function POST(request: NextRequest) {
         .replace(/```\n?/g, '')
         .trim();
 
+      // Extract JSON from response (handle cases where LLM adds surrounding text)
+      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+      const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
+
       // Parse JSON
       try {
-        plan = JSON.parse(responseText);
+        plan = JSON.parse(jsonToParse);
       } catch (parseError) {
         console.error('[weekly-planner] JSON parse error:', parseError);
         console.error('[weekly-planner] Response text:', responseText?.slice(0, 500));
@@ -1047,7 +1051,7 @@ export async function POST(request: NextRequest) {
           generation_source: forceRegenerate ? 'regenerate' : 'auto',
           plan_data: plan,
           confidence_score: plan.plan_confidence || 0.85,
-          model_version: 'groq-llama3.3-70b',
+          model_version: 'ai-v1',
           generation_reasoning: plan.generation_reasoning,
           user_context_snapshot: userData,
         }, {
