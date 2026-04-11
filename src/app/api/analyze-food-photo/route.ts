@@ -77,6 +77,13 @@ async function callGeminiDirect(imageBase64: string, mimeType: string): Promise<
 
     if (!response.ok) {
       const errorText = await response.text()
+      // Return user-friendly errors for known Gemini API issues
+      if (response.status === 429) {
+        throw new Error('RATE_LIMIT')
+      }
+      if (response.status === 403) {
+        throw new Error('API_KEY_INVALID')
+      }
       throw new Error(`Gemini API error ${response.status}: ${errorText.substring(0, 200)}`)
     }
 
@@ -188,8 +195,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(buildFoodResponse(food))
     } catch (geminiError) {
       const msg = geminiError instanceof Error ? geminiError.message : String(geminiError)
-      console.error('[analyze-food-photo] Gemini direct call failed:', msg)
+      console.error('[analyze-food-photo] Gemini error:', msg)
 
+      if (msg === 'RATE_LIMIT') {
+        return NextResponse.json(
+          { error: 'AI quota exceeded. The free tier has been used up. Please enable billing on your Gemini API key or try again later.' },
+          { status: 429 }
+        )
+      }
+      if (msg === 'API_KEY_INVALID') {
+        return NextResponse.json(
+          { error: 'AI API key is invalid or blocked.' },
+          { status: 503 }
+        )
+      }
       if (msg.includes('No Gemini API key')) {
         return NextResponse.json(
           { error: 'AI service not configured.' },
@@ -198,7 +217,7 @@ export async function POST(request: NextRequest) {
       }
 
       return NextResponse.json(
-        { error: `Food analysis failed. Please try again.` },
+        { error: 'Food analysis failed. Please try again.' },
         { status: 502 }
       )
     }
