@@ -284,3 +284,47 @@ Stage Summary:
 - Re-renders: memoized actionModules and tabs arrays, stable sendMessage via ref
 - Caching: Cache-Control on 3 GET endpoints, admin client singleton
 
+---
+Task ID: security-audit
+Agent: main
+Task: Full-system audit, security hardening, data integrity, mobile lifecycle fixes
+
+Work Log:
+- Phase 1: Deep system architecture audit (50+ files, 7 areas)
+- Phase 1: Security & data integrity audit (10 API routes, auth gaps, secrets, storage)
+- Phase 1: Mobile & edge case audit (touch targets, keyboard, lifecycle, offline)
+
+Stage Summary:
+- 3 audit reports generated: Architecture (23 issues), Security (18 issues), Mobile (14 issues)
+- 16 vulnerabilities fixed across 18 files
+- Zero lint errors
+- Production deployed to Vercel
+
+SECURITY FIXES:
+- CRITICAL: Iron Coach chat session ownership verification (C-03)
+- CRITICAL: Admin fix-nutrition endpoint secured with admin secret header
+- HIGH: Signal-composer endpoint now requires authentication
+- HIGH: Zod validation on /api/insights POST and /api/targets POST
+- HIGH: Rate limiting on delete-account endpoint
+- HIGH: File upload validation (type + 10MB size limit)
+- MEDIUM: SupplementLogCreateSchema .passthrough() → .strict()
+- MEDIUM: experiments/generate count capped to 1-10
+- MEDIUM: register-device JSON parse error handling
+
+DATA INTEGRITY:
+- Variable shadowing fixed in food-logs POST
+- Auth callback race condition fixed with upsert (3 tables)
+- optimizePackageImports: framer-motion removed (Turbopack hang)
+
+MOBILE:
+- Capacitor appStateChange dispatches capacitor-resume event
+- Low memory listener added (flushes sync queue)
+- SyncProvider listens for capacitor-resume and capacitor-low-memory
+
+KNOWN REMAINING (documented, not breaking):
+- In-memory LocalCache (not IndexedDB-backed) — data lost on refresh (by design)
+- No middleware/proxy for server-side session refresh (client-side timer handles this)
+- Monolithic AppContext (40+ state vars) — future refactor to split contexts
+- No conflict resolution UI for users
+- No offline photo upload queue
+
