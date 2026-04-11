@@ -22,119 +22,185 @@ interface Experiment {
 }
 
 export async function POST(request: NextRequest) {
+  console.log('[experiments/generate] POST received');
+  
   try {
-    const { supabase, user } = await getSupabaseUser();
-    const body = await request.json();
+    // ─── Step 0: Authenticate user ───────────────────────────────
+    let supabase: any;
+    let user: any;
+    try {
+      const authResult = await getSupabaseUser();
+      supabase = authResult.supabase;
+      user = authResult.user;
+      console.log('[experiments/generate] User authenticated:', user.id, user.email);
+    } catch (authErr) {
+      const authMsg = authErr instanceof Error ? authErr.message : String(authErr);
+      console.error('[experiments/generate] Auth failed:', authMsg);
+      return NextResponse.json({ 
+        error: 'Authentication failed', 
+        details: authMsg 
+      }, { status: 401 });
+    }
+
+    let body: { count?: number };
+    try {
+      body = await request.json();
+      console.log('[experiments/generate] Request body parsed, count:', body.count);
+    } catch (bodyErr) {
+      console.error('[experiments/generate] Failed to parse request body:', bodyErr);
+      return NextResponse.json({ 
+        error: 'Invalid request body',
+        details: 'Could not parse JSON from request body'
+      }, { status: 400 });
+    }
+    
     const requestedCount = Math.min(Math.max(Number(body.count) || 4, 1), 10);
 
     // ─── Step 1: Clear old non-active experiments ────────────────
-    // Fetch all existing experiments for this user
-    const { data: allExperiments } = await supabase
-      .from('ai_insights')
-      .select('id, content')
-      .eq('user_id', user.id)
-      .eq('insight_type', 'experiment');
+    console.log('[experiments/generate] Step 1: Clearing old non-active experiments...');
+    try {
+      const { data: allExperiments, error: fetchOldError } = await supabase
+        .from('ai_insights')
+        .select('id, content, user_id, insight_type, source')
+        .eq('user_id', user.id)
+        .eq('insight_type', 'experiment');
 
-    if (allExperiments && allExperiments.length > 0) {
-      // Find IDs of active experiments (user is currently doing these)
-      const activeIds: string[] = [];
-      for (const row of allExperiments) {
-        try {
-          const content = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
-          if (content.status === 'active') {
-            activeIds.push(row.id);
-          }
-        } catch { /* skip malformed */ }
+      if (fetchOldError) {
+        console.error('[experiments/generate] Error fetching old experiments:', fetchOldError.message);
+        // Don't fail — continue without clearing
       }
 
-      if (activeIds.length > 0) {
-        // Delete all experiments, then re-insert active ones
-        await supabase
-          .from('ai_insights')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('insight_type', 'experiment');
-
-        // Re-insert active experiments
+      if (allExperiments && allExperiments.length > 0) {
+        console.log('[experiments/generate] Found', allExperiments.length, 'existing experiments');
+        // Find IDs of active experiments (user is currently doing these)
+        const activeIds: string[] = [];
         for (const row of allExperiments) {
-          if (activeIds.includes(row.id)) {
-            await supabase.from('ai_insights').insert({
-              user_id: row.user_id,
-              insight_type: row.insight_type,
-              content: row.content,
-              source: row.source,
-            });
+          try {
+            const content = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
+            if (content.status === 'active') {
+              activeIds.push(row.id);
+            }
+          } catch { /* skip malformed */ }
+        }
+
+        if (activeIds.length > 0) {
+          console.log('[experiments/generate] Preserving', activeIds.length, 'active experiments');
+          // Delete all experiments, then re-insert active ones
+          const { error: deleteError } = await supabase
+            .from('ai_insights')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('insight_type', 'experiment');
+
+          if (deleteError) {
+            console.error('[experiments/generate] Error deleting old experiments:', deleteError.message);
+          }
+
+          // Re-insert active experiments
+          for (const row of allExperiments) {
+            if (activeIds.includes(row.id)) {
+              const { error: reinsertError } = await supabase.from('ai_insights').insert({
+                user_id: row.user_id,
+                insight_type: row.insight_type,
+                content: row.content,
+                source: row.source,
+              });
+              if (reinsertError) {
+                console.error('[experiments/generate] Error re-inserting active experiment:', reinsertError.message);
+              }
+            }
+          }
+        } else {
+          // No active experiments — delete all
+          const { error: deleteError } = await supabase
+            .from('ai_insights')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('insight_type', 'experiment');
+          if (deleteError) {
+            console.error('[experiments/generate] Error deleting all experiments:', deleteError.message);
           }
         }
-      } else {
-        // No active experiments — delete all
-        await supabase
-          .from('ai_insights')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('insight_type', 'experiment');
+        console.log('[experiments/generate] Step 1 complete: old experiments cleared');
       }
+    } catch (step1Err) {
+      console.error('[experiments/generate] Step 1 error (non-fatal):', step1Err);
+      // Continue even if clearing fails
     }
 
     // ─── Step 2: Fetch user data for personalization ─────────────
-    const [
-      { data: profile },
-      { data: userProfile },
-      { data: goals },
-      { data: recentWorkouts },
-      { data: recentFoodLogs },
-      { data: bodyMetrics },
-      { data: hydrationData },
-    ] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
-      supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle(),
-      supabase.from('goals').select('*').eq('user_id', user.id).eq('status', 'active').maybeSingle(),
-      supabase.from('workouts').select('id, started_at, duration_minutes, calories_burned, workout_type').eq('user_id', user.id).order('started_at', { ascending: false }).limit(10),
-      supabase.from('food_logs').select('id, logged_at, calories, protein_g, carbs_g, fat_g').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(10),
-      supabase.from('body_metrics').select('*').eq('user_id', user.id).order('captured_at', { ascending: false }).limit(5),
-      supabase.from('hydration').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(7),
-    ]);
+    console.log('[experiments/generate] Step 2: Fetching user data for AI context...');
+    try {
+      const [
+        { data: profile },
+        { data: userProfile },
+        { data: goals },
+        { data: recentWorkouts },
+        { data: recentFoodLogs },
+        { data: bodyMetrics },
+        { data: hydrationData },
+      ] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
+        supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle(),
+        supabase.from('goals').select('*').eq('user_id', user.id).eq('status', 'active').maybeSingle(),
+        supabase.from('workouts').select('id, started_at, duration_minutes, calories_burned, workout_type').eq('user_id', user.id).order('started_at', { ascending: false }).limit(10),
+        supabase.from('food_logs').select('id, logged_at, calories, protein_g, carbs_g, fat_g').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(10),
+        supabase.from('body_metrics').select('*').eq('user_id', user.id).order('captured_at', { ascending: false }).limit(5),
+        supabase.from('hydration').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(7),
+      ]);
 
-    const latestWeight = bodyMetrics?.find((m: { metric_type: string }) => m.metric_type === 'weight');
+      console.log('[experiments/generate] User data fetched:', {
+        profile: !!profile,
+        userProfile: !!userProfile,
+        goals: !!goals,
+        workouts: recentWorkouts?.length || 0,
+        foodLogs: recentFoodLogs?.length || 0,
+        bodyMetrics: bodyMetrics?.length || 0,
+        hydration: hydrationData?.length || 0,
+      });
 
-    const avgCalories = recentFoodLogs?.length
-      ? Math.round(recentFoodLogs.reduce((sum: number, log: { calories: number }) => sum + (log.calories || 0), 0) / recentFoodLogs.length)
-      : 0;
-    const avgProtein = recentFoodLogs?.length
-      ? Math.round(recentFoodLogs.reduce((sum: number, log: { protein_g: number }) => sum + (log.protein_g || 0), 0) / recentFoodLogs.length)
-      : 0;
-    const avgHydration = hydrationData?.length
-      ? Math.round(hydrationData.reduce((sum: number, h: { amount_ml: number }) => sum + (h.amount_ml || 0), 0) / hydrationData.length)
-      : 0;
-    const workoutsPerWeek = recentWorkouts?.length
-      ? Math.min(7, Math.round((recentWorkouts.length / 14) * 7))
-      : 0;
+      const latestWeight = bodyMetrics?.find((m: { metric_type: string }) => m.metric_type === 'weight');
 
-    const userContext = {
-      profile: {
-        name: profile?.name || 'User',
-        goal: userProfile?.primary_goal || 'maintenance',
-        activityLevel: userProfile?.activity_level || 'moderate',
-        fitnessLevel: userProfile?.fitness_level || 'beginner',
-        targetWeight: userProfile?.target_weight_kg,
-        currentWeight: latestWeight?.value,
-      },
-      nutrition: {
-        avgDailyCalories: avgCalories,
-        avgDailyProtein: avgProtein,
-        avgDailyHydration: avgHydration,
-        calorieTarget: goals?.calories_target || 2000,
-        proteinTarget: goals?.protein_target_g || 150,
-        waterTarget: goals?.water_target_ml || 2500,
-      },
-      training: {
-        workoutsPerWeek,
-        workoutTypes: [...new Set(recentWorkouts?.map((w: { workout_type: string }) => w.workout_type).filter(Boolean))],
-      },
-    };
+      const avgCalories = recentFoodLogs?.length
+        ? Math.round(recentFoodLogs.reduce((sum: number, log: { calories: number }) => sum + (log.calories || 0), 0) / recentFoodLogs.length)
+        : 0;
+      const avgProtein = recentFoodLogs?.length
+        ? Math.round(recentFoodLogs.reduce((sum: number, log: { protein_g: number }) => sum + (log.protein_g || 0), 0) / recentFoodLogs.length)
+        : 0;
+      const avgHydration = hydrationData?.length
+        ? Math.round(hydrationData.reduce((sum: number, h: { amount_ml: number }) => sum + (h.amount_ml || 0), 0) / hydrationData.length)
+        : 0;
+      const workoutsPerWeek = recentWorkouts?.length
+        ? Math.min(7, Math.round((recentWorkouts.length / 14) * 7))
+        : 0;
 
-    // ─── Step 3: Generate experiments via AI ────────────────────
-    const systemPrompt = `You are an expert fitness and nutrition coach who creates personalized micro-experiments for users. 
+      const userContext = {
+        profile: {
+          name: profile?.name || 'User',
+          goal: userProfile?.primary_goal || 'maintenance',
+          activityLevel: userProfile?.activity_level || 'moderate',
+          fitnessLevel: userProfile?.fitness_level || 'beginner',
+          targetWeight: userProfile?.target_weight_kg,
+          currentWeight: latestWeight?.value,
+        },
+        nutrition: {
+          avgDailyCalories: avgCalories,
+          avgDailyProtein: avgProtein,
+          avgDailyHydration: avgHydration,
+          calorieTarget: goals?.calories_target || 2000,
+          proteinTarget: goals?.protein_target_g || 150,
+          waterTarget: goals?.water_target_ml || 2500,
+        },
+        training: {
+          workoutsPerWeek,
+          workoutTypes: [...new Set(recentWorkouts?.map((w: { workout_type: string }) => w.workout_type).filter(Boolean))],
+        },
+      };
+
+      // ─── Step 3: Generate experiments via AI ────────────────────
+      console.log('[experiments/generate] Step 3: Calling AI to generate experiments...');
+
+      const systemPrompt = `You are an expert fitness and nutrition coach who creates personalized micro-experiments for users. 
 Each experiment should be:
 - Small, achievable, and take 7-21 days
 - Based on the user's specific goals, current habits, and gaps
@@ -162,50 +228,100 @@ Return ONLY valid JSON in this exact format, no markdown, no explanation:
 
 SCOPE: Only fitness, nutrition, training, and health habits. Reject all off-topic questions.`;
 
-    const userPrompt = `Generate personalized micro-experiments for this user:
+      const userPrompt = `Generate personalized micro-experiments for this user:
 
 USER DATA:
 ${JSON.stringify(userContext)}
 
 Create experiments that address their specific gaps and help them progress toward their goals. Focus on practical, actionable changes they can make today. Return ONLY the JSON object.`;
 
-    let experiments: Experiment[] = [];
+      let experiments: Experiment[] = [];
 
-    try {
-      const responseText = await generateText(userPrompt, systemPrompt, 4096);
+      try {
+        console.log('[experiments/generate] Calling generateText()...');
+        const responseText = await generateText(userPrompt, systemPrompt, 4096);
+        console.log('[experiments/generate] AI response received, length:', responseText?.length || 0);
+        console.log('[experiments/generate] AI response preview:', responseText?.slice(0, 200) || '(empty)');
 
-      if (!responseText) {
-        throw new Error('No response from AI');
+        if (!responseText) {
+          throw new Error('No response from AI');
+        }
+
+        // Parse the JSON response — handle markdown code blocks too
+        const cleaned = responseText.replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+        const jsonMatch = cleaned.match(/\{[\s\S]*"experiments"[\s\S]*\}/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[0]);
+          experiments = parsed.experiments || [];
+        } else {
+          const parsed = JSON.parse(cleaned);
+          experiments = parsed.experiments || [];
+        }
+        console.log('[experiments/generate] Parsed', experiments.length, 'experiments from AI response');
+      } catch (aiError) {
+        console.error('[experiments/generate] AI error, using fallbacks:', aiError);
+        experiments = generateFallbackExperiments(userContext);
+        console.log('[experiments/generate] Using', experiments.length, 'fallback experiments');
       }
 
-      // Parse the JSON response — handle markdown code blocks too
-      const cleaned = responseText.replace(/```json?\s*/g, '').replace(/```/g, '').trim();
-      const jsonMatch = cleaned.match(/\{[\s\S]*"experiments"[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        experiments = parsed.experiments || [];
-      } else {
-        const parsed = JSON.parse(cleaned);
-        experiments = parsed.experiments || [];
+      // Guaranteed: always have at least fallback experiments
+      if (experiments.length === 0) {
+        experiments = generateFallbackExperiments(userContext);
+        console.log('[experiments/generate] No experiments from AI, using', experiments.length, 'fallback experiments');
       }
-    } catch (aiError) {
-      console.error('[experiments/generate] AI error, using fallbacks:', aiError);
-      experiments = generateFallbackExperiments(userContext);
-    }
 
-    // Guaranteed: always have at least fallback experiments
-    if (experiments.length === 0) {
-      experiments = generateFallbackExperiments(userContext);
-    }
+      // Ensure unique IDs and cap to requested count
+      const newExperiments = experiments.slice(0, requestedCount).map((exp, i) => ({
+        ...exp,
+        id: `exp_${Date.now()}_${i}`,
+      }));
 
-    // Ensure unique IDs and cap to requested count
-    const newExperiments = experiments.slice(0, requestedCount).map((exp, i) => ({
-      ...exp,
-      id: `exp_${Date.now()}_${i}`,
-    }));
+      // ─── Step 4: Store experiments in database ──────────────────
+      console.log('[experiments/generate] Step 4: Storing', newExperiments.length, 'experiments in database...');
+      if (newExperiments.length > 0) {
+        let insertedCount = 0;
+        for (const exp of newExperiments) {
+          const { error: insertError } = await supabase.from('ai_insights').insert({
+            user_id: user.id,
+            insight_type: 'experiment',
+            content: JSON.stringify({
+              ...exp,
+              status: 'available',
+              startDate: null,
+              endDate: null,
+              adherence: 0,
+            }),
+            source: 'ai',
+          });
+          if (insertError) {
+            console.error('[experiments/generate] Insert error for experiment', exp.title, ':', insertError.message);
+          } else {
+            insertedCount++;
+          }
+        }
+        console.log('[experiments/generate] Step 4 complete:', insertedCount, '/', newExperiments.length, 'experiments inserted');
+      }
 
-    // ─── Step 4: Store experiments in database ──────────────────
-    if (newExperiments.length > 0) {
+      console.log('[experiments/generate] SUCCESS: Returning', newExperiments.length, 'experiments');
+      return NextResponse.json({
+        success: true,
+        experiments: newExperiments,
+        count: newExperiments.length,
+      });
+    } catch (step2Err) {
+      console.error('[experiments/generate] Step 2+ error:', step2Err);
+      // If data fetching fails, still try to generate with fallback experiments
+      const fallbackExperiments = generateFallbackExperiments({
+        profile: { goal: 'maintenance', fitnessLevel: 'beginner' },
+        nutrition: { avgDailyCalories: 0, proteinTarget: 150, avgDailyHydration: 0, waterTarget: 2500 },
+      });
+      
+      const newExperiments = fallbackExperiments.slice(0, requestedCount).map((exp, i) => ({
+        ...exp,
+        id: `exp_${Date.now()}_${i}`,
+      }));
+
+      let insertedCount = 0;
       for (const exp of newExperiments) {
         const { error: insertError } = await supabase.from('ai_insights').insert({
           user_id: user.id,
@@ -220,18 +336,22 @@ Create experiments that address their specific gaps and help them progress towar
           source: 'ai',
         });
         if (insertError) {
-          console.error('[experiments/generate] Insert error:', insertError.message);
+          console.error('[experiments/generate] Fallback insert error:', insertError.message);
+        } else {
+          insertedCount++;
         }
       }
-    }
 
-    return NextResponse.json({
-      success: true,
-      experiments: newExperiments,
-      count: newExperiments.length,
-    });
+      console.log('[experiments/generate] FALLBACK SUCCESS: Inserted', insertedCount, 'experiments');
+      return NextResponse.json({
+        success: true,
+        experiments: newExperiments,
+        count: newExperiments.length,
+        fallback: true,
+      });
+    }
   } catch (err) {
-    console.error('[experiments/generate] Error:', err);
+    console.error('[experiments/generate] UNHANDLED ERROR:', err);
     const msg = err instanceof Error ? err.message : String(err);
     if (msg === 'UNAUTHORIZED') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

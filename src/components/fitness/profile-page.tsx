@@ -1842,26 +1842,9 @@ function MicroExperimentsCarousel({
                 <Beaker className="w-8 h-8 text-emerald-500/50" />
               </div>
               <p className="text-sm text-muted-foreground mb-1">No experiments yet</p>
-              <p className="text-xs text-muted-foreground mb-4">
-                Generate personalized experiments based on your goals and habits
+              <p className="text-xs text-muted-foreground">
+                Tap <strong>Generate</strong> above to create personalized experiments based on your goals
               </p>
-              <Button
-                onClick={onGenerateExperiments}
-                disabled={isGenerating}
-                className="bg-emerald-500 hover:bg-emerald-600"
-              >
-                {isGenerating ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Generating with AI...
-                  </>
-                ) : (
-                  <>
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    Generate My Experiments
-                  </>
-                )}
-              </Button>
             </div>
           )}
 
@@ -3283,30 +3266,46 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
 
   // Generate AI-powered experiments
   const handleGenerateExperiments = useCallback(async (silent = false) => {
+    console.log('[experiments] handleGenerateExperiments called, silent=', silent);
     setIsGeneratingExperiments(true);
     try {
+      console.log('[experiments] Calling POST /api/experiments/generate ...');
       const response = await apiFetch('/api/experiments/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ count: 4 }),
       });
 
-      const result = await response.json();
+      console.log('[experiments] Response status:', response.status, response.statusText);
+
+      // Read the response body before checking ok
+      let result: any;
+      try {
+        result = await response.json();
+        console.log('[experiments] Response body:', JSON.stringify(result).slice(0, 500));
+      } catch (parseErr) {
+        console.error('[experiments] Failed to parse response JSON:', parseErr);
+        throw new Error(`Server returned non-JSON response (${response.status}). Please try again.`);
+      }
 
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to generate experiments');
+        const errorDetail = result.error || result.details || `HTTP ${response.status}`;
+        console.error('[experiments] API error response:', errorDetail);
+        throw new Error(errorDetail);
       }
 
       if (result.experiments && result.experiments.length > 0) {
+        console.log('[experiments] Got', result.experiments.length, 'experiments from API');
         if (!silent) {
           toast.success(`${result.experiments.length} experiments generated!`, {
             description: 'Based on your goals and habits.',
           });
         }
         // Fetch experiments directly from /api/experiments (lightweight, no full profile)
-        // This avoids the full profile refetch that causes loading skeleton
+        console.log('[experiments] Fetching fresh experiments list from GET /api/experiments ...');
         try {
           const expResponse = await apiFetch('/api/experiments');
+          console.log('[experiments] GET /api/experiments status:', expResponse.status);
           if (expResponse.ok) {
             const expResult = await expResponse.json();
             const freshExperiments: ProfileData['experiments'] = (expResult.experiments || []).map((e: {
@@ -3328,30 +3327,40 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
               whyItWorks: e.whyItWorks || '',
               tipsForSuccess: e.tipsForSuccess || [],
             }));
+            console.log('[experiments] Mapped', freshExperiments.length, 'fresh experiments');
             // Update cachedProfileData and local state directly
             if (cachedProfileData) {
               cachedProfileData = { ...cachedProfileData, experiments: freshExperiments };
+              console.log('[experiments] Updated cachedProfileData with', freshExperiments.length, 'experiments');
             }
             // Force update data state via setData through refetchSilent
             refetchSilent();
+          } else {
+            console.error('[experiments] GET /api/experiments failed:', expResponse.status);
           }
         } catch (refetchErr) {
           console.warn('[experiments] Refetch after generate failed:', refetchErr);
           // Non-critical — experiments were still generated and stored in DB
         }
-      } else if (!silent) {
-        toast.info('No new experiments', {
-          description: 'You may already have similar experiments. Try completing one first!',
-        });
+      } else {
+        console.warn('[experiments] No experiments returned from API. Full result:', JSON.stringify(result));
+        if (!silent) {
+          toast.info('No new experiments generated', {
+            description: 'Try completing existing experiments first, then generate new ones.',
+          });
+        }
       }
     } catch (error) {
-      console.error('[experiments] Error generating experiments:', error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[experiments] FULL ERROR generating experiments:', errorMsg, error);
       if (!silent) {
         toast.error('Failed to generate experiments', {
-          description: error instanceof Error ? error.message : 'Please try again.',
+          description: errorMsg,
+          duration: 6000,
         });
       }
     } finally {
+      console.log('[experiments] handleGenerateExperiments done, resetting isGenerating');
       setIsGeneratingExperiments(false);
     }
   }, [refetchSilent]);
