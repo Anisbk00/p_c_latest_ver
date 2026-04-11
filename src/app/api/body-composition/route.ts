@@ -280,13 +280,24 @@ export async function POST(request: NextRequest) {
 
     // ── Build RICH AI prompt (same data Iron Coach sees) ───────────
     const contextLines: string[] = []
-    contextLines.push('USER PROFILE:')
-    contextLines.push(`- Height: ${heightCm ?? 'unknown'}cm | Weight: ${weightKg ?? 'unknown'}kg | Sex: ${sex}${age ? ` | Age: ${age}` : ''}`)
-    contextLines.push(`- Activity: ${activityLevel} | Fitness: ${fitnessLevel} | Goal: ${primaryGoal}`)
+    contextLines.push('USER PROFILE (use this data to improve accuracy):')
+    const profileParts: string[] = []
+    if (heightCm) profileParts.push(`Height: ${heightCm}cm`)
+    if (weightKg) profileParts.push(`Weight: ${weightKg}kg`)
+    if (sex && sex !== 'unknown') profileParts.push(`Sex: ${sex}`)
+    if (age) profileParts.push(`Age: ${age}`)
+    contextLines.push(`- ${profileParts.join(' | ') || 'No physical measurements available — estimate visually'}`)
+    
+    const fitnessParts: string[] = []
+    fitnessParts.push(`Activity: ${activityLevel}`)
+    fitnessParts.push(`Fitness: ${fitnessLevel}`)
+    fitnessParts.push(`Goal: ${primaryGoal}`)
+    contextLines.push(`- ${fitnessParts.join(' | ')}`)
+    
     if (targetWeightKg) contextLines.push(`- Target Weight: ${targetWeightKg}kg`)
-    if (dietaryRestrictions?.length) contextLines.push(`- Restrictions: ${Array.isArray(dietaryRestrictions) ? dietaryRestrictions.join(', ') : dietaryRestrictions}`)
+    if (dietaryRestrictions?.length) contextLines.push(`- Dietary Restrictions: ${Array.isArray(dietaryRestrictions) ? dietaryRestrictions.join(', ') : dietaryRestrictions}`)
     if (allergies?.length) contextLines.push(`- Allergies: ${Array.isArray(allergies) ? allergies.join(', ') : allergies}`)
-    if (prevBodyFat !== null) contextLines.push(`- Previous Body Fat: ${prevBodyFat}%`)
+    if (prevBodyFat !== null) contextLines.push(`- Previous Body Fat: ${prevBodyFat}% (use as baseline reference)`)
     if (prevMuscleMass !== null) contextLines.push(`- Previous Muscle Mass: ${prevMuscleMass}kg`)
 
     contextLines.push('')
@@ -309,22 +320,30 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const enhancedPrompt = `Estimate body composition from this photo.
+    const enhancedPrompt = `You are estimating body composition from this photo. You have the user's profile data above — USE IT.
 
-${contextLines.join('\n')}
+PHOTO CONDITIONS: Lighting=${lighting}, Clothing=${clothing}
 
-PHOTO CONDITIONS:
-- Lighting: ${lighting}
-- Clothing: ${clothing}
+INSTRUCTIONS:
+1. Look at the photo carefully — assess body fat distribution, muscle definition, overall build
+2. Cross-reference with the user's data: weight, height, activity level, training volume, nutrition
+3. A person in caloric deficit with high protein + resistance training likely has MORE lean mass than sedentary same-weight person
+4. Use previous body fat measurement as anchor if available
+5. Be realistic — most people are 15-30% body fat, athletes 8-15%, bodybuilders 4-8%
 
-Use the user's profile, activity level, nutrition data, and training history to improve accuracy. A person in caloric deficit with high protein intake and resistance training likely has more lean mass. Use previous body fat measurements as a baseline.
+OUTPUT FORMAT — respond with ONLY this JSON, nothing else:
+{"bodyFatEstimate":{"value":NUMBER,"confidence":0.0_TO_1.0,"rationale":"brief reason"},"muscleMassEstimate":{"value":NUMBER_IN_KG,"confidence":0.0_TO_1.0,"rationale":"brief reason"},"weightEstimate":{"value":NUMBER_IN_KG,"confidence":0.0_TO_1.0,"rationale":"brief reason"},"overallConfidence":0.0_TO_1.0,"analysisNotes":"2-3 sentence analysis using user data + photo observations","recommendations":["rec1","rec2"]}
 
-Return JSON only:{"bodyFatEstimate":{"value":0,"confidence":0,"rationale":""},"muscleMassEstimate":{"value":0,"confidence":0,"rationale":""},"weightEstimate":{"value":0,"confidence":0,"rationale":""},"overallConfidence":0,"analysisNotes":"","recommendations":[]}`
+Do NOT add any text before or after the JSON. Do NOT say you need more data. Use what you have.`
 
     // ── Call AI vision analysis ─────────────────────────────────────
     const { analyzePhoto } = await import('@/lib/ai/gemini-service')
 
-    const aiResult = await analyzePhoto(frontPhotoUrl, 'body-composition', enhancedPrompt)
+    const fullPrompt = `${contextLines.join('\n')}
+
+${enhancedPrompt}`
+
+    const aiResult = await analyzePhoto(frontPhotoUrl, 'body-composition', fullPrompt)
 
     if (!aiResult.success || !aiResult.analysis) {
       return NextResponse.json({

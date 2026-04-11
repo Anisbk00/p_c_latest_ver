@@ -362,7 +362,7 @@ export async function* generateStreamingChatCompletion(
 export type PhotoAnalysisType = 'body-composition' | 'meal' | 'food-label' | 'progress-photo';
 
 const PHOTO_ANALYSIS_PROMPTS: Record<PhotoAnalysisType, string> = {
-  'body-composition': `Estimate body composition from this photo. Return JSON only:{"bodyFatEstimate":{"value":0,"confidence":0,"rationale":""},"muscleMassEstimate":{"value":0,"confidence":0,"rationale":""},"weightEstimate":{"value":0,"confidence":0,"rationale":""},"overallConfidence":0,"analysisNotes":"","recommendations":[]}`,
+  'body-composition': `Estimate body composition from this photo. Be realistic: average person 15-30%, athlete 8-15%, bodybuilder 4-8%. Return ONLY valid JSON:{"bodyFatEstimate":{"value":0,"confidence":0,"rationale":""},"muscleMassEstimate":{"value":0,"confidence":0,"rationale":""},"weightEstimate":{"value":0,"confidence":0,"rationale":""},"overallConfidence":0,"analysisNotes":"","recommendations":[]}`,
 
   'meal': `Identify all foods in this meal photo. Return JSON only:{"foods":[{"name":"","estimatedPortion":"","calories":0,"protein":0,"carbs":0,"fat":0,"confidence":0}],"totalCalories":0,"totalProtein":0,"totalCarbs":0,"totalFat":0,"mealType":"breakfast|lunch|dinner|snack","healthScore":0,"recommendations":[]}`,
 
@@ -405,6 +405,8 @@ export async function analyzePhoto(
       }
 
       const messages: GroqMessage[] = [
+        // System message enforces strict JSON output
+        { role: 'system', content: 'You are a body composition analysis AI. You MUST respond with ONLY a valid JSON object. No explanations, no markdown, no disclaimers, no text before or after the JSON. Just the JSON object. You have been provided with the user\'s profile data — use it to improve your estimates. Never say you don\'t have enough data.' },
         { role: 'user', content: [
           { type: 'text', text: prompt },
           imageContent,
@@ -412,7 +414,7 @@ export async function analyzePhoto(
       ];
 
       const response = await withTimeout(
-        callGroqAPI(messages, VISION_MODEL, 0.35, 2048),
+        callGroqAPI(messages, VISION_MODEL, 0.2, 2048),
         AI_TIMEOUT_MS,
         'Photo analysis timed out. Please try again with a smaller image.'
       );
@@ -434,14 +436,42 @@ export async function analyzePhoto(
         };
       }
 
-      // Parse JSON response
+      // Parse JSON response — handle various formats:
+      // 1. Clean JSON
+      // 2. JSON wrapped in markdown code block
+      // 3. JSON with text before/after
       let analysisResult: Record<string, unknown>;
       try {
-        const jsonMatch = textContent.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-          analysisResult = JSON.parse(jsonMatch[0]);
+        // Try direct parse first
+        const trimmed = textContent.trim();
+        if (trimmed.startsWith('{')) {
+          // Find matching closing brace (handle nested objects)
+          let depth = 0;
+          let endIdx = -1;
+          for (let i = 0; i < trimmed.length; i++) {
+            if (trimmed[i] === '{') depth++;
+            else if (trimmed[i] === '}') depth--;
+            if (depth === 0) { endIdx = i; break; }
+          }
+          if (endIdx > 0) {
+            analysisResult = JSON.parse(trimmed.slice(0, endIdx + 1));
+          } else {
+            analysisResult = JSON.parse(trimmed);
+          }
         } else {
-          analysisResult = { rawResponse: textContent };
+          // Try extracting JSON from text (code block or inline)
+          const codeBlockMatch = trimmed.match(/```(?:json)?\s*\n?([\s\S]*?)```/);
+          if (codeBlockMatch) {
+            analysisResult = JSON.parse(codeBlockMatch[1].trim());
+          } else {
+            // Fallback: find first { to last matching }
+            const jsonMatch = trimmed.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              analysisResult = JSON.parse(jsonMatch[0]);
+            } else {
+              analysisResult = { rawResponse: textContent };
+            }
+          }
         }
       } catch {
         analysisResult = { rawResponse: textContent };
