@@ -383,7 +383,7 @@ function ControlButtons({
           "shadow-lg shadow-red-500/30"
         )}
       >
-        <Square className="w-6 h-6 text-white" />
+        <Square className="w-6 h-6 text-white" fill="currentColor" />
       </motion.button>
     </div>
   );
