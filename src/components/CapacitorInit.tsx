@@ -56,6 +56,51 @@ export function CapacitorInit() {
         console.warn('[Cap] App back-button handler failed', e);
       }
 
+      // ── Register for push notifications ────────────────────
+      try {
+        const { PushNotifications } = await import('@capacitor/push-notifications');
+
+        // Request permission and register
+        await PushNotifications.requestPermissions();
+
+        PushNotifications.addListener('registration', async (token) => {
+          try {
+            const { notificationService } = await import('@/lib/notifications/service');
+            const { Device } = await import('@capacitor/device');
+            const deviceInfo = await Device.getInfo();
+
+            await notificationService.registerDevice({
+              device_token: token.value,
+              device_type: isAndroid ? 'android' : 'ios',
+              device_name: `${deviceInfo.platform} ${deviceInfo.osVersion}`,
+            });
+          } catch (err) {
+            console.warn('[Cap] Failed to register push token:', err);
+          }
+        });
+
+        PushNotifications.addListener('registrationError', (error) => {
+          console.warn('[Cap] Push registration error:', error);
+        });
+
+        PushNotifications.addListener('pushNotificationReceived', (notification) => {
+          // Handle foreground notification - update badge count via app context or event
+          // The NotificationCenter subscribes to realtime, so in-app updates are automatic
+        });
+
+        PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+          // Handle notification tap - navigate to deep link
+          const deepLink = action.notification.data?.deepLink;
+          if (deepLink) {
+            window.location.href = deepLink;
+          }
+        });
+
+        await PushNotifications.register();
+      } catch (e) {
+        console.warn('[Cap] Push notification setup failed:', e);
+      }
+
       // ── Listen to app state changes (pause / resume) ──────
       try {
         const { App } = await import('@capacitor/app');

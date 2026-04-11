@@ -303,16 +303,39 @@ async function processNotification(
     return { sent: 1, failed: 0 };
   }
 
-  // Get user preferences for quiet hours check
+  // Get user preferences for quiet hours and per-type check
   const { data: preferences } = await supabase
     .from('notification_preferences')
-    .select('quiet_hours_start, quiet_hours_end, timezone')
+    .select('quiet_hours_start, quiet_hours_end, timezone, notifications_enabled, workout_reminders_enabled, meal_reminders_enabled, streak_protection_enabled, achievements_enabled, coach_insights_enabled, daily_summary_enabled, hydration_reminders_enabled, motivational_enabled')
     .eq('user_id', notification.user_id)
     .maybeSingle();
 
+  // Check if notifications are globally disabled
+  if (preferences && !preferences.notifications_enabled) {
+    // Silently mark as sent (don't deliver)
+    await updateNotificationStatus(supabase, notification.id, 'sent');
+    return { sent: 1, failed: 0 };
+  }
+
+  // Check per-type preference
+  const typeEnabledMap: Record<string, string | null> = {
+    workout_reminder: preferences?.workout_reminders_enabled ? 'y' : null,
+    meal_reminder: preferences?.meal_reminders_enabled ? 'y' : null,
+    streak_protection: preferences?.streak_protection_enabled ? 'y' : null,
+    achievement: preferences?.achievements_enabled ? 'y' : null,
+    coach_insight: preferences?.coach_insights_enabled ? 'y' : null,
+    daily_summary: preferences?.daily_summary_enabled ? 'y' : null,
+    hydration_reminder: preferences?.hydration_reminders_enabled ? 'y' : null,
+    motivational: preferences?.motivational_enabled ? 'y' : null,
+  };
+
+  if (preferences && typeEnabledMap[notification.type] === null) {
+    await updateNotificationStatus(supabase, notification.id, 'sent');
+    return { sent: 1, failed: 0 };
+  }
+
   // Check quiet hours
   if (preferences && isInQuietHours(preferences, 'en')) {
-    console.log('[NotificationWorker] User in quiet hours, skipping push:', notification.user_id);
     // Still mark as "sent" for in-app, but don't push
     await updateNotificationStatus(supabase, notification.id, 'sent');
     return { sent: 1, failed: 0 };

@@ -21,8 +21,12 @@
   },
   "crons": [
     {
+      "path": "/api/notifications/triggers",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/notifications/process",
-      "schedule": "0 0 * * *"
+      "schedule": "* * * * *"
     }
   ],
   "headers": [

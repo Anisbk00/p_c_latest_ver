@@ -80,6 +80,8 @@ import { ProvenanceTag } from "@/components/fitness/provenance-tag";
 import { SignOutAnimation } from "@/components/auth/sign-out-animation";
 import { ProgressPhotoUploadSheet } from "@/components/fitness/progress-photo-upload-sheet";
 import { useSetup } from "@/contexts/setup-context";
+import { useNotificationContext } from "@/components/notifications/notification-provider";
+import { NotificationBadge } from "@/components/notifications/notification-center";
 import { cn } from "@/lib/utils";
 import { format, subDays } from "date-fns";
 import { useApp } from "@/contexts/app-context";
@@ -568,6 +570,7 @@ function ProfileHeader({
   const { signOut } = useSupabaseAuth();
   const router = useRouter();
   const { needsSetup, openSetupModal } = useSetup();
+  const { unreadCount, openNotificationCenter } = useNotificationContext();
   const xpProgress = (profile.xp / profile.xpToNextLevel) * 100;
   
   const handleGoToSettings = () => {
@@ -738,6 +741,7 @@ function ProfileHeader({
 
           {/* Edit buttons - visible on mobile, hidden on desktop */}
           <div className="flex items-center gap-1 sm:hidden shrink-0">
+            <NotificationBadge count={unreadCount} onClick={openNotificationCenter} />
             <button
               onClick={onEditProfile}
               className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"
@@ -827,6 +831,7 @@ function ProfileHeader({
 
         {/* Desktop edit buttons - hidden on mobile */}
         <div className="hidden sm:flex items-center gap-1 shrink-0">
+          <NotificationBadge count={unreadCount} onClick={openNotificationCenter} />
           <button
             onClick={onEditProfile}
             className="p-2 rounded-lg bg-muted/50 hover:bg-muted transition-colors"

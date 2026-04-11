@@ -31,6 +31,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useBiometricAuth } from "@/hooks/use-biometric-auth";
+import { useNotificationSync } from "@/hooks/use-notification-sync";
 
 // Sub-components
 import { AppearanceSettings } from "./AppearanceSettings";
@@ -44,6 +45,9 @@ export function SettingsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const { t } = useLocale();
   const { setUserSettings } = useApp();
+
+  // Sync notification settings to notification_preferences table
+  useNotificationSync();
   
   // Biometric auth
   const { isSupported: biometricSupported, isEnabled: biometricEnabled, enable: enableBiometric, disable: disableBiometric } = useBiometricAuth();

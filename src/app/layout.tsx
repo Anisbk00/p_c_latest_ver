@@ -10,6 +10,7 @@ import { SetupModalManager } from "@/components/setup/setup-modal-manager";
 import { AuthErrorBoundary } from "@/components/auth/auth-error-boundary";
 import { SyncProvider } from "@/components/sync-provider";
 import { OfflineBanner } from "@/components/offline-status-indicator";
+import { NotificationProvider } from "@/components/notifications/notification-provider";
 import { CapacitorInit } from "@/components/CapacitorInit";
 import { LocaleBridge } from "@/components/i18n/LocaleBridge";
 
@@ -148,9 +149,11 @@ export default function RootLayout({
                     {/* LocaleBridge must be inside AppProvider to read userSettings.language */}
                     <LocaleBridge>
                       <SetupProvider>
-                        <OfflineBanner />
-                        {children}
-                        <SetupModalManager />
+                        <NotificationProvider>
+                          <OfflineBanner />
+                          {children}
+                          <SetupModalManager />
+                        </NotificationProvider>
                       </SetupProvider>
                     </LocaleBridge>
                   </ThemeSync>
