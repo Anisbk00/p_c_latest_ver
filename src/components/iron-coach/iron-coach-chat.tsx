@@ -138,7 +138,7 @@ function ConfirmModal({
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
-        className="fixed inset-0 z-[10000] flex items-center justify-center p-4"
+        className="fixed inset-0 z-[10000] flex items-end md:items-center justify-center md:p-4"
         onClick={onClose}
       >
         {/* Backdrop */}
@@ -152,7 +152,7 @@ function ConfirmModal({
           transition={{ type: 'spring', damping: 25, stiffness: 300 }}
           onClick={(e) => e.stopPropagation()}
           className={cn(
-            "relative w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden",
+            "relative w-full max-w-sm rounded-t-2xl md:rounded-2xl shadow-2xl overflow-hidden",
             theme === 'gymgirl' ? 'bg-white' :
             theme === 'light' ? 'bg-white' :
             'bg-zinc-900 border border-zinc-800'
@@ -193,17 +193,17 @@ function ConfirmModal({
           
           {/* Actions */}
           <div className={cn(
-            "flex gap-3 p-4 pt-0",
+            "flex gap-3 p-4 pt-0 pb-8 md:pb-4",
             theme === 'gymgirl' ? 'bg-pink-50/50' : ''
           )}>
             <button
               onClick={onClose}
               disabled={isLoading}
               className={cn(
-                "flex-1 py-3 px-4 rounded-xl font-medium text-sm transition-all",
-                theme === 'gymgirl' ? 'bg-white border border-pink-200 text-[#4A1A2C] hover:bg-pink-50' :
-                theme === 'light' ? 'bg-zinc-100 text-zinc-700 hover:bg-zinc-200' :
-                'bg-zinc-800 text-zinc-300 hover:bg-zinc-700'
+                "flex-1 py-3.5 px-4 rounded-xl font-medium text-sm transition-all min-h-[48px]",
+                theme === 'gymgirl' ? 'bg-white border border-pink-200 text-[#4A1A2C] active:bg-pink-50' :
+                theme === 'light' ? 'bg-zinc-100 text-zinc-700 active:bg-zinc-200' :
+                'bg-zinc-800 text-zinc-300 active:bg-zinc-700'
               )}
             >
               {cancelText}
@@ -212,7 +212,7 @@ function ConfirmModal({
               onClick={onConfirm}
               disabled={isLoading}
               className={cn(
-                "flex-1 py-3 px-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2",
+                "flex-1 py-3.5 px-4 rounded-xl font-medium text-sm transition-all flex items-center justify-center gap-2 min-h-[48px]",
                 styles.button,
                 isLoading && 'opacity-70 cursor-not-allowed'
               )}
@@ -1058,14 +1058,14 @@ export function IronCoach({ className }: IronCoachProps) {
                       <MoreVertical className="w-5 h-5" />
                     </button>
                     
-                    {/* Dropdown menu */}
+                    {/* Dropdown menu — desktop */}
                     {showMenu && typeof document !== 'undefined' && createPortal(
                       <motion.div
                         ref={dropdownRef}
                         initial={{ opacity: 0, scale: 0.95, y: -10 }}
                         animate={{ opacity: 1, scale: 1, y: 0 }}
                         exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                        className={cn("fixed w-48 rounded-xl border shadow-lg overflow-hidden z-[9999]",
+                        className={cn("fixed w-48 rounded-xl border shadow-lg overflow-hidden z-[9999] md:block hidden",
                           theme === 'gymgirl' ? 'bg-white border-pink-200' : 
                           theme === 'light' ? 'bg-white border-zinc-200' : 
                           'bg-zinc-900 border-zinc-700'
@@ -1094,6 +1094,61 @@ export function IronCoach({ className }: IronCoachProps) {
                       </motion.div>,
                       document.body
                     )}
+                    
+                    {/* Mobile bottom sheet menu */}
+                    {showMenu && typeof document !== 'undefined' && createPortal(
+                      <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-[9998] md:hidden"
+                        onClick={() => setShowMenu(false)}
+                      >
+                        <div className="absolute inset-0 bg-black/40" />
+                        <motion.div
+                          initial={{ y: '100%' }}
+                          animate={{ y: 0 }}
+                          exit={{ y: '100%' }}
+                          transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                          onClick={(e) => e.stopPropagation()}
+                          className={cn(
+                            "absolute bottom-0 left-0 right-0 rounded-t-2xl border-t p-4 pb-8",
+                            theme === 'gymgirl' ? 'bg-white border-pink-200' :
+                            theme === 'light' ? 'bg-white border-zinc-200' :
+                            'bg-zinc-900 border-zinc-700'
+                          )}
+                        >
+                          <div className={cn("w-10 h-1 rounded-full mx-auto mb-4", theme === 'gymgirl' ? 'bg-pink-300' : 'bg-zinc-600')} />
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowMenu(false);
+                              requestClearChat();
+                            }}
+                            disabled={isClearing}
+                            className={cn(
+                              "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left transition-colors",
+                              theme === 'gymgirl' ? 'active:bg-pink-50 text-[#4A1A2C]' :
+                              theme === 'light' ? 'active:bg-zinc-50 text-zinc-900' :
+                              'active:bg-zinc-800 text-zinc-100'
+                            )}
+                          >
+                            <div className="w-9 h-9 rounded-full bg-red-500/10 flex items-center justify-center">
+                              <Trash2 className="w-4.5 h-4.5 text-red-500" />
+                            </div>
+                            <div className="flex-1">
+                              <span className="font-medium text-sm">Clear Chat History</span>
+                              <span className={cn("block text-xs mt-0.5",
+                                theme === 'gymgirl' ? 'text-[#4A1A2C]/50' :
+                                theme === 'light' ? 'text-zinc-400' :
+                                'text-zinc-500'
+                              )}>Delete all messages</span>
+                            </div>
+                          </button>
+                        </motion.div>
+                      </motion.div>,
+                      document.body
+                    )}
                   </div>
                 </>
               ) : (
@@ -1116,13 +1171,14 @@ export function IronCoach({ className }: IronCoachProps) {
                       >
                         <MoreVertical className="w-5 h-5" />
                       </button>
+                      {/* Desktop dropdown */}
                       {showMenu && typeof document !== 'undefined' && createPortal(
                         <motion.div
                           ref={dropdownRef}
                           initial={{ opacity: 0, scale: 0.95, y: -10 }}
                           animate={{ opacity: 1, scale: 1, y: 0 }}
                           exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                          className={cn("fixed w-48 rounded-xl border shadow-lg overflow-hidden z-[9999]",
+                          className={cn("fixed w-48 rounded-xl border shadow-lg overflow-hidden z-[9999] md:block hidden",
                             theme === 'gymgirl' ? 'bg-white border-pink-200' : 
                             theme === 'light' ? 'bg-white border-zinc-200' : 
                             'bg-zinc-900 border-zinc-700'
@@ -1148,6 +1204,60 @@ export function IronCoach({ className }: IronCoachProps) {
                             <RefreshCw className={cn("w-4 h-4 text-amber-500", isClearing && confirmModalType === 'update' && "animate-spin")} />
                             <span>{isClearing && confirmModalType === 'update' ? 'Updating...' : 'Update Plan'}</span>
                           </button>
+                        </motion.div>,
+                        document.body
+                      )}
+                      {/* Mobile bottom sheet */}
+                      {showMenu && typeof document !== 'undefined' && createPortal(
+                        <motion.div
+                          initial={{ opacity: 0 }}
+                          animate={{ opacity: 1 }}
+                          exit={{ opacity: 0 }}
+                          className="fixed inset-0 z-[9998] md:hidden"
+                          onClick={() => setShowMenu(false)}
+                        >
+                          <div className="absolute inset-0 bg-black/40" />
+                          <motion.div
+                            initial={{ y: '100%' }}
+                            animate={{ y: 0 }}
+                            exit={{ y: '100%' }}
+                            transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                            onClick={(e) => e.stopPropagation()}
+                            className={cn(
+                              "absolute bottom-0 left-0 right-0 rounded-t-2xl border-t p-4 pb-8",
+                              theme === 'gymgirl' ? 'bg-white border-pink-200' :
+                              theme === 'light' ? 'bg-white border-zinc-200' :
+                              'bg-zinc-900 border-zinc-700'
+                            )}
+                          >
+                            <div className={cn("w-10 h-1 rounded-full mx-auto mb-4", theme === 'gymgirl' ? 'bg-pink-300' : 'bg-zinc-600')} />
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setShowMenu(false);
+                                requestUpdatePlan();
+                              }}
+                              disabled={isClearing}
+                              className={cn(
+                                "w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-left transition-colors",
+                                theme === 'gymgirl' ? 'active:bg-pink-50 text-[#4A1A2C]' :
+                                theme === 'light' ? 'active:bg-zinc-50 text-zinc-900' :
+                                'active:bg-zinc-800 text-zinc-100'
+                              )}
+                            >
+                              <div className="w-9 h-9 rounded-full bg-amber-500/10 flex items-center justify-center">
+                                <RefreshCw className={cn("w-4.5 h-4.5 text-amber-500", isClearing && confirmModalType === 'update' && "animate-spin")} />
+                              </div>
+                              <div className="flex-1">
+                                <span className="font-medium text-sm">Update Weekly Plan</span>
+                                <span className={cn("block text-xs mt-0.5",
+                                  theme === 'gymgirl' ? 'text-[#4A1A2C]/50' :
+                                  theme === 'light' ? 'text-zinc-400' :
+                                  'text-zinc-500'
+                                )}>Regenerate based on latest data</span>
+                              </div>
+                            </button>
+                          </motion.div>
                         </motion.div>,
                         document.body
                       )}
