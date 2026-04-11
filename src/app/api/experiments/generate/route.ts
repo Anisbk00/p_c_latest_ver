@@ -23,13 +23,60 @@ interface Experiment {
 
 export async function POST(request: NextRequest) {
   try {
-    console.log('[experiments/generate] POST received');
     const { supabase, user } = await getSupabaseUser();
-    console.log('[experiments/generate] User authenticated:', user.id);
     const body = await request.json();
-    const requestedCount = Math.min(Math.max(Number(body.count) || 4, 1), 10); // Cap between 1–10
-    
-    // Fetch user data for personalization
+    const requestedCount = Math.min(Math.max(Number(body.count) || 4, 1), 10);
+
+    // ─── Step 1: Clear old non-active experiments ────────────────
+    // Fetch all existing experiments for this user
+    const { data: allExperiments } = await supabase
+      .from('ai_insights')
+      .select('id, content')
+      .eq('user_id', user.id)
+      .eq('insight_type', 'experiment');
+
+    if (allExperiments && allExperiments.length > 0) {
+      // Find IDs of active experiments (user is currently doing these)
+      const activeIds: string[] = [];
+      for (const row of allExperiments) {
+        try {
+          const content = typeof row.content === 'string' ? JSON.parse(row.content) : row.content;
+          if (content.status === 'active') {
+            activeIds.push(row.id);
+          }
+        } catch { /* skip malformed */ }
+      }
+
+      if (activeIds.length > 0) {
+        // Delete all experiments, then re-insert active ones
+        await supabase
+          .from('ai_insights')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('insight_type', 'experiment');
+
+        // Re-insert active experiments
+        for (const row of allExperiments) {
+          if (activeIds.includes(row.id)) {
+            await supabase.from('ai_insights').insert({
+              user_id: row.user_id,
+              insight_type: row.insight_type,
+              content: row.content,
+              source: row.source,
+            });
+          }
+        }
+      } else {
+        // No active experiments — delete all
+        await supabase
+          .from('ai_insights')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('insight_type', 'experiment');
+      }
+    }
+
+    // ─── Step 2: Fetch user data for personalization ─────────────
     const [
       { data: profile },
       { data: userProfile },
@@ -38,7 +85,6 @@ export async function POST(request: NextRequest) {
       { data: recentFoodLogs },
       { data: bodyMetrics },
       { data: hydrationData },
-      { data: existingExperiments },
     ] = await Promise.all([
       supabase.from('profiles').select('*').eq('id', user.id).maybeSingle(),
       supabase.from('user_profiles').select('*').eq('user_id', user.id).maybeSingle(),
@@ -47,27 +93,23 @@ export async function POST(request: NextRequest) {
       supabase.from('food_logs').select('id, logged_at, calories, protein_g, carbs_g, fat_g').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(10),
       supabase.from('body_metrics').select('*').eq('user_id', user.id).order('captured_at', { ascending: false }).limit(5),
       supabase.from('hydration').select('*').eq('user_id', user.id).order('logged_at', { ascending: false }).limit(7),
-      supabase.from('ai_insights').select('*').eq('user_id', user.id).eq('insight_type', 'experiment').order('created_at', { ascending: false }),
     ]);
 
-    // Get latest weight
     const latestWeight = bodyMetrics?.find((m: { metric_type: string }) => m.metric_type === 'weight');
-    
-    // Calculate averages
-    const avgCalories = recentFoodLogs?.length 
+
+    const avgCalories = recentFoodLogs?.length
       ? Math.round(recentFoodLogs.reduce((sum: number, log: { calories: number }) => sum + (log.calories || 0), 0) / recentFoodLogs.length)
       : 0;
-    const avgProtein = recentFoodLogs?.length 
+    const avgProtein = recentFoodLogs?.length
       ? Math.round(recentFoodLogs.reduce((sum: number, log: { protein_g: number }) => sum + (log.protein_g || 0), 0) / recentFoodLogs.length)
       : 0;
-    const avgHydration = hydrationData?.length 
+    const avgHydration = hydrationData?.length
       ? Math.round(hydrationData.reduce((sum: number, h: { amount_ml: number }) => sum + (h.amount_ml || 0), 0) / hydrationData.length)
       : 0;
-    const workoutsPerWeek = recentWorkouts?.length 
-      ? Math.min(7, Math.round((recentWorkouts.length / 14) * 7)) // Estimate from last 2 weeks
+    const workoutsPerWeek = recentWorkouts?.length
+      ? Math.min(7, Math.round((recentWorkouts.length / 14) * 7))
       : 0;
 
-    // Build user context for AI
     const userContext = {
       profile: {
         name: profile?.name || 'User',
@@ -86,19 +128,12 @@ export async function POST(request: NextRequest) {
         waterTarget: goals?.water_target_ml || 2500,
       },
       training: {
-        workoutsPerWeek: workoutsPerWeek,
+        workoutsPerWeek,
         workoutTypes: [...new Set(recentWorkouts?.map((w: { workout_type: string }) => w.workout_type).filter(Boolean))],
       },
-      existingExperiments: existingExperiments?.map((e: { content: string }) => {
-        try {
-          return JSON.parse(e.content);
-        } catch {
-          return null;
-        }
-      }).filter(Boolean) || [],
     };
 
-    // Build prompt for Groq
+    // ─── Step 3: Generate experiments via AI ────────────────────
     const systemPrompt = `You are an expert fitness and nutrition coach who creates personalized micro-experiments for users. 
 Each experiment should be:
 - Small, achievable, and take 7-21 days
@@ -107,7 +142,7 @@ Each experiment should be:
 - Designed to create lasting habit changes
 - Tailored to the user's fitness level and lifestyle
 
-Generate exactly ${requestedCount} personalized experiments. Consider the user's existing experiments to avoid duplicates.
+Generate exactly ${requestedCount} personalized experiments.
 Return ONLY valid JSON in this exact format, no markdown, no explanation:
 {
   "experiments": [
@@ -134,57 +169,44 @@ ${JSON.stringify(userContext)}
 
 Create experiments that address their specific gaps and help them progress toward their goals. Focus on practical, actionable changes they can make today. Return ONLY the JSON object.`;
 
-    // Generate experiments using Groq
     let experiments: Experiment[] = [];
-    
+
     try {
       const responseText = await generateText(userPrompt, systemPrompt, 4096);
-      
+
       if (!responseText) {
         throw new Error('No response from AI');
       }
 
-      // Parse the JSON response
-      const jsonMatch = responseText.match(/\{[\s\S]*"experiments"[\s\S]*\}/);
+      // Parse the JSON response — handle markdown code blocks too
+      const cleaned = responseText.replace(/```json?\s*/g, '').replace(/```/g, '').trim();
+      const jsonMatch = cleaned.match(/\{[\s\S]*"experiments"[\s\S]*\}/);
       if (jsonMatch) {
         const parsed = JSON.parse(jsonMatch[0]);
         experiments = parsed.experiments || [];
       } else {
-        const parsed = JSON.parse(responseText);
+        const parsed = JSON.parse(cleaned);
         experiments = parsed.experiments || [];
       }
     } catch (aiError) {
-      console.error('[experiments/generate] AI error:', aiError);
-      // Use fallback experiments if AI fails
+      console.error('[experiments/generate] AI error, using fallbacks:', aiError);
       experiments = generateFallbackExperiments(userContext);
     }
 
-    // Filter out experiments similar to existing ones
-    const existingTitles = new Set(
-      userContext.existingExperiments.map((e: { title: string }) => e.title?.toLowerCase())
-    );
-    let newExperiments = experiments.filter(
-      (exp) => !existingTitles.has(exp.title?.toLowerCase())
-    );
-
-    // Limit to requested count
-    newExperiments = newExperiments.slice(0, requestedCount);
-
-    // If we don't have enough experiments after filtering, use fallback
-    if (newExperiments.length < requestedCount) {
-      const fallbackExp = generateFallbackExperiments(userContext);
-      const neededCount = requestedCount - newExperiments.length;
-      const additionalExp = fallbackExp
-        .filter((exp) => !existingTitles.has(exp.title?.toLowerCase()) && !newExperiments.find(e => e.title === exp.title))
-        .slice(0, neededCount);
-      newExperiments = [...newExperiments, ...additionalExp];
+    // Guaranteed: always have at least fallback experiments
+    if (experiments.length === 0) {
+      experiments = generateFallbackExperiments(userContext);
     }
 
-    // If we have new experiments, store them in the database
-    console.log('[experiments/generate] Storing', newExperiments.length, 'new experiments');
+    // Ensure unique IDs and cap to requested count
+    const newExperiments = experiments.slice(0, requestedCount).map((exp, i) => ({
+      ...exp,
+      id: `exp_${Date.now()}_${i}`,
+    }));
+
+    // ─── Step 4: Store experiments in database ──────────────────
     if (newExperiments.length > 0) {
       for (const exp of newExperiments) {
-        console.log('[experiments/generate] Inserting experiment:', exp.title);
         const { error: insertError } = await supabase.from('ai_insights').insert({
           user_id: user.id,
           insight_type: 'experiment',
@@ -198,22 +220,15 @@ Create experiments that address their specific gaps and help them progress towar
           source: 'ai',
         });
         if (insertError) {
-          console.error('[experiments/generate] Insert error for', exp.title, ':', insertError);
+          console.error('[experiments/generate] Insert error:', insertError.message);
         }
       }
     }
 
-    console.log('[experiments/generate] Returning', newExperiments.length, 'experiments to client');
     return NextResponse.json({
       success: true,
       experiments: newExperiments,
-      userContext: {
-        goal: userContext.profile.goal,
-        avgCalories: userContext.nutrition.avgDailyCalories,
-        avgProtein: userContext.nutrition.avgDailyProtein,
-        avgHydration: userContext.nutrition.avgDailyHydration,
-        workoutsPerWeek: userContext.training.workoutsPerWeek,
-      }
+      count: newExperiments.length,
     });
   } catch (err) {
     console.error('[experiments/generate] Error:', err);
@@ -234,8 +249,7 @@ function generateFallbackExperiments(userContext: {
   nutrition: { avgDailyCalories: number; proteinTarget: number; avgDailyHydration: number; waterTarget: number };
 }): Experiment[] {
   const experiments: Experiment[] = [];
-  
-  // Protein-focused experiment
+
   experiments.push({
     id: 'fallback_protein',
     title: 'Protein Power Week',
@@ -256,30 +270,6 @@ function generateFallbackExperiments(userContext: {
     ]
   });
 
-  // Hydration experiment based on user's hydration levels
-  if (userContext.nutrition.avgDailyHydration < userContext.nutrition.waterTarget * 0.7) {
-    experiments.push({
-      id: 'fallback_hydration',
-      title: 'Hydration Hero Challenge',
-      description: 'Optimize your water intake for better energy, recovery, and performance. Most people underestimate their hydration needs.',
-      category: 'habit',
-      duration: 14,
-      expectedOutcome: 'More energy, better workout performance, clearer skin, and reduced hunger',
-      dailyActions: [
-        'Drink a full glass of water immediately after waking up',
-        'Carry a water bottle everywhere you go',
-        'Drink 1 cup of water before each meal'
-      ],
-      whyItWorks: 'Proper hydration supports metabolism, nutrient transport, and helps distinguish true hunger from thirst signals.',
-      tipsForSuccess: [
-        'Set hourly water reminders',
-        'Add lemon or cucumber for variety',
-        'Track every glass in the app'
-      ]
-    });
-  }
-
-  // Movement experiment
   experiments.push({
     id: 'fallback_movement',
     title: 'Daily Movement Ritual',
@@ -300,7 +290,6 @@ function generateFallbackExperiments(userContext: {
     ]
   });
 
-  // Sleep experiment
   experiments.push({
     id: 'fallback_sleep',
     title: 'Sleep Optimization Challenge',
@@ -321,7 +310,6 @@ function generateFallbackExperiments(userContext: {
     ]
   });
 
-  // Goal-specific experiment
   if (userContext.profile.goal === 'fat_loss') {
     experiments.push({
       id: 'fallback_fatloss',
