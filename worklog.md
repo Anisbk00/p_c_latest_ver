@@ -1038,3 +1038,38 @@ Stage Summary:
 - After each capture: white flash → "Saved · 1 photo" badge → hint "Tap ✕ when done"
 - User manually closes camera via X button when done
 - 1 file changed: workouts-page-v2.tsx
+
+---
+Task ID: 1
+Agent: Main Agent
+Task: Clone p_c_latest_ver repo, replace project, configure Supabase, verify build, scan codebase, run preview
+
+Work Log:
+- Cloned https://github.com/Anisbk00/p_c_latest_ver.git to /tmp/p_c_latest_ver using provided PAT
+- Replaced entire project at /home/z/my-project with cloned repo (rsync, excluding .git/.next/node_modules)
+- Created .env.local with all Supabase credentials:
+  - NEXT_PUBLIC_SUPABASE_URL=https://ygzxxmyrybtvszjlilxg.supabase.co
+  - NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGci...STMLbhAL2Jn9ecVuKVgAu9JTxvhQrbuAOqIbtRqYxcM
+  - SUPABASE_SERVICE_ROLE_KEY=eyJhbGci...8Za0ZhiWHiLSDDCS_IjOqQX5jvAzhyJbDX3SuZespH4
+  - DATABASE_URL=postgresql://postgres:43YqynD2D50sG9pq@db.ygzxxmyrybtvszjlilxg.supabase.co:5432/postgres
+  - SUPABASE_ACCESS_TOKEN=sbp_9fe3b7586cd18254384de2425a34763a9f13d700
+  - EXPO_ACCESS_TOKEN=poDj477qmYh4IT9TberDdWXrEJZu9HVoPIKZ3d9G
+- Verified eas.json already has correct Supabase URL + anon key in all 3 build profiles
+- Verified app.json has correct EAS projectId: 4c225a1f-48a4-4cb3-bd3d-58f1b0a18057
+- Ran bun install — 1464 packages installed successfully
+- Ran bun run lint — 0 errors, 23 warnings (all unused eslint-disable directives)
+- Started dev server on port 3000 — page renders successfully (GET / 200)
+- Performed comprehensive codebase scan via Explore agent
+
+Stage Summary:
+- ✅ Repo cloned and installed successfully
+- ✅ All Supabase credentials properly configured in .env.local
+- ✅ eas.json has correct Supabase creds in all 3 build profiles (dev/preview/prod)
+- ✅ Expo/EAS project linked (ID: 4c225a1f-48a4-4cb3-bd3d-58f1b0a18057)
+- ✅ Dev server running on port 3000, page renders correctly
+- ✅ Lint passes with 0 errors
+- ✅ Full codebase scan completed
+- 🔴 CRITICAL: ~40+ direct fetch('/api/...') calls will break on mobile (must use apiFetch())
+- App: Progress Companion v0.2.0 — AI-powered fitness companion
+- Stack: Next.js 16 + React 19 + Supabase + Capacitor 8 + Tailwind CSS 4 + shadcn/ui
+- Features: Food tracking, workout logging, GPS tracking, AI coaching, offline support, i18n (en/fr/ar)
