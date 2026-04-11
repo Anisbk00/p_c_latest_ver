@@ -328,3 +328,35 @@ KNOWN REMAINING (documented, not breaking):
 - No conflict resolution UI for users
 - No offline photo upload queue
 
+---
+Task ID: iron-coach-fix
+Agent: main
+Task: Fix Iron Coach not responding due to aggressive Groq rate limit handling
+
+Work Log:
+- Analyzed console logs from user showing streaming works at network level (200 response, 160 chars received)
+- Identified root cause: Groq free tier rate limit triggers global rateLimitedUntil timer that blocks ALL subsequent requests for up to 120 seconds without even attempting
+- Found 3 locations with aggressive pre-checks that throw immediately on rate limit
+- Found streamCloudPrompt catches rate limit errors and returns fallback message without retrying
+
+Changes Made:
+
+1. Modified /src/lib/ai/groq-service.ts:
+   - Removed aggressive isRateLimited() pre-check from streamText()
+   - Removed aggressive isRateLimited() pre-check from generateStreamingChatCompletion()
+   - Removed aggressive isRateLimited() pre-check from withRateLimitRetry()
+   - Reduced max cooldown from 120s to 30s
+   - Reduced exponential backoff multiplier from 1.5x to 1.3x
+
+2. Modified /src/lib/iron-coach/hybrid/cloud.ts:
+   - Added isRetryableError() helper for rate limit, timeout, and 5xx errors
+   - Added retry loop in streamCloudPrompt() with MAX_RETRIES=3 and BASE_DELAY_MS=3000
+   - On rate limit error: waits 3s/6s/9s then retries instead of immediately showing fallback
+   - Only shows fallback message after all 3 retries exhausted
+
+Stage Summary:
+- Iron Coach now retries up to 3 times with exponential backoff on rate limit errors
+- Removed all aggressive pre-checks that blocked requests during cooldown windows
+- Rate limit cooldown reduced from 120s to 30s max
+- 0 lint errors
+

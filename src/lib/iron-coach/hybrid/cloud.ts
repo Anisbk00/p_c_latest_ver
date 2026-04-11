@@ -82,8 +82,31 @@ export async function completeCloudPrompt(
   }
 }
 
+/** Check if an error is a rate-limit / transient error worth retrying */
+function isRetryableError(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  return (
+    msg.includes('rate limit') ||
+    msg.includes('busy') ||
+    msg.includes('quota') ||
+    msg.includes('429') ||
+    msg.includes('high demand') ||
+    msg.includes('too many') ||
+    msg.includes('timed out') ||
+    msg.includes('timeout') ||
+    msg.includes('503') ||
+    msg.includes('502')
+  );
+}
+
+/** Sleep helper */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 /**
  * Stream a prompt completion using Groq with real token streaming
+ * Includes retry logic for rate-limit and transient errors
  */
 export async function streamCloudPrompt(options: CloudStreamOptions & { locale?: string; tone?: CoachingTone }): Promise<string> {
   const { prompt, onToken, signal, locale = 'en', userQuestion } = options;
@@ -104,18 +127,15 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
   let hasRichContext = false;
 
   if (typeof prompt === 'object' && prompt.system && prompt.user) {
-    // Rich context from buildContextPrompt — already split into system + user
     hasRichContext = true;
     effectiveSystemPrompt = prompt.system;
     effectiveUserPrompt = prompt.user;
     console.log('[streamCloudPrompt] Using rich context prompt (pre-split), user part length:', effectiveUserPrompt.length);
   } else {
-    // Plain string prompt (legacy path or simple prompts)
     const promptStr = typeof prompt === 'string' ? prompt : String(prompt);
     hasRichContext = promptStr.length > Math.max((userQuestion?.length || 50) + 100, 200);
     
     if (hasRichContext) {
-      // Legacy rich prompt — split on USER'S QUESTION delimiter
       const questionIdx = promptStr.indexOf("=== USER'S QUESTION ===");
       if (questionIdx > 0) {
         effectiveSystemPrompt = promptStr.slice(0, questionIdx).trim();
@@ -141,50 +161,79 @@ Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific qu
     return cached;
   }
 
-  try {
-    let fullText = '';
-    
-    // Use real streaming for premium UX — tokens appear as they're generated
-    const stream = streamText(effectiveUserPrompt, effectiveSystemPrompt);
-    
-    for await (const token of stream) {
-      if (signal?.aborted) {
-        console.log('[streamCloudPrompt] Aborted during streaming');
-        return fullText;
+  // ── Retry loop for rate-limit and transient errors ──
+  const MAX_RETRIES = 3;
+  const BASE_DELAY_MS = 3000;
+
+  for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+    if (signal?.aborted) {
+      console.log('[streamCloudPrompt] Aborted before attempt', attempt);
+      return '';
+    }
+
+    try {
+      let fullText = '';
+      const stream = streamText(effectiveUserPrompt, effectiveSystemPrompt);
+      
+      for await (const token of stream) {
+        if (signal?.aborted) {
+          console.log('[streamCloudPrompt] Aborted during streaming');
+          return fullText;
+        }
+        fullText += token;
+        onToken(token);
       }
-      fullText += token;
-      onToken(token);
-    }
-    
-    console.log('[streamCloudPrompt] AI response length:', fullText?.length || 0);
+      
+      console.log('[streamCloudPrompt] AI response length:', fullText?.length || 0, '(attempt', attempt + ')');
 
-    if (!fullText?.trim()) {
-      console.log('[streamCloudPrompt] Empty AI response, returning fallback');
-      const fallback = "Listen up! I'm having a moment here. Try asking me again in a few seconds. The AI gods are taking a quick breather. 💪";
-      for (const ch of fallback) onToken(ch);
-      return fallback;
-    }
+      if (!fullText?.trim()) {
+        console.log('[streamCloudPrompt] Empty AI response on attempt', attempt);
+        if (attempt < MAX_RETRIES) {
+          const delay = BASE_DELAY_MS * attempt;
+          console.log('[streamCloudPrompt] Retrying in', delay, 'ms...');
+          await sleep(delay);
+          continue;
+        }
+        // Final fallback after all retries
+        const fallback = "Listen up! I'm having a moment here. Try asking me again in a few seconds. The AI gods are taking a quick breather. 💪";
+        for (const ch of fallback) onToken(ch);
+        return fallback;
+      }
 
-    // Cache simple prompts only (not context-rich)
-    if (!hasRichContext) {
-      setCachedPromptResult(MODEL_NAME, typeof prompt === 'string' ? prompt : JSON.stringify(prompt), fullText, undefined, locale);
+      // Cache simple prompts only (not context-rich)
+      if (!hasRichContext) {
+        setCachedPromptResult(MODEL_NAME, typeof prompt === 'string' ? prompt : JSON.stringify(prompt), fullText, undefined, locale);
+      }
+      return fullText;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('[streamCloudPrompt] Error on attempt', attempt + '/' + MAX_RETRIES + ':', errorMessage);
+
+      if (isRetryableError(error) && attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY_MS * attempt;
+        console.log('[streamCloudPrompt] Retryable error, waiting', delay, 'ms before retry...');
+        await sleep(delay);
+        continue;
+      }
+
+      // Non-retryable or exhausted retries — show user-friendly error
+      if (isRetryableError(error)) {
+        // Still retryable but exhausted retries
+        const rateLimitMsg = "Whoa there, soldier! 🛑 The AI is getting hammered right now. Wait 15-30 seconds and try again. The free tier has limits, but I'll be back to roast you soon! 💪";
+        for (const ch of rateLimitMsg) onToken(ch);
+        return rateLimitMsg;
+      }
+
+      const errorFallback = "⚡ AI hit a snag. Try again in a few seconds.";
+      for (const ch of errorFallback) onToken(ch);
+      return errorFallback;
     }
-    return fullText;
-  } catch (error) {
-    console.error('[streamCloudPrompt] Error:', error);
-    
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    
-    if (errorMessage.includes('rate limit') || errorMessage.includes('busy') || errorMessage.includes('quota') || errorMessage.includes('429') || errorMessage.includes('high demand')) {
-      const rateLimitMsg = "Whoa there, soldier! 🛑 The AI is getting hammered right now. Wait 15-30 seconds and try again. The free tier has limits, but I'll be back to roast you soon! 💪";
-      for (const ch of rateLimitMsg) onToken(ch);
-      return rateLimitMsg;
-    }
-    
-    const errorFallback = "⚡ AI hit a snag. Try again in a few seconds.";
-    for (const ch of errorFallback) onToken(ch);
-    return errorFallback;
   }
+
+  // Should not reach here, but just in case
+  const finalFallback = "⚡ Something went wrong. Please try again.";
+  for (const ch of finalFallback) onToken(ch);
+  return finalFallback;
 }
 
 /**

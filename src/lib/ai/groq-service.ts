@@ -74,7 +74,7 @@ function handleRateLimitError(error: Error): { shouldRetry: boolean; waitMs: num
   if (retryMatch) {
     waitMs = Math.ceil(parseFloat(retryMatch[1]) * 1000);
   }
-  waitMs = Math.min(waitMs * Math.pow(1.5, consecutiveRateLimits - 1), 120000);
+  waitMs = Math.min(waitMs * Math.pow(1.3, consecutiveRateLimits - 1), 30000);
   rateLimitedUntil = Date.now() + waitMs;
   console.log(`[Groq] Rate limited. Waiting ${Math.ceil(waitMs / 1000)}s.`);
   return { shouldRetry: consecutiveRateLimits <= MAX_RETRIES, waitMs };
@@ -99,12 +99,8 @@ async function withRateLimitRetry<T>(
   operation: () => Promise<T>,
   operationName: string = 'AI request'
 ): Promise<T> {
-  if (isRateLimited()) {
-    const waitSeconds = getRateLimitWaitSeconds();
-    throw new Error(
-      `AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`
-    );
-  }
+  // Don't pre-check isRateLimited() — let the actual API call attempt first.
+  // The retry loop below handles rate-limit errors properly with backoff.
 
   let lastError: Error | null = null;
 
@@ -255,10 +251,7 @@ export async function generateChatCompletion(options: ChatCompletionOptions): Pr
 export async function* generateStreamingChatCompletion(
   options: ChatCompletionOptions
 ): AsyncGenerator<string, void, unknown> {
-  if (isRateLimited()) {
-    const waitSeconds = getRateLimitWaitSeconds();
-    throw new Error(`AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`);
-  }
+  // Don't pre-check isRateLimited() — let the actual API call handle rate limits.
 
   const { messages, temperature = 0.35, maxTokens = 768, locale = 'en', systemPrompt } = options;
   const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
@@ -270,55 +263,47 @@ export async function* generateStreamingChatCompletion(
       .map(m => ({ role: m.role, content: m.content } as GroqMessage)),
   ];
 
-  try {
-    const response = await withTimeout(
-      callGroqAPI(groqMessages, MODEL_NAME, temperature, maxTokens, true),
-      AI_TIMEOUT_MS,
-      'AI stream timed out. Please try again.'
-    );
+  const response = await withTimeout(
+    callGroqAPI(groqMessages, MODEL_NAME, temperature, maxTokens, true),
+    AI_TIMEOUT_MS,
+    'AI stream timed out. Please try again.'
+  );
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response stream');
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response stream');
 
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let hasYielded = false;
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let hasYielded = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') continue;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith('data: ')) continue;
+      const data = trimmed.slice(6);
+      if (data === '[DONE]') continue;
 
-        try {
-          const chunk: GroqStreamChunk = JSON.parse(data);
-          const content = chunk.choices?.[0]?.delta?.content;
-          if (content) {
-            hasYielded = true;
-            yield content;
-          }
-        } catch {
-          // Skip malformed chunks
+      try {
+        const chunk: GroqStreamChunk = JSON.parse(data);
+        const content = chunk.choices?.[0]?.delta?.content;
+        if (content) {
+          hasYielded = true;
+          yield content;
         }
+      } catch {
+        // Skip malformed chunks
       }
     }
-
-    if (hasYielded) resetRateLimitState();
-  } catch (error) {
-    if (isRateLimitError(error)) {
-      const { waitMs } = handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
-      throw new Error(`AI service is experiencing high demand. Please wait ${Math.ceil(waitMs / 1000)} seconds.`);
-    }
-    throw error;
   }
+
+  if (hasYielded) resetRateLimitState();
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -506,10 +491,8 @@ export async function generateText(prompt: string, systemPrompt?: string, maxTok
  * Stream text from a simple prompt
  */
 export async function* streamText(prompt: string, systemPrompt?: string): AsyncGenerator<string, void, unknown> {
-  if (isRateLimited()) {
-    const waitSeconds = getRateLimitWaitSeconds();
-    throw new Error(`AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`);
-  }
+  // Don't pre-check isRateLimited() — it blocks ALL requests during cooldown.
+  // Instead, let the actual API call handle rate limits so we can retry if the window has passed.
 
   const messages: GroqMessage[] = [];
   if (systemPrompt) {
@@ -517,51 +500,43 @@ export async function* streamText(prompt: string, systemPrompt?: string): AsyncG
   }
   messages.push({ role: 'user', content: prompt });
 
-  try {
-    const response = await withTimeout(
-      callGroqAPI(messages, MODEL_NAME, 0.35, 300, true),
-      AI_TIMEOUT_MS,
-      'AI stream timed out.'
-    );
+  const response = await withTimeout(
+    callGroqAPI(messages, MODEL_NAME, 0.35, 300, true),
+    AI_TIMEOUT_MS,
+    'AI stream timed out.'
+  );
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response stream');
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error('No response stream');
 
-    const decoder = new TextDecoder();
-    let buffer = '';
+  const decoder = new TextDecoder();
+  let buffer = '';
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split('\n');
+    buffer = lines.pop() || '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') continue;
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith('data: ')) continue;
+      const data = trimmed.slice(6);
+      if (data === '[DONE]') continue;
 
-        try {
-          const chunk: GroqStreamChunk = JSON.parse(data);
-          const content = chunk.choices?.[0]?.delta?.content;
-          if (content) yield content;
-        } catch {
-          // Skip
-        }
+      try {
+        const chunk: GroqStreamChunk = JSON.parse(data);
+        const content = chunk.choices?.[0]?.delta?.content;
+        if (content) yield content;
+      } catch {
+        // Skip malformed chunks
       }
     }
-
-    resetRateLimitState();
-  } catch (error) {
-    if (isRateLimitError(error)) {
-      const { waitMs } = handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
-      throw new Error(`AI service is experiencing high demand. Please wait ${Math.ceil(waitMs / 1000)} seconds.`);
-    }
-    throw error;
   }
+
+  resetRateLimitState();
 }
 
 /**
