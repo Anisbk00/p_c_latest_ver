@@ -234,3 +234,26 @@ Stage Summary:
 - Real streaming gives instant token feedback to users
 - Dead code removed reduces bundle size and maintenance burden
 - 0 lint errors
+
+---
+Task ID: 2
+Agent: main
+Task: Additional quality optimizations - column fix, token savings, lint cleanup
+
+Work Log:
+- Fixed body_metrics column name inconsistency (logged_at → captured_at in context.ts)
+  - context.ts used `logged_at` but ALL other files + migration used `captured_at`
+  - Fixed type definition, query, and all references (weightHistory date, 7d/30d lookups)
+- Gated weekly plan section in prompt-template.ts (saves ~500-2500 tokens on unrelated questions)
+  - Only includes plan data when question contains plan/workout/today/schedule keywords
+  - Prevents unnecessary token spend on protein, recipe, supplement questions
+- Cleaned up 14 unused eslint-disable directives (23→9 warnings, 0 errors)
+  - Removed unused react-hooks/exhaustive-deps from 5 files
+  - Fixed 4 newly-exposed set-state-in-effect errors in splash-screen, live-tracking-map, notification-settings
+- Deployed to Vercel (https://my-project-nu-three-55.vercel.app)
+
+Stage Summary:
+- Token cost reduced ~30-50% on non-plan questions (weekly plan gating)
+- body_metrics queries now return actual data (was silently empty before)
+- Code cleanliness: 23→9 lint warnings
+- Zero errors, production deployed
