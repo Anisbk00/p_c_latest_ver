@@ -74,7 +74,7 @@ function handleRateLimitError(error: Error): { shouldRetry: boolean; waitMs: num
   if (retryMatch) {
     waitMs = Math.ceil(parseFloat(retryMatch[1]) * 1000);
   }
-  waitMs = Math.min(waitMs * Math.pow(1.5, consecutiveRateLimits - 1), 120000);
+  waitMs = Math.min(waitMs * Math.pow(1.3, consecutiveRateLimits - 1), 30000);
   rateLimitedUntil = Date.now() + waitMs;
   console.log(`[Groq] Rate limited. Waiting ${Math.ceil(waitMs / 1000)}s.`);
   return { shouldRetry: consecutiveRateLimits <= MAX_RETRIES, waitMs };
@@ -100,12 +100,8 @@ async function withRateLimitRetry<T>(
   operation: () => Promise<T>,
   operationName: string = 'AI request'
 ): Promise<T> {
-  if (isRateLimited()) {
-    const waitSeconds = getRateLimitWaitSeconds();
-    throw new Error(
-      `AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`
-    );
-  }
+  // Don't pre-check isRateLimited() — let the actual API call attempt first.
+  // The retry loop handles rate-limit errors with backoff.
 
   let lastError: Error | null = null;
 
@@ -256,10 +252,7 @@ export async function generateChatCompletion(options: ChatCompletionOptions): Pr
 export async function* generateStreamingChatCompletion(
   options: ChatCompletionOptions
 ): AsyncGenerator<string, void, unknown> {
-  if (isRateLimited()) {
-    const waitSeconds = getRateLimitWaitSeconds();
-    throw new Error(`AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`);
-  }
+  // Don't pre-check isRateLimited() — let the retry loop handle it.
 
   const { messages, temperature = 0.35, maxTokens = 768, locale = 'en', systemPrompt } = options;
   const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
@@ -507,10 +500,7 @@ export async function generateText(prompt: string, systemPrompt?: string, maxTok
  * Stream text from a simple prompt
  */
 export async function* streamText(prompt: string, systemPrompt?: string): AsyncGenerator<string, void, unknown> {
-  if (isRateLimited()) {
-    const waitSeconds = getRateLimitWaitSeconds();
-    throw new Error(`AI service is temporarily busy. Please wait ${waitSeconds} seconds and try again.`);
-  }
+  // Don't pre-check isRateLimited() — let the retry loop handle it.
 
   const messages: GroqMessage[] = [];
   if (systemPrompt) {
