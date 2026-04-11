@@ -11,8 +11,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseUser } from '@/lib/supabase/supabase-data'
 
-// Extend Vercel Hobby timeout from default 10s to 60s
-export const maxDuration = 60
+// Vercel Hobby plan caps at 10s — every millisecond counts
+export const maxDuration = 10
 
 // ═══════════════════════════════════════════════════════════════
 // Gemini Direct API Call (fallback when edge function unavailable)
@@ -65,7 +65,7 @@ async function callGeminiDirect(imageBase64: string, mimeType: string): Promise<
   }
 
   const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 50000) // 50s timeout (within 60s Vercel limit)
+  const timeoutId = setTimeout(() => controller.abort(), 8000) // 8s timeout (within Vercel 10s limit)
 
   try {
     const response = await fetch(url, {
@@ -178,54 +178,11 @@ export async function POST(request: NextRequest) {
     const { base64Data, mimeType } = parseImage(body)
 
     // ════════════════════════════════════════════════════
-    // PATH 1: Supabase Edge Function (preferred, 150s timeout)
+    // Direct Gemini API call (bypass edge function for speed)
+    // Edge function not deployed yet, so go straight to Gemini
+    // With compressed images (~200KB), this completes in 3-8s
     // ════════════════════════════════════════════════════
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
-    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-    let usedEdgeFunction = false
-
-    if (supabaseUrl && serviceKey) {
-      try {
-        const edgeResponse = await fetch(`${supabaseUrl}/functions/v1/analyze-food`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${serviceKey}`,
-          },
-          body: JSON.stringify({ image: body.image }),
-          signal: AbortSignal.timeout(120000), // 2 min timeout for edge function
-        })
-
-        if (edgeResponse.ok) {
-          usedEdgeFunction = true
-          const result = await edgeResponse.json()
-          return NextResponse.json(result)
-        }
-
-        // Edge function exists but returned an error (e.g. 504 timeout from Gemini)
-        // If it's a 404/503, the function isn't deployed — fall through to direct Gemini
-        if (edgeResponse.status === 404 || edgeResponse.status === 503) {
-          console.warn('[analyze-food-photo] Edge function not deployed (status:', edgeResponse.status, '), falling back to direct Gemini')
-        } else {
-          // Try to return the edge function's error
-          const edgeError = await edgeResponse.json().catch(() => null)
-          console.warn('[analyze-food-photo] Edge function error:', edgeResponse.status, edgeError)
-          if (edgeError?.error) {
-            return NextResponse.json(
-              { error: edgeError.error },
-              { status: 502 }
-            )
-          }
-        }
-      } catch (edgeError) {
-        console.warn('[analyze-food-photo] Edge function unavailable, falling back to direct Gemini')
-      }
-    }
-
-    // ════════════════════════════════════════════════════
-    // PATH 2: Direct Gemini API call (fallback, within 60s)
-    // ════════════════════════════════════════════════════
-    console.log('[analyze-food-photo] Using direct Gemini API', usedEdgeFunction ? '(edge function failed)' : '(no edge function config)')
+    console.log('[analyze-food-photo] Calling Gemini API directly, base64 length:', base64Data.length)
     try {
       const food = await callGeminiDirect(base64Data, mimeType)
       return NextResponse.json(buildFoodResponse(food))

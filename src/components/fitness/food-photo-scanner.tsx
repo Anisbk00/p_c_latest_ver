@@ -32,8 +32,8 @@ import { Button } from "@/components/ui/button";
 // Reduces camera photos from 5-20MB to ~200KB for fast upload
 // ═══════════════════════════════════════════════════════════════
 
-const MAX_IMAGE_DIMENSION = 1280;
-const JPEG_QUALITY = 0.75;
+const MAX_IMAGE_DIMENSION = 800;
+const JPEG_QUALITY = 0.6;
 
 function compressImage(sourceCanvas: HTMLCanvasElement): string | null {
   let { width, height } = sourceCanvas;
