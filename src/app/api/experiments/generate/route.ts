@@ -284,6 +284,7 @@ Create experiments that address their specific gaps and help them progress towar
           const { error: insertError } = await supabase.from('ai_insights').insert({
             user_id: user.id,
             insight_type: 'experiment',
+            title: exp.title || 'Experiment',
             content: JSON.stringify({
               ...exp,
               status: 'available',
@@ -326,6 +327,7 @@ Create experiments that address their specific gaps and help them progress towar
         const { error: insertError } = await supabase.from('ai_insights').insert({
           user_id: user.id,
           insight_type: 'experiment',
+          title: exp.title || 'Experiment',
           content: JSON.stringify({
             ...exp,
             status: 'available',
