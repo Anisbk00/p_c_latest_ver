@@ -23,7 +23,9 @@ interface Experiment {
 
 export async function POST(request: NextRequest) {
   try {
+    console.log('[experiments/generate] POST received');
     const { supabase, user } = await getSupabaseUser();
+    console.log('[experiments/generate] User authenticated:', user.id);
     const body = await request.json();
     const requestedCount = Math.min(Math.max(Number(body.count) || 4, 1), 10); // Cap between 1–10
     
@@ -179,9 +181,11 @@ Create experiments that address their specific gaps and help them progress towar
     }
 
     // If we have new experiments, store them in the database
+    console.log('[experiments/generate] Storing', newExperiments.length, 'new experiments');
     if (newExperiments.length > 0) {
       for (const exp of newExperiments) {
-        await supabase.from('ai_insights').insert({
+        console.log('[experiments/generate] Inserting experiment:', exp.title);
+        const { error: insertError } = await supabase.from('ai_insights').insert({
           user_id: user.id,
           insight_type: 'experiment',
           content: JSON.stringify({
@@ -193,9 +197,13 @@ Create experiments that address their specific gaps and help them progress towar
           }),
           source: 'ai',
         });
+        if (insertError) {
+          console.error('[experiments/generate] Insert error for', exp.title, ':', insertError);
+        }
       }
     }
 
+    console.log('[experiments/generate] Returning', newExperiments.length, 'experiments to client');
     return NextResponse.json({
       success: true,
       experiments: newExperiments,
