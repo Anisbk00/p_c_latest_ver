@@ -183,7 +183,7 @@ OUTPUT FORMAT - Return ONLY valid JSON (no markdown, no code blocks):
 }`;
 
     // ═══════════════════════════════════════════════════════════════
-    // GENERATE PLAN WITH AI (using Gemini Flash)
+    // GENERATE PLAN WITH AI (using Groq)
     // ═══════════════════════════════════════════════════════════════
 
     let responseText = await generateText(userPrompt, systemPrompt);

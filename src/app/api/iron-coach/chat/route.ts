@@ -221,8 +221,8 @@ export async function POST(request: NextRequest) {
       confidence: response.confidence,
       locale: finalLocale,
       provenance: {
-        source: 'gemini-llm',
-        model: 'Iron Coach via Gemini 2.5 Flash',
+        source: 'groq-llm',
+        model: 'Iron Coach via Groq (llama-3.3-70b-versatile)',
         timestamp: new Date().toISOString(),
         locale: finalLocale,
       },

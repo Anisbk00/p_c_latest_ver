@@ -1003,7 +1003,7 @@ export async function POST(request: NextRequest) {
       weekEndStr
     );
 
-    // Generate plan with AI (using Gemini Flash)
+    // Generate plan with AI (using Groq)
     let plan;
     try {
       let responseText = await generateText(userPrompt, systemPrompt);
@@ -1047,7 +1047,7 @@ export async function POST(request: NextRequest) {
           generation_source: forceRegenerate ? 'regenerate' : 'auto',
           plan_data: plan,
           confidence_score: plan.plan_confidence || 0.85,
-          model_version: 'gemini-flash',
+          model_version: 'groq-llama3.3-70b',
           generation_reasoning: plan.generation_reasoning,
           user_context_snapshot: userData,
         }, {

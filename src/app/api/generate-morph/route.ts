@@ -7,7 +7,7 @@
  * All generated images are clearly labeled as "AI Generated".
  * 
  * Note: Image generation requires a separate image generation service.
- * Gemini Flash provides vision analysis but not image generation.
+ * Groq (llama-4-scout-17b-16e-instruct) provides vision analysis but not image generation.
  * 
  * @module api/generate-morph
  */
@@ -15,7 +15,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from '@/lib/supabase/server';
 import { generateWithImage, MODEL_NAME } from '@/lib/ai/gemini-service';
-// Note: gemini-service.ts now uses Groq API under the hood
+// Note: groq-service.ts provides the Groq API calls
 
 // ═══════════════════════════════════════════════════════════════
 // POST /api/generate-morph
@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
     // Validate percentage range
     const percentage = Math.max(0, Math.min(100, Number(progressPercentage) || 50));
 
-    // ─── Analyze Images with Gemini Vision ─────────────────────────────────
+    // ─── Analyze Images with Groq Vision ─────────────────────────────────
     // Fetch images and convert to base64 (with timeout)
     const fetchImageAsBase64 = async (url: string): Promise<{ base64: string; mimeType: string }> => {
       const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
@@ -92,7 +92,7 @@ Be specific and objective. Respond with a detailed description of the transforma
     );
 
     // ─── Image Generation Placeholder ─────────────────────────────────
-    // Note: Gemini 2.5 Flash does not support image generation.
+    // Note: Groq vision models do not support image generation.
     // For actual morph generation, you would need to use an image generation API.
     // For now, we return the analysis and a placeholder message.
     
@@ -123,7 +123,7 @@ Note: This is a text description of the expected intermediate state.`;
       disclaimer: "This is an AI-analyzed transformation description for motivational purposes only. It represents an estimated intermediate state and may not reflect actual results. Image generation requires an additional image generation API.",
       
       provenance: {
-        source: "gemini-vlm",
+        source: "groq-vlm",
         modelName: MODEL_NAME,
         timestamp: new Date().toISOString(),
         method: "Vision analysis of progress photos",
@@ -163,7 +163,7 @@ export async function GET() {
   return NextResponse.json({
     endpoint: "Morph Memory Generation API",
     description: "Generate AI intermediate progress photos between two states",
-    provider: "Gemini 2.5 Flash",
+    provider: "Groq (llama-4-scout-17b-16e-instruct)",
     authentication: "Required - Bearer token or session cookie",
     important: "Currently provides text-based transformation analysis. Image generation requires additional API.",
     usage: "POST with { startImageUrl: string, endImageUrl: string, progressPercentage?: number }",

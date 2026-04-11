@@ -1,7 +1,7 @@
 /**
- * Iron Coach Cloud Completion - Using Gemini Flash
+ * Iron Coach Cloud Completion - Using Groq
  * 
- * AI service using Gemini Flash for:
+ * AI service using Groq (llama-3.3-70b-versatile) for:
  * - Text completions (Iron Coach chat)
  * 
  * This provides AI-powered coaching responses.
@@ -50,7 +50,7 @@ function getDefaultSystemPrompt(locale = 'en', tone: CoachingTone = 'aggressive'
 }
 
 /**
- * Complete a prompt using Gemini Flash with timeout handling
+ * Complete a prompt using Groq with timeout handling
  */
 export async function completeCloudPrompt(
   prompt: string, 
@@ -83,7 +83,7 @@ export async function completeCloudPrompt(
 }
 
 /**
- * Stream a prompt completion using Gemini Flash
+ * Stream a prompt completion using Groq
  */
 export async function streamCloudPrompt(options: CloudStreamOptions & { locale?: string; tone?: CoachingTone }): Promise<string> {
   const { prompt, onToken, signal, locale = 'en', userQuestion } = options;
@@ -125,7 +125,7 @@ Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific qu
   console.log('[streamCloudPrompt] Using prompt, length:', simpleUserPrompt.length);
 
   try {
-    // Generate response using Gemini
+    // Generate response using Groq
     const fullText = await generateText(simpleUserPrompt, systemPrompt);
     console.log('[streamCloudPrompt] AI response length:', fullText?.length || 0);
 
@@ -166,7 +166,7 @@ Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific qu
 }
 
 /**
- * Create an embedding using Gemini
+ * Create an embedding (Groq does not offer embeddings - returns empty)
  */
 export async function createCloudEmbedding(_input: string): Promise<number[]> {
   // Import dynamically to avoid circular dependencies

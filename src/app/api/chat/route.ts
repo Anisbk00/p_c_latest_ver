@@ -92,7 +92,7 @@ function validateNumbersInResponse(content: string): {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// AI Coach Chat API — Using Gemini 2.5 Flash
+// AI Coach Chat API — Using Groq (llama-3.3-70b-versatile)
 // ═══════════════════════════════════════════════════════════════
 export async function POST(request: NextRequest) {
   try {
@@ -125,7 +125,7 @@ export async function POST(request: NextRequest) {
     // SECURITY: Always use the authenticated user's ID, never trust client-provided userId
     const authenticatedUserId = user.id;
 
-    // Use the AI-powered Iron Coach via Gemini 2.5 Flash
+    // Use the AI-powered Iron Coach via Groq
     const coachResponse = await generateIronCoachResponse(
       authenticatedUserId,
       message,
@@ -145,8 +145,8 @@ export async function POST(request: NextRequest) {
       sessionId: coachResponse.conversationId,
       translations: coachResponse.translations,
       provenance: {
-        source: "gemini-llm",
-        modelName: "Iron Coach via Gemini 2.5 Flash",
+        source: "groq-llm",
+        modelName: "Iron Coach via Groq (llama-3.3-70b-versatile)",
         timestamp: new Date().toISOString(),
         coachingTone,
         contextUsed: Object.keys(context).length > 0,
@@ -183,8 +183,8 @@ export async function POST(request: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     endpoint: "AI Coach Chat API",
-    engine: "Iron Coach AI (Gemini 2.5 Flash)",
-    provider: "Google Gemini",
+    engine: "Iron Coach AI (Groq)",
+    provider: "Groq (llama-3.3-70b-versatile)",
     coachingTones: ["strict", "supportive", "minimal"],
     languages: ["en", "fr", "ar"],
     usage: "POST with { message: string, coachingTone?: string, locale?: string, context?: object } - Authentication required"

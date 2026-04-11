@@ -1,5 +1,5 @@
 /**
- * Body Composition Analyzer using Gemini Flash Vision
+ * Body Composition Analyzer using Groq Vision
  * 
  * Analyzes progress photos to estimate body fat percentage, muscle mass,
  * and other body composition metrics with confidence scores and provenance.
@@ -35,7 +35,7 @@ export interface BodyCompositionInput {
 }
 
 // ═══════════════════════════════════════════════════════════════
-// VLM Analysis using Gemini
+// VLM Analysis using Groq
 // ═══════════════════════════════════════════════════════════════
 
 const MODEL_VERSION = MODEL_NAME;
@@ -43,7 +43,7 @@ const MIN_CONFIDENCE = 0.3;
 const MAX_CONFIDENCE = 0.95;
 
 /**
- * Analyze a progress photo for body composition using Gemini Vision
+ * Analyze a progress photo for body composition using Groq Vision
  * 
  * @param input - Image data and metadata
  * @returns Body composition analysis with confidence scores
@@ -63,26 +63,26 @@ export async function analyzeBodyComposition(
       throw new Error('No image data provided for analysis');
     }
     
-    logger.info('Starting Gemini body composition analysis', { 
+    logger.info('Starting Groq body composition analysis', { 
       userId: input.userId,
       hasBase64: !!input.imageBase64,
       hasUrl: !!input.imageUrl 
     });
     
-    // Use the Gemini vision analysis
+    // Use the Groq vision analysis
     const result = await analyzePhoto(imageData, 'body-composition');
     
     if (!result.success) {
-      logger.warn('Gemini analysis failed, using fallback', { 
+      logger.warn('Groq analysis failed, using fallback', { 
         userId: input.userId,
         error: result.error
       });
-      return getFallbackResult(result.error || 'Gemini analysis failed');
+      return getFallbackResult(result.error || 'Groq analysis failed');
     }
     
     const analysis = result.analysis;
     
-    logger.info('Gemini response received', { 
+    logger.info('Groq response received', { 
       userId: input.userId,
       durationMs: Date.now() - startTime 
     });
@@ -132,7 +132,7 @@ export async function analyzeBodyComposition(
     return finalResult;
     
   } catch (error) {
-    logger.error('Gemini analysis failed, using fallback', error instanceof Error ? error : new Error(String(error)));
+    logger.error('Groq analysis failed, using fallback', error instanceof Error ? error : new Error(String(error)));
     return getFallbackResult(error instanceof Error ? error.message : 'Unknown error');
   }
 }
@@ -149,7 +149,7 @@ function getFallbackResult(reason: string): BodyCompositionResult {
     modelVersion: 'fallback-v1',
     analysisTimestamp: new Date(),
     warnings: [
-      'Gemini analysis unavailable - using fallback estimate',
+      'Groq analysis unavailable - using fallback estimate',
       'Results are not personalized',
       reason,
     ],

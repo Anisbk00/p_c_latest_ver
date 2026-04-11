@@ -2,7 +2,7 @@
  * Food Photo Analysis API
  * 
  * Uses Groq (llama-4-scout-17b-16e-instruct) for vision analysis.
- * Groq is ~10x faster than Gemini, completing in 1-3 seconds.
+ * Groq provides <3s inference via LPU architecture.
  * 
  * @module api/analyze-food-photo
  */

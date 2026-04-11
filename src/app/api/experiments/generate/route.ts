@@ -2,7 +2,7 @@
  * Generate Personalized Experiments API
  * POST /api/experiments/generate
  * 
- * Uses Gemini Flash to generate personalized micro-experiments based on user data
+ * Uses Groq (llama-3.3-70b-versatile) to generate personalized micro-experiments based on user data
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -96,7 +96,7 @@ export async function POST(request: NextRequest) {
       }).filter(Boolean) || [],
     };
 
-    // Build prompt for Gemini
+    // Build prompt for Groq
     const systemPrompt = `You are an expert fitness and nutrition coach who creates personalized micro-experiments for users. 
 Each experiment should be:
 - Small, achievable, and take 7-21 days
@@ -130,14 +130,14 @@ ${JSON.stringify(userContext, null, 2)}
 
 Create experiments that address their specific gaps and help them progress toward their goals. Focus on practical, actionable changes they can make today. Return ONLY the JSON object.`;
 
-    // Generate experiments using Gemini Flash
+    // Generate experiments using Groq
     let experiments: Experiment[] = [];
     
     try {
       const responseText = await generateText(userPrompt, systemPrompt);
       
       if (!responseText) {
-        throw new Error('No response from Gemini');
+        throw new Error('No response from AI');
       }
 
       // Parse the JSON response
@@ -189,7 +189,7 @@ Create experiments that address their specific gaps and help them progress towar
             endDate: null,
             adherence: 0,
           }),
-          source: 'gemini-ai',
+          source: 'groq-ai',
         });
       }
     }

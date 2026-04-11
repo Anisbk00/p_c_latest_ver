@@ -1,11 +1,11 @@
 // ═══════════════════════════════════════════════════════════════════════════════
 // Supabase Edge Function: analyze-food
 //
-// Analyzes food photos using Gemini Vision API with 150s timeout.
-// This avoids Vercel Hobby's 10s serverless function timeout.
+// Analyzes food photos using Groq Vision API (meta-llama/llama-4-scout-17b-16e-instruct).
+// Groq provides <3s inference via LPU architecture.
 //
 // Environment Variables (set in Supabase Dashboard → Settings → Edge Functions → Secrets):
-//   GEMINI_API_KEY - Google Gemini API key
+//   GROQ_API_KEY - Groq API key
 //   SUPABASE_SERVICE_ROLE_KEY - For authorization (auto-injected)
 // ═══════════════════════════════════════════════════════════════════════════════
 
@@ -35,6 +35,8 @@ Important:
 - If you cannot identify the food, set confidence to 0.3 or lower
 - Always return valid JSON with all fields present
 - Serving size should be in grams for solid foods, ml for liquids`;
+
+const GROQ_VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";
 
 Deno.serve(async (req: Request) => {
   // Handle CORS
@@ -66,11 +68,11 @@ Deno.serve(async (req: Request) => {
     });
   }
 
-  // Check Gemini API key
-  const geminiApiKey = Deno.env.get("GEMINI_API_KEY");
-  if (!geminiApiKey) {
+  // Check Groq API key
+  const groqApiKey = Deno.env.get("GROQ_API_KEY");
+  if (!groqApiKey) {
     return new Response(
-      JSON.stringify({ error: "GEMINI_API_KEY not configured in edge function" }),
+      JSON.stringify({ error: "GROQ_API_KEY not configured in edge function" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -119,59 +121,57 @@ Deno.serve(async (req: Request) => {
 
     console.log(`[analyze-food] Image received: ${mimeType}, base64 length: ${base64Data.length}`);
 
-    // Call Gemini Vision API with 90s timeout
-    const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+    // Call Groq Vision API with 30s timeout (Groq is typically <3s)
+    const dataUrl = `data:${mimeType};base64,${base64Data}`;
 
-    const geminiPayload = {
-      contents: [
+    const groqPayload = {
+      model: GROQ_VISION_MODEL,
+      messages: [
         {
-          parts: [
-            { text: FOOD_ANALYSIS_PROMPT },
-            {
-              inlineData: {
-                mimeType,
-                data: base64Data,
-              },
-            },
+          role: "user",
+          content: [
+            { type: "text", text: FOOD_ANALYSIS_PROMPT },
+            { type: "image_url", image_url: { url: dataUrl } },
           ],
         },
       ],
-      generationConfig: {
-        temperature: 0.35,
-        maxOutputTokens: 2048,
-      },
+      temperature: 0.35,
+      max_tokens: 2048,
     };
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
     try {
-      const geminiResponse = await fetch(geminiUrl, {
+      const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(geminiPayload),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${groqApiKey}`,
+        },
+        body: JSON.stringify(groqPayload),
         signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
 
-      if (!geminiResponse.ok) {
-        const errorData = await geminiResponse.text();
-        console.error("[analyze-food] Gemini error:", geminiResponse.status, errorData);
+      if (!groqResponse.ok) {
+        const errorData = await groqResponse.text();
+        console.error("[analyze-food] Groq error:", groqResponse.status, errorData);
         return new Response(
           JSON.stringify({
-            error: `Gemini API error: ${geminiResponse.status}`,
+            error: `Groq API error: ${groqResponse.status}`,
             details: errorData.substring(0, 500),
           }),
           { status: 502, headers: { "Content-Type": "application/json" } }
         );
       }
 
-      const geminiResult = await geminiResponse.json();
-      const textContent = geminiResult.candidates?.[0]?.content?.parts?.[0]?.text;
+      const groqResult = await groqResponse.json();
+      const textContent = groqResult.choices?.[0]?.message?.content;
 
       if (!textContent) {
-        console.error("[analyze-food] No content in Gemini response:", JSON.stringify(geminiResult).substring(0, 500));
+        console.error("[analyze-food] No content in Groq response:", JSON.stringify(groqResult).substring(0, 500));
         return new Response(
           JSON.stringify({ error: "No analysis result from AI" }),
           { status: 502, headers: { "Content-Type": "application/json" } }
@@ -215,8 +215,8 @@ Deno.serve(async (req: Request) => {
               ? food.detectedItems.slice(0, 10).map(String)
               : [],
           },
-          provider: "gemini-2.0-flash",
-          model: "gemini-2.0-flash",
+          provider: "groq",
+          model: GROQ_VISION_MODEL,
         }),
         {
           status: 200,

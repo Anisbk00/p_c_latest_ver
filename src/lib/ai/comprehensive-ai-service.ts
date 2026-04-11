@@ -244,7 +244,7 @@ async function storeMessage(
       content,
       locale,
       translations: buildTranslatedContent(content, locale),
-      source: metadata.source || 'gemini-llm',
+      source: metadata.source || 'groq-llm',
       confidence: metadata.confidence || 0.85,
       routing_reason: metadata.routingReason,
       tokens: metadata.tokens,
@@ -662,7 +662,7 @@ User Context:
   // Combine system prompt with context
   const fullSystemPrompt = `${getIronCoachSystemPrompt(userLocale)}\n\n${contextPrompt}`;
   
-  // Generate response using Gemini Flash
+  // Generate response using Groq
   const content = await zaiGenerateChatCompletion({
     messages: [{ role: 'user', content: message }],
     temperature: 0.35,
@@ -679,9 +679,9 @@ User Context:
   
   // Store assistant message
   const messageId = await storeMessage(supabase, convId, userId, 'assistant', content, userLocale, {
-    source: 'gemini-llm',
+    source: 'groq-llm',
     confidence,
-    routingReason: 'Cloud completion via Gemini Flash',
+    routingReason: 'Cloud completion via Groq',
   });
   
   // Update conversation timestamp
@@ -759,7 +759,7 @@ User Context:
   // Combine system prompt with context
   const fullSystemPrompt = `${getIronCoachSystemPrompt(userLocale)}\n\n${contextPrompt}`;
   
-  // Stream response using Gemini Flash
+  // Stream response using Groq
   let fullContent = '';
   
   for await (const chunk of zaiGenerateStreamingChatCompletion({
@@ -776,9 +776,9 @@ User Context:
   // Store complete assistant message
   const confidence = calculateConfidence(context, fullContent.length);
   const messageId = await storeMessage(supabase, convId, userId, 'assistant', fullContent, userLocale, {
-    source: 'gemini-llm',
+    source: 'groq-llm',
     confidence,
-    routingReason: 'Cloud streaming via Gemini Flash',
+    routingReason: 'Cloud streaming via Groq',
   });
   
   // Update conversation
