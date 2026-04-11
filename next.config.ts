@@ -63,7 +63,7 @@ const nextConfig: NextConfig = {
               "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
               "img-src 'self' data: blob: https://*.supabase.co https://*.supabase.in",
               "font-src 'self' https://fonts.gstatic.com",
-              "connect-src 'self' https://*.supabase.co https://*.supabase.in https://*.sentry.io https://api.groq.com https://groq.com https://o4509828950638592.ingest.us.sentry.io",
+              "connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in https://*.sentry.io https://api.groq.com https://groq.com https://o4509828950638592.ingest.us.sentry.io",
               "frame-ancestors 'none'",
               "base-uri 'self'",
               "form-action 'self'",
@@ -84,7 +84,7 @@ const nextConfig: NextConfig = {
           // Permissions Policy — restrict browser features
           {
             key: 'Permissions-Policy',
-            value: 'camera=(self https://*.supabase.co), microphone=(self https://*.supabase.co), geolocation=(self), notifications=(self)',
+            value: 'camera=(self "https://*.supabase.co"), microphone=(), geolocation=(self)',
           },
           // X-Frame-Options — prevent clickjacking
           {
