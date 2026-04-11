@@ -12,6 +12,7 @@
 
 import { createClient, createAdminClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { logger } from '@/lib/logger'
 
 // ═══════════════════════════════════════════════════════════════
 // POST /api/auth/revoke
@@ -44,17 +45,17 @@ export async function POST(request: NextRequest) {
       const { error: signOutError } = await adminClient.auth.admin.signOut(userId, 'global')
       
       if (signOutError) {
-        console.warn('[Revoke] Admin signOut warning:', signOutError.message)
+        logger.warn('Admin signOut warning', signOutError)
         // Still return success - the client-side signOut will handle local cleanup
       } else {
-        console.log('[Revoke] All sessions revoked via admin API for user:', userId)
+        logger.info('All sessions revoked via admin API', { userId })
       }
     } catch (adminError) {
-      console.warn('[Revoke] Admin client error:', adminError instanceof Error ? adminError.message : adminError)
+      logger.warn('Admin client error', adminError)
       // Still return success - client-side signOut will handle local cleanup
     }
 
-    console.log('[Revoke] Completed in', Date.now() - startTime, 'ms')
+    logger.performance('revoke', Date.now() - startTime)
 
     return NextResponse.json({
       success: true,
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[Revoke] Error:', error instanceof Error ? error.message : error)
+    logger.error('Revoke error', error)
     
     // Still return success - client will handle local cleanup
     // This prevents the sign-out flow from being blocked

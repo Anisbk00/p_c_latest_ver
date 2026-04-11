@@ -21,6 +21,7 @@ import {
   withDistributedRateLimit,
   DISTRIBUTED_RATE_LIMITS,
 } from '@/lib/distributed-rate-limit'
+import { logger } from '@/lib/logger'
 
 // Tables to clear user data from before deleting auth user
 const USER_DATA_TABLES = [
@@ -127,7 +128,7 @@ export async function DELETE(request: NextRequest) {
     const userId = user.id
     const userEmail = user.email
 
-    console.log('[Delete] Account deletion confirmed for user:', userId)
+    logger.info('Account deletion confirmed', { userId })
     
     // ─── Audit Log: Record Deletion Request ────────────────────
     const adminClient = createAdminClient()
@@ -165,11 +166,11 @@ export async function DELETE(request: NextRequest) {
         }
       } catch (err) {
         // Bucket might not exist or be empty
-        console.warn(`[Delete] Storage cleanup warning for ${bucket}:`, err)
+        logger.warn('Storage cleanup warning', { bucket, error: err })
       }
     }
     
-    console.log('[Delete] Storage files deleted:', storageFilesDeleted)
+    logger.info('Storage files deleted', { count: storageFilesDeleted })
 
     // ─── Step 1: Delete All User Data ─────────────────────────
     const deletionResults: Record<string, number> = {}
@@ -192,17 +193,17 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    console.log('[Delete] User data deleted:', deletionResults)
+    logger.info('User data deleted', deletionResults)
 
     // ─── Step 2: Revoke All Sessions ───────────────────────────
     try {
       const { error: signOutError } = await adminClient.auth.admin.signOut(userId, 'global')
       
       if (signOutError) {
-        console.warn('[Delete] Failed to revoke sessions:', signOutError.message)
+        logger.warn('Failed to revoke sessions', signOutError.message)
       }
     } catch (err) {
-      console.warn('[Delete] Session revocation error:', err)
+      logger.warn('Session revocation error', err)
     }
 
     // ─── Step 3: Delete Auth User ─────────────────────────────
@@ -210,7 +211,7 @@ export async function DELETE(request: NextRequest) {
     const { error: deleteError } = await adminClient.auth.admin.deleteUser(userId)
     
     if (deleteError) {
-      console.error('[Delete] Failed to delete auth user:', deleteError.message)
+      logger.error('Failed to delete auth user', deleteError.message)
       
       return NextResponse.json(
         { error: 'Failed to delete account. Please try again or contact support.' },
@@ -218,7 +219,7 @@ export async function DELETE(request: NextRequest) {
       )
     }
 
-    console.log('[Delete] Account deleted successfully:', userId, 'in', Date.now() - startTime, 'ms')
+    logger.info('Account deleted successfully', { userId, duration: Date.now() - startTime })
 
     return NextResponse.json({
       success: true,
@@ -226,7 +227,7 @@ export async function DELETE(request: NextRequest) {
     })
 
   } catch (error) {
-    console.error('[Delete] Account deletion error:', error instanceof Error ? error.message : error)
+    logger.error('Account deletion error', error instanceof Error ? error.message : error)
     
     return NextResponse.json(
       { error: 'Failed to delete account' },

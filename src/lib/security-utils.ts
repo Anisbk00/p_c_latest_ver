@@ -273,12 +273,13 @@ export function createSecureHeaders(init?: HeadersInit): Headers {
 // ═══════════════════════════════════════════════════════════════
 
 /** 
- * Secret pepper for checksum - loaded from environment
- * For production, set NEXT_PUBLIC_CHECKSUM_SECRET in your environment
- * Note: Client-side checksums cannot be truly secure since the client
- * has all the information. This provides obfuscation only.
+ * Checksum pepper — server-only environment variable.
+ * SECURITY: Previously exposed as NEXT_PUBLIC_CHECKSUM_SECRET which defeated its purpose.
+ * Client-side checksums are inherently insecure. This is now server-only.
  */
-const CHECKSUM_PEPPER = process.env.NEXT_PUBLIC_CHECKSUM_SECRET || 'pc_fallback_' + Date.now().toString(36);
+const CHECKSUM_PEPPER = typeof window === 'undefined'
+  ? (process.env.CHECKSUM_SECRET || '')
+  : '';
 
 /**
  * Generate a secure checksum using SHA-256

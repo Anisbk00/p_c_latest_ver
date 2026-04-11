@@ -91,6 +91,7 @@ export async function GET(_request: NextRequest) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg === 'UNAUTHORIZED') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    return NextResponse.json({ error: 'Failed to fetch AI state', details: msg }, { status: 500 });
+    // SECURITY: Do not expose internal error details to client
+    return NextResponse.json({ error: 'Failed to fetch AI state' }, { status: 500 });
   }
 }

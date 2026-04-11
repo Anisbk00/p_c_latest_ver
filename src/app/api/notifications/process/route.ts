@@ -16,6 +16,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { logger } from '@/lib/logger';
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Types
@@ -77,7 +78,7 @@ async function sendPushViaEdgeFunction(
     const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
     if (!supabaseUrl || !serviceKey) {
-      console.log('[NotificationWorker] Supabase config missing, storing for in-app delivery');
+      logger.info('NotificationWorker: Supabase config missing, storing for in-app delivery');
       return { deviceId: deviceToken, success: true };
     }
 
@@ -103,7 +104,7 @@ async function sendPushViaEdgeFunction(
 
       if (!response.ok) {
         // Edge function doesn't exist or failed - that's OK
-        console.log('[NotificationWorker] Push function not available, notification stored for in-app');
+        logger.info('NotificationWorker: Push function not available, notification stored for in-app');
         return { deviceId: deviceToken, success: true };
       }
 
@@ -115,11 +116,11 @@ async function sendPushViaEdgeFunction(
       };
     } catch {
       // Edge function not deployed yet - notifications still work in-app
-      console.log('[NotificationWorker] Push function not deployed, using in-app delivery');
+      logger.info('NotificationWorker: Push function not deployed, using in-app delivery');
       return { deviceId: deviceToken, success: true };
     }
   } catch (error) {
-    console.error('[NotificationWorker] Push error:', error);
+    logger.error('NotificationWorker: Push error', error);
     return {
       deviceId: deviceToken,
       success: false,
@@ -178,7 +179,7 @@ async function getPendingNotifications(supabase: Awaited<ReturnType<typeof creat
     .limit(100); // Process in batches
 
   if (error) {
-    console.error('[NotificationWorker] Error fetching pending notifications:', error);
+    logger.error('NotificationWorker: Error fetching pending notifications', error);
     return [];
   }
 
@@ -199,7 +200,7 @@ async function getUserDevices(
     .eq('push_enabled', true);
 
   if (error) {
-    console.error('[NotificationWorker] Error fetching user devices:', error);
+    logger.error('NotificationWorker: Error fetching user devices', error);
     return [];
   }
 
@@ -262,7 +263,7 @@ async function updateNotificationStatus(
     .eq('id', notificationId);
 
   if (error) {
-    console.error('[NotificationWorker] Error updating notification status:', error);
+    logger.error('NotificationWorker: Error updating notification status', error);
   }
 }
 
@@ -283,7 +284,7 @@ async function recordAnalytics(
       sent_at: new Date().toISOString(),
     });
   } catch (error) {
-    console.error('[NotificationWorker] Error recording analytics:', error);
+    logger.error('NotificationWorker: Error recording analytics', error);
   }
 }
 
@@ -365,7 +366,7 @@ async function processNotification(
     } else {
       failedCount++;
       const error = result.status === 'fulfilled' ? result.value.error : result.reason;
-      console.error('[NotificationWorker] Push failed:', error);
+      logger.error('NotificationWorker: Push failed', { error });
     }
   }
 
@@ -378,7 +379,7 @@ async function processNotification(
       const nextRetryMinutes = RETRY_BACKOFF_MINUTES[currentRetryCount] || 60;
       const nextRetryTime = new Date(Date.now() + nextRetryMinutes * 60 * 1000).toISOString();
       
-      console.log(`[NotificationWorker] Scheduling retry ${currentRetryCount + 1}/${MAX_RETRY_ATTEMPTS} at ${nextRetryTime}`);
+      logger.info('NotificationWorker: Scheduling retry', { attempt: currentRetryCount + 1, max: MAX_RETRY_ATTEMPTS, nextTime: nextRetryTime });
       
       // Update notification to retry later instead of marking as failed
       await supabase
@@ -394,7 +395,7 @@ async function processNotification(
       return { sent: 0, failed: failedCount, retrying: true };
     } else {
       // Max retries exceeded - mark as permanently failed
-      console.error(`[NotificationWorker] Max retries exceeded for notification ${notification.id}`);
+      logger.error('NotificationWorker: Max retries exceeded', { notificationId: notification.id });
       await updateNotificationStatus(supabase, notification.id, 'failed');
     }
   } else {
@@ -445,7 +446,7 @@ export async function GET(request: Request) {
     );
   }
 
-  console.log('[NotificationWorker] Starting notification processing...');
+  logger.info('NotificationWorker: Starting notification processing...');
 
   const supabase = await createClient();
   const startTime = Date.now();
@@ -573,7 +574,7 @@ export async function GET(request: Request) {
         }
       }
     } catch (triggerErr) {
-      console.error('[NotificationWorker] Trigger evaluation error:', triggerErr);
+      logger.error('NotificationWorker: Trigger evaluation error', triggerErr);
     }
 
     // ── PHASE 2: Process pending notifications ──
@@ -599,7 +600,7 @@ export async function GET(request: Request) {
       // Check if we're running low on time (Vercel 10s hobby limit)
       const elapsed = Date.now() - startTime;
       if (elapsed > 8000) {
-        console.log(`[NotificationWorker] Approaching timeout after ${elapsed}ms, processed ${i}/${pendingNotifications.length}`);
+        logger.warn('NotificationWorker: Approaching timeout', { processed: i, total: pendingNotifications.length, elapsed });
         break;
       }
 
@@ -612,7 +613,7 @@ export async function GET(request: Request) {
               setTimeout(() => reject(new Error('Notification processing timeout')), NOTIFICATION_TIMEOUT_MS)
             ),
           ]).catch((err) => {
-            console.error('[NotificationWorker] Notification timeout/error:', err);
+            logger.error('NotificationWorker: Notification timeout/error', err);
             return { sent: 0, failed: 1 };
           })
         )
@@ -630,7 +631,7 @@ export async function GET(request: Request) {
 
     const duration = Date.now() - startTime;
 
-    console.log(`[NotificationWorker] Processed ${pendingNotifications.length} notifications in ${duration}ms`);
+    logger.info('NotificationWorker: Processing complete', { processed: pendingNotifications.length, sent: totalSent, failed: totalFailed, duration });
 
     return NextResponse.json({
       success: true,
@@ -641,7 +642,7 @@ export async function GET(request: Request) {
       duration,
     });
   } catch (error) {
-    console.error('[NotificationWorker] Processing error:', error);
+    logger.error('NotificationWorker: Processing error', error);
     return NextResponse.json(
       {
         success: false,
