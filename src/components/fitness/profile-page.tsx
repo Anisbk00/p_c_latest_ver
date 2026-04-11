@@ -3458,6 +3458,19 @@ export function ProfilePage({ onOpenSettings }: { onOpenSettings?: () => void })
       toast.success('Experiment completed! 🎉', {
         description: 'Great job! Generating new personalized experiments...',
       });
+
+      // Show XP reward if awarded
+      if (result.xpAwarded) {
+        const xp = result.xpAwarded;
+        setTimeout(() => {
+          toast.success(`+${xp.amount} XP`, {
+            description: xp.isOnTime
+              ? '🎯 Completed on time — full reward!'
+              : 'Completed early — partial reward. Next time try to finish on time for more!',
+            duration: 5000,
+          });
+        }, 800);
+      }
       
       // Silent refetch to update experiment list
       refetchSilent();

@@ -33,6 +33,11 @@ export const XP_REWARDS = {
   daily_complete: 15,         // Logged workout + meals in same day
   streak_bonus_7: 50,         // 7-day streak milestone
   streak_bonus_30: 200,       // 30-day streak milestone
+  
+  // Experiments
+  experiment_completed_early: 15,   // Completed before time ran out
+  experiment_completed_ontime: 50,  // Completed on time (duration fully elapsed)
+  first_experiment: 30,             // Achievement: First experiment completed
 } as const;
 
 export type XPAction = keyof typeof XP_REWARDS;
@@ -404,6 +409,9 @@ export class XPService {
       daily_complete: '✅ Completed daily workout and nutrition',
       streak_bonus_7: '🔥 7-day streak milestone!',
       streak_bonus_30: '🏆 30-day streak milestone!',
+      experiment_completed_early: 'Completed experiment (early finish)',
+      experiment_completed_ontime: '🎯 Completed experiment on time!',
+      first_experiment: '🧪 First experiment completed!',
     };
 
     return descriptions[action] || `Earned XP for ${action}`;

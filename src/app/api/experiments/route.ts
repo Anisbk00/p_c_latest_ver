@@ -9,6 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseUser } from '@/lib/supabase/supabase-data'
+import { XPService, type XPAction } from '@/lib/xp-service'
 
 export async function GET() {
   try {
@@ -167,7 +168,71 @@ export async function PATCH(request: NextRequest) {
 
     if (error) throw error
 
-    return NextResponse.json({ success: true, experiment: data })
+    // ─── Award XP when experiment is completed ──────────────────
+    let xpAwarded: { action: XPAction; amount: number; description: string; isOnTime: boolean } | null = null
+
+    if (body.status === 'completed') {
+      try {
+        const xpService = new XPService(supabase)
+        const startDate = existingContent.startDate ? new Date(existingContent.startDate).getTime() : null
+        const durationDays = existingContent.duration || 14
+        const now = Date.now()
+
+        // Determine if completed on time (at or past the deadline)
+        let isOnTime = false
+        if (startDate) {
+          const deadline = startDate + durationDays * 24 * 60 * 60 * 1000
+          isOnTime = now >= deadline
+        } else {
+          isOnTime = false // No start date → treat as early
+        }
+
+        const action: XPAction = isOnTime ? 'experiment_completed_ontime' : 'experiment_completed_early'
+        const description = isOnTime
+          ? `🎯 "${existingContent.title}" completed on time!`
+          : `"${existingContent.title}" completed`
+
+        const result = await xpService.awardXP({
+          userId: user.id,
+          action,
+          referenceId: body.experimentId,
+          description,
+        })
+
+        if (result.success && result.awarded > 0) {
+          xpAwarded = { action, amount: result.awarded, description, isOnTime }
+
+          // Check if this is the first experiment completed (achievement)
+          const { data: prevCompleted } = await supabase
+            .from('xp_transactions')
+            .select('id')
+            .eq('user_id', user.id)
+            .eq('action_type', 'first_experiment')
+            .maybeSingle()
+
+          if (!prevCompleted) {
+            const firstResult = await xpService.awardXP({
+              userId: user.id,
+              action: 'first_experiment',
+              referenceId: 'first_experiment_achievement',
+              description: '🧪 First experiment completed! Keep going!',
+            })
+            if (firstResult.success && firstResult.awarded > 0) {
+              // Add bonus to the response
+              xpAwarded.amount += firstResult.awarded
+              xpAwarded.description += ` +${firstResult.awarded} bonus!`
+            }
+          }
+        }
+
+        console.log(`[experiments] XP awarded: ${xpAwarded?.amount} (${isOnTime ? 'on-time' : 'early'})`)
+      } catch (xpErr) {
+        console.error('[experiments] XP award failed (non-fatal):', xpErr)
+        // Don't fail the experiment completion just because XP failed
+      }
+    }
+
+    return NextResponse.json({ success: true, experiment: data, xpAwarded })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     if (msg === 'UNAUTHORIZED') return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
