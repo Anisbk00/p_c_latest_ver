@@ -496,13 +496,36 @@
   padding-right: env(safe-area-inset-right, 0);
 }
 
+/*
+ * Full-screen safe area spacers.
+ *
+ * With overlaysWebView: true, the WebView extends edge-to-edge behind the
+ * status bar and home indicator. These spacers push CONTENT down/up so it
+ * remains readable, while the background bleeds through — exactly like
+ * native iOS/Android apps.
+ *
+ * On web/desktop (no safe-area-inset), we apply a minimal padding so content
+ * doesn't sit flush against the viewport edge.
+ */
 .safe-area-top-spacer {
   flex-shrink: 0;
-  height: max(env(safe-area-inset-top, 0px), 20px);
+  height: max(env(safe-area-inset-top, 0px), env(safe-area-inset-top, 8px));
+}
+
+@supports (padding-top: env(safe-area-inset-top)) {
+  .safe-area-top-spacer {
+    height: env(safe-area-inset-top, 0px);
+  }
 }
 
 .safe-area-bottom-spacer {
-  height: max(env(safe-area-inset-bottom, 0px), 8px);
+  height: max(env(safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 4px));
+}
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .safe-area-bottom-spacer {
+    height: env(safe-area-inset-bottom, 0px);
+  }
 }
 
 .safe-area-bottom-keyboard {
@@ -1172,9 +1195,16 @@ button, [role="button"] {
   user-select: none;
 }
 
-/* iOS rubber banding fix */
+/* iOS rubber banding fix + full-screen edge-to-edge on native */
 html, body {
   overscroll-behavior: none;
+}
+
+/* Ensure body fills entire viewport edge-to-edge (native full-screen) */
+body {
+  min-height: 100dvh;
+  min-height: 100vh; /* fallback */
+  overflow-x: hidden;
 }
 
 /* Card hover effect */

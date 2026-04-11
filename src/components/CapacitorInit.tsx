@@ -24,14 +24,20 @@ function isLightTheme(): boolean {
 
 /**
  * Update StatusBar style and background color to match the active theme.
+ * On native platforms the WebView extends behind the status bar (overlaysWebView: true),
+ * so we keep the status bar background transparent to let the web content show through.
  */
 async function syncStatusBar(): Promise<void> {
   try {
     const { StatusBar, Style } = await import('@capacitor/status-bar');
     const light = isLightTheme();
     await StatusBar.setStyle({ style: light ? Style.Light : Style.Dark });
+    // Set overlaysWebView so web content extends behind the status bar — true premium feel
+    await StatusBar.setOverlaysWebView({ overlay: true });
+    // On Android, set background to transparent so web content shows through
+    // On iOS, the status bar is always transparent when overlaying
     if (isAndroid) {
-      await StatusBar.setBackgroundColor({ color: light ? '#ffffff' : '#0a0a0a' });
+      await StatusBar.setBackgroundColor({ color: '#00000000' }); // transparent
     }
   } catch {
     // StatusBar not available (web)
