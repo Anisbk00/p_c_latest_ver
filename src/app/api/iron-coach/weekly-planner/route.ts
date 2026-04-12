@@ -1949,6 +1949,161 @@ function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, 
   };
 }
 
+/**
+ * Parse AI text response into a structured plan object.
+ * Handles JSON extraction, repair, and validation.
+ */
+function parsePlanFromText(responseText: string): { plan: any; errors: AIErrorDetail[] } {
+  const errors: AIErrorDetail[] = [];
+  
+  const { json: extracted, wasTruncated } = extractJSON(responseText);
+  let jsonToParse = extracted;
+  
+  if (wasTruncated) {
+    console.warn('[weekly-planner] Response truncated, repairing...');
+    jsonToParse = repairTruncatedJSON(extracted);
+    errors.push({
+      attempt: 'stream',
+      stage: 'truncated',
+      model: 'groq-stream',
+      error: `Response truncated at ${responseText.length} chars. Auto-repair attempted.`,
+      timestamp: new Date().toISOString(),
+    });
+  }
+  
+  try {
+    const parsed = JSON.parse(jsonToParse);
+    if (parsed.daily_plan?.length > 0) {
+      return { plan: parsed, errors };
+    }
+    errors.push({
+      attempt: 'stream',
+      stage: 'invalid_structure',
+      model: 'groq-stream',
+      error: `Valid JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
+      timestamp: new Date().toISOString(),
+    });
+  } catch (parseErr) {
+    errors.push({
+      attempt: 'stream',
+      stage: 'json_parse',
+      model: 'groq-stream',
+      error: `JSON parse failed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
+      timestamp: new Date().toISOString(),
+    });
+    
+    // Try aggressive repair
+    try {
+      let repaired = jsonToParse
+        .replace(/[\x00-\x1F\x7F]/g, '')
+        .replace(/,\s*([}\]])/g, '$1')
+        .replace(/'/g, '"')
+        .replace(/\n/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+      repaired = repairTruncatedJSON(repaired);
+      
+      const parsed = JSON.parse(repaired);
+      if (parsed.daily_plan?.length > 0) {
+        console.log('[weekly-planner] SUCCESS after aggressive repair (streaming)');
+        return { plan: parsed, errors };
+      }
+    } catch {
+      errors.push({
+        attempt: 'stream',
+        stage: 'json_repair',
+        model: 'groq-stream',
+        error: 'JSON repair failed',
+        timestamp: new Date().toISOString(),
+      });
+    }
+  }
+  
+  return { plan: null, errors };
+}
+
+/**
+ * Stream a plan generation from Groq API. Returns accumulated text.
+ * Model fallback chain: llama-3.3-70b-versatile → llama-3.1-8b-instant
+ */
+async function streamGroqPlan(
+  systemPrompt: string, 
+  userPrompt: string, 
+  apiKey: string
+): Promise<string | null> {
+  const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+  
+  for (const model of models) {
+    try {
+      console.log(`[weekly-planner] Streaming from Groq: ${model}`);
+      
+      const groqResp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt + '\n\nRemember: Return ONLY valid JSON. No markdown code fences. No explanations.' },
+          ],
+          temperature: 0.3,
+          max_tokens: 4000,
+          stream: true,
+        }),
+      });
+      
+      if (!groqResp.ok || !groqResp.body) {
+        const errText = await groqResp.text().catch(() => '');
+        console.error(`[weekly-planner] Groq stream ${model}: HTTP ${groqResp.status} ${errText.substring(0, 200)}`);
+        continue;
+      }
+      
+      const reader = groqResp.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      let sseBuffer = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        sseBuffer += decoder.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop() || '';
+        
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+          const jsonStr = trimmed.slice(6);
+          if (jsonStr === '[DONE]') continue;
+          
+          try {
+            const parsed = JSON.parse(jsonStr);
+            const delta = parsed.choices?.[0]?.delta?.content || '';
+            if (delta) {
+              fullContent += delta;
+            }
+          } catch {
+            // Ignore malformed SSE chunks
+          }
+        }
+      }
+      
+      if (fullContent.length > 100) {
+        console.log(`[weekly-planner] Stream complete from ${model}: ${fullContent.length} chars`);
+        return fullContent;
+      }
+    } catch (err) {
+      console.error(`[weekly-planner] Groq streaming ${model} error:`, err instanceof Error ? err.message : err);
+    }
+  }
+  
+  return null;
+}
+
 // MAIN API HANDLERS
 
 export async function POST(request: NextRequest) {
@@ -2074,81 +2229,170 @@ export async function POST(request: NextRequest) {
       console.log('[weekly-planner] Could not check regeneration count:', e);
     }
 
-    // ═══ AI-ONLY PLAN GENERATION ═══
-    // No fallback — if AI fails, return error so the user knows.
-    let plan: any = null;
-    let generationSource: 'ai';
-    let aiErrors: AIErrorDetail[] = [];
-
-    // Pre-check: is AI service available?
+    // ═══ AI PLAN GENERATION (STREAMING — works on Vercel Hobby) ═══
     const GROQ_API_KEY = process.env.GROQ_API_KEY;
+    
     if (!GROQ_API_KEY) {
       console.error('[weekly-planner] GROQ_API_KEY not set in environment variables');
       return NextResponse.json({
         success: false,
         error: 'ai_generation_failed',
-        message: 'AI service is not configured. Please set GROQ_API_KEY in Vercel environment variables.',
+        message: 'AI service is not configured.',
         regenerations_remaining: regenerationsRemaining,
       }, { status: 503 });
     }
 
-    console.log('[weekly-planner] Starting AI plan generation (model fallback chain)...');
-    const aiResult = await generatePlanWithAI(systemPrompt, userPrompt);
-    aiErrors = aiResult.errors;
+    // ── Create streaming response ──
+    const encoder = new TextEncoder();
     
-    if (aiResult.success && aiResult.plan?.daily_plan?.length > 0) {
-      plan = aiResult.plan;
-      generationSource = 'ai';
-      console.log('[weekly-planner] AI plan generated successfully');
-    } else {
-      // AI failed — use smart template-based fallback plan so user always gets something
-      console.error('[weekly-planner] AI generation failed, using template fallback');
-      console.error('[weekly-planner] ALL AI ATTEMPTS FAILED:');
-      aiErrors.forEach(e => console.error(`  [${e.attempt}] ${e.model} ${e.stage}: ${e.error}`));
-
-      plan = generateFallbackPlan(userData, weekStartStr, weekEndStr);
-      generationSource = 'template'; // Mark as template — don't save to DB cache
-      console.log('[weekly-planner] Template fallback plan generated successfully');
-    }
-
-    // Try to store plan in database (optional, may fail if table doesn't exist)
-    // NEVER cache template fallback — so regenerate can retry AI next time
-    if (generationSource !== 'template') {
+    const send = (controller: any, data: any) => {
       try {
-        await sb
-          .from('weekly_plans')
-          .upsert({
-            user_id: user.id,
-            week_start_date: weekStartStr,
-            week_end_date: weekEndStr,
-            status: 'active',
-            generation_source: forceRegenerate ? 'regenerate' : 'auto',
-            regenerations_used: forceRegenerate ? (2 - regenerationsRemaining + 1) : 0,
-            plan_data: plan,
-            confidence_score: plan.plan_confidence || 0.85,
-            model_version: 'ai-v1',
-            generation_reasoning: plan.generation_reasoning,
-            user_context_snapshot: userData,
-          }, {
-            onConflict: 'user_id,week_start_date',
-          });
-      } catch (dbError) {
-        console.log('[weekly-planner] Could not save to weekly_plans table:', dbError);
+        controller.enqueue(encoder.encode(JSON.stringify(data) + '\n'));
+      } catch {
+        // Stream already closed
       }
-    } else {
-      console.log('[weekly-planner] Skipping DB save for template fallback (will retry AI on next request)');
-    }
-
-    return NextResponse.json({
-      success: true,
-      plan,
-      cached: false,
-      plan_id: null,
-      generated_at: new Date().toISOString(),
-      confidence: plan.plan_confidence || 0.85,
-      generation_source: generationSource,
-      ai_errors: aiErrors.length > 0 ? aiErrors : undefined,
-      regenerations_remaining: regenerationsRemaining,
+    };
+    
+    // Capture variables for the stream closure
+    const capturedSb = sb;
+    const capturedWeekStartStr = weekStartStr;
+    const capturedWeekEndStr = weekEndStr;
+    const capturedForceRegenerate = forceRegenerate;
+    const capturedRegenerationsRemaining = regenerationsRemaining;
+    const capturedSystemPrompt = systemPrompt;
+    const capturedUserPrompt = userPrompt;
+    const capturedUserData = userData;
+    
+    const stream = new ReadableStream({
+      async start(controller) {
+        let plan: any = null;
+        let generationSource: string = 'template';
+        let aiErrors: AIErrorDetail[] = [];
+        
+        try {
+          send(controller, { type: 'status', message: 'Connecting to AI...' });
+          
+          // STRATEGY 1: Try mini-service (sandbox — no timeout limit)
+          try {
+            const msController = new AbortController();
+            const msTimeout = setTimeout(() => msController.abort(), 180_000);
+            
+            const msResp = await fetch(
+              `/?XTransformPort=${PLANNER_AI_PORT}&path=/generate`,
+              {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                  system_prompt: capturedSystemPrompt, 
+                  user_prompt: capturedUserPrompt 
+                }),
+                signal: msController.signal,
+              },
+            );
+            clearTimeout(msTimeout);
+            
+            if (msResp.ok) {
+              const msData = await msResp.json();
+              if (msData.success && msData.content) {
+                console.log(`[weekly-planner] Mini-service SUCCESS: model=${msData.model}, chars=${msData.content.length}`);
+                const result = parsePlanFromText(msData.content);
+                if (result.plan) {
+                  plan = result.plan;
+                  aiErrors = result.errors;
+                  generationSource = 'ai';
+                }
+              }
+            }
+          } catch (msErr) {
+            console.warn('[weekly-planner] Mini-service unavailable, using direct Groq streaming');
+          }
+          
+          // STRATEGY 2: Direct Groq streaming (production — bypasses Vercel timeout)
+          if (!plan) {
+            send(controller, { type: 'status', message: 'AI is crafting your plan... 🔥' });
+            
+            const fullContent = await streamGroqPlan(
+              capturedSystemPrompt,
+              capturedUserPrompt,
+              GROQ_API_KEY!
+            );
+            
+            if (fullContent) {
+              const result = parsePlanFromText(fullContent);
+              if (result.plan) {
+                plan = result.plan;
+                aiErrors = result.errors;
+                generationSource = 'ai';
+              }
+            }
+          }
+          
+          // STRATEGY 3: Template fallback
+          if (!plan) {
+            console.error('[weekly-planner] AI generation failed, using template fallback');
+            aiErrors.forEach(e => console.error(`  [${e.stage}] ${e.error}`));
+            plan = generateFallbackPlan(capturedUserData, capturedWeekStartStr, capturedWeekEndStr);
+            generationSource = 'template';
+          }
+          
+          // Save to DB (skip for template fallback)
+          if (generationSource !== 'template') {
+            try {
+              await capturedSb
+                .from('weekly_plans')
+                .upsert({
+                  user_id: user!.id,
+                  week_start_date: capturedWeekStartStr,
+                  week_end_date: capturedWeekEndStr,
+                  status: 'active',
+                  generation_source: capturedForceRegenerate ? 'regenerate' : 'auto',
+                  regenerations_used: capturedForceRegenerate ? (2 - capturedRegenerationsRemaining + 1) : 0,
+                  plan_data: plan,
+                  confidence_score: plan.plan_confidence || 0.85,
+                  model_version: 'ai-v1',
+                  generation_reasoning: plan.generation_reasoning,
+                  user_context_snapshot: capturedUserData,
+                }, {
+                  onConflict: 'user_id,week_start_date',
+                });
+            } catch (dbError) {
+              console.log('[weekly-planner] Could not save to weekly_plans table:', dbError);
+            }
+          } else {
+            console.log('[weekly-planner] Skipping DB save for template fallback');
+          }
+          
+          // Send final result
+          send(controller, {
+            type: 'done',
+            success: true,
+            plan,
+            generation_source: generationSource,
+            regenerations_remaining: capturedRegenerationsRemaining,
+            ai_errors: aiErrors.length > 0 ? aiErrors : undefined,
+            generated_at: new Date().toISOString(),
+            confidence: plan.plan_confidence || 0.85,
+          });
+          
+        } catch (err) {
+          console.error('[weekly-planner] Stream error:', err);
+          send(controller, {
+            type: 'error',
+            success: false,
+            message: 'AI temporarily unavailable. Try again.',
+          });
+        } finally {
+          try { controller.close(); } catch {}
+        }
+      },
+    });
+    
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'application/x-ndjson',
+        'Cache-Control': 'no-cache, no-transform',
+        'X-Accel-Buffering': 'no',
+      },
     });
 
   } catch (error) {

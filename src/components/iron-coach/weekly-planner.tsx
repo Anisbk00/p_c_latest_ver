@@ -513,55 +513,112 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
 
       console.log('[WeeklyPlanner] API response status:', response.status);
 
-      // Guard: if response is not ok, parse error body safely
-      let data: any;
-      try {
-        data = await response.json();
-      } catch {
-        // Vercel sometimes returns HTML on 503 — treat as generic error
-        throw new Error('Service temporarily unavailable (503)');
-      }
-
-      console.log('[WeeklyPlanner] API data:', { success: data.success, source: data.generation_source, cached: data.cached, remaining: data.regenerations_remaining });
-
       if (!response.ok) {
-        // Rate limit hit
+        let data: any;
+        try { data = await response.json(); } catch { throw new Error('Service temporarily unavailable (503)'); }
+        
         if (data.error === 'regeneration_limit') {
           setRegenerationsRemaining(data.regenerations_remaining ?? 0);
           setError('regeneration_limit');
           setErrorMessage(data.message || 'You can only regenerate 2 times per week.');
           return;
         }
-        // AI unavailable — never show raw error details to user
         throw new Error('AI temporarily unavailable');
       }
 
-      if (data.success && data.plan) {
-        // If regenerate returned a template fallback, show toast (don't silently swap same plan)
-        if (forceRegenerate && data.generation_source === 'template') {
-          console.log('[WeeklyPlanner] AI returned template fallback, showing toast');
-          setToastMessage('⚡ AI is busy right now — try again in a minute!');
-          setTimeout(() => setToastMessage(null), 4000);
-          // Still update the plan — template has real data from user profile
+      // Detect streaming vs JSON response
+      const contentType = response.headers.get('content-type') || '';
+      
+      if (contentType.includes('ndjson') || contentType.includes('stream') || !contentType.includes('json')) {
+        // ═══ STREAMING RESPONSE ═══
+        console.log('[WeeklyPlanner] Reading streaming response...');
+        
+        if (!response.body) {
+          throw new Error('No response body');
         }
-        setPlan(data.plan);
-        setGenerationSource(data.generation_source || (data.cached ? 'cached' : null));
-        setAiErrors(data.ai_errors || null);
-        setRegenerationsRemaining(data.regenerations_remaining ?? 2);
-        const today = new Date().toISOString().split('T')[0];
-        const todayIndex = data.plan.daily_plan?.findIndex((d: DailyPlan) => d.date === today);
-        if (todayIndex >= 0) setSelectedDayIndex(todayIndex);
+        
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            try {
+              const msg = JSON.parse(line);
+              
+              if (msg.type === 'done') {
+                console.log('[WeeklyPlanner] Stream done:', { source: msg.generation_source, success: msg.success });
+                
+                if (msg.success && msg.plan) {
+                  if (forceRegenerate && msg.generation_source === 'template') {
+                    console.log('[WeeklyPlanner] AI returned template fallback, showing toast');
+                    setToastMessage('⚡ AI is busy right now — try again in a minute!');
+                    setTimeout(() => setToastMessage(null), 4000);
+                  }
+                  setPlan(msg.plan);
+                  setGenerationSource(msg.generation_source || null);
+                  setAiErrors(msg.ai_errors || null);
+                  setRegenerationsRemaining(msg.regenerations_remaining ?? 2);
+                  const today = new Date().toISOString().split('T')[0];
+                  const todayIndex = msg.plan.daily_plan?.findIndex((d: DailyPlan) => d.date === today);
+                  if (todayIndex >= 0) setSelectedDayIndex(todayIndex);
+                } else {
+                  throw new Error(msg.message || 'Failed to generate plan');
+                }
+              } else if (msg.type === 'error') {
+                throw new Error(msg.message || 'Generation failed');
+              }
+              // type === 'status' is just for progress, no action needed
+            } catch (parseErr) {
+              if (parseErr.message && !parseErr.message.includes('JSON')) {
+                throw parseErr;
+              }
+              // Ignore JSON parse errors for status lines
+            }
+          }
+        }
       } else {
-        throw new Error(data.message || 'Failed to generate plan');
+        // ═══ REGULAR JSON RESPONSE (cached plans) ═══
+        let data: any;
+        try {
+          data = await response.json();
+        } catch {
+          throw new Error('Service temporarily unavailable (503)');
+        }
+
+        console.log('[WeeklyPlanner] API data:', { success: data.success, source: data.generation_source, cached: data.cached, remaining: data.regenerations_remaining });
+
+        if (data.success && data.plan) {
+          if (forceRegenerate && data.generation_source === 'template') {
+            console.log('[WeeklyPlanner] AI returned template fallback, showing toast');
+            setToastMessage('⚡ AI is busy right now — try again in a minute!');
+            setTimeout(() => setToastMessage(null), 4000);
+          }
+          setPlan(data.plan);
+          setGenerationSource(data.generation_source || (data.cached ? 'cached' : null));
+          setAiErrors(data.ai_errors || null);
+          setRegenerationsRemaining(data.regenerations_remaining ?? 2);
+          const today = new Date().toISOString().split('T')[0];
+          const todayIndex = data.plan.daily_plan?.findIndex((d: DailyPlan) => d.date === today);
+          if (todayIndex >= 0) setSelectedDayIndex(todayIndex);
+        } else {
+          throw new Error(data.message || 'Failed to generate plan');
+        }
       }
     } catch (err) {
-      // Log full error details to console, show generic message to user
       console.error('[WeeklyPlanner] Error:', err);
       if (!plan) {
         setError('ai_unavailable');
         setErrorMessage('AI temporarily unavailable. Try again in a moment.');
       } else {
-        // Plan exists — show toast instead of replacing plan with error
         setToastMessage('⚠️ Something went wrong. Try again!');
         setTimeout(() => setToastMessage(null), 3000);
       }
