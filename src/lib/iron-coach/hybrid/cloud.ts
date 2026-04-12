@@ -166,8 +166,8 @@ Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific qu
   }
 
   // ── Retry loop for rate-limit and transient errors ──
-  const MAX_RETRIES = 3;
-  const RETRY_DELAYS = [8000, 15000, 25000]; // 8s, 15s, 25s
+  const MAX_RETRIES = 2;
+  const RETRY_DELAYS = [3000, 10000]; // 3s, 10s — keep total under Vercel timeout
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     if (signal?.aborted) {
@@ -220,14 +220,17 @@ Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific qu
         continue;
       }
 
-      // Non-retryable or exhausted retries
+      // Non-retryable or exhausted retries — show actual error for debugging
       if (isRetryableError(error)) {
-        const rateLimitMsg = "Whoa there, soldier! 🛑 The AI is getting hammered right now. Wait a minute and try again. The free tier has limits, but I'll be back! 💪";
+        const errDetail = errorMessage.slice(0, 200);
+        const rateLimitMsg = `⚠️ AI error (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${errDetail}`;
+        console.error('[streamCloudPrompt] Final error:', errDetail);
         for (const ch of rateLimitMsg) onToken(ch);
         return rateLimitMsg;
       }
 
-      const errorFallback = `Damn it! Something went wrong: ${errorMessage.slice(0, 80)}. Try again. 💀`;
+      const errorFallback = `⚠️ Error: ${errorMessage.slice(0, 150)}. Try again.`;
+      console.error('[streamCloudPrompt] Non-retryable error:', errorMessage);
       for (const ch of errorFallback) onToken(ch);
       return errorFallback;
     }
