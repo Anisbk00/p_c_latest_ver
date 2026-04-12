@@ -24,8 +24,14 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 // Model names
 const MODEL_NAME = 'llama-3.3-70b-versatile';
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
-// Fallback text models — tried in order if primary is overloaded
-const FALLBACK_TEXT_MODELS = ['llama-3.1-8b-instant'];
+// Fallback text models — tried in order if primary is rate-limited/overloaded.
+// Each model has a SEPARATE rate limit pool on Groq, so if one is at daily limit,
+// the others likely still have quota.
+const FALLBACK_TEXT_MODELS = [
+  'gemma2-9b-it',            // Google Gemma 9B — good quality, separate rate pool
+  'llama-3.1-8b-instant',    // Llama 3.1 8B — fastest
+  'llama3-8b-8192',           // Llama 3 8B — reliable
+];
 // EMBEDDING_MODEL removed — Groq does not offer embeddings
 
 if (GROQ_API_KEY) {
@@ -58,7 +64,7 @@ function sleep(ms: number): Promise<void> {
 let rateLimitedUntil = 0;
 let consecutiveRateLimits = 0;
 const MAX_RETRIES = 3;
-const BASE_RETRY_DELAY_MS = 8000;
+const BASE_RETRY_DELAY_MS = 3000;
 
 function isRateLimited(): boolean {
   return Date.now() < rateLimitedUntil;
@@ -76,7 +82,7 @@ function handleRateLimitError(error: Error): { shouldRetry: boolean; waitMs: num
   if (retryMatch) {
     waitMs = Math.ceil(parseFloat(retryMatch[1]) * 1000);
   }
-  waitMs = Math.min(waitMs * Math.pow(1.3, consecutiveRateLimits - 1), 30000);
+  waitMs = Math.min(waitMs * Math.pow(1.2, consecutiveRateLimits - 1), 15000);
   rateLimitedUntil = Date.now() + waitMs;
   console.log(`[Groq] Rate limited. Waiting ${Math.ceil(waitMs / 1000)}s.`);
   return { shouldRetry: consecutiveRateLimits <= MAX_RETRIES, waitMs };
