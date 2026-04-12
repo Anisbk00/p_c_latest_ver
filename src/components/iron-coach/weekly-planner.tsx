@@ -98,6 +98,8 @@ interface WeeklyPlan {
   weekly_nutrition_summary?: {
     avg_daily_calories: number;
     avg_daily_protein: number;
+    avg_daily_carbs?: number;
+    avg_daily_fat?: number;
     training_day_calories: number;
     rest_day_calories: number;
   };
@@ -785,9 +787,43 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
             {/* Nutrition Tab */}
             <TabsContent value="nutrition" className="flex-1 min-h-0 overflow-y-auto p-4 mt-0">
               <div className="space-y-4">
-                {/* Macro Overview */}
+                {/* Your 7-Day Actuals */}
+                {plan.weekly_nutrition_summary && plan.weekly_nutrition_summary.avg_daily_calories > 0 && (
+                  <Card className={cn("border", styles.accentBg)}>
+                    <CardContent className="p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Activity className={cn("w-3.5 h-3.5", styles.accent)} />
+                        <span className={cn("text-xs font-medium", styles.accentText)}>Your 7-Day Average</span>
+                      </div>
+                      <div className="grid grid-cols-4 gap-2 text-center">
+                        <div>
+                          <div className={cn("text-lg font-bold", styles.calColor)}>{plan.weekly_nutrition_summary.avg_daily_calories}</div>
+                          <div className={cn("text-xs", styles.textMuted)}>Cal</div>
+                        </div>
+                        <div>
+                          <div className={cn("text-lg font-bold", styles.proteinColor)}>{plan.weekly_nutrition_summary.avg_daily_protein}g</div>
+                          <div className={cn("text-xs", styles.textMuted)}>Protein</div>
+                        </div>
+                        <div>
+                          <div className={cn("text-lg font-bold", styles.carbsColor)}>{plan.weekly_nutrition_summary.avg_daily_carbs || '—'}</div>
+                          <div className={cn("text-xs", styles.textMuted)}>Carbs</div>
+                        </div>
+                        <div>
+                          <div className={cn("text-lg font-bold", styles.fatColor)}>{plan.weekly_nutrition_summary.avg_daily_fat || '—'}</div>
+                          <div className={cn("text-xs", styles.textMuted)}>Fat</div>
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
+                {/* Plan Target Macros */}
                 <Card className={cn("border", styles.card)}>
                   <CardContent className="p-3">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Target className={cn("w-3.5 h-3.5", styles.icon)} />
+                      <span className={cn("text-xs font-medium", styles.textMuted)}>Plan Target</span>
+                    </div>
                     <MacroBar
                       protein={currentDay.nutrition.target_protein}
                       carbs={currentDay.nutrition.target_carbs}

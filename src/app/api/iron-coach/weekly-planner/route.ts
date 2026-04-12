@@ -1744,6 +1744,19 @@ function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, 
     },
     daily_plan: dailyPlans,
     recommendations: recs,
+    weekly_nutrition_summary: {
+      avg_daily_calories: data.nutritionPatterns.avg_daily_calories_7d,
+      avg_daily_protein: data.nutritionPatterns.avg_daily_protein_7d,
+      avg_daily_carbs: data.nutritionPatterns.avg_daily_carbs_7d,
+      avg_daily_fat: data.nutritionPatterns.avg_daily_fat_7d,
+      training_day_calories: Math.round(baseCal * 1.1),
+      rest_day_calories: Math.round(baseCal * 0.9),
+    },
+    weekly_workout_summary: {
+      training_split: splitLabel,
+      volume_level: isBeginner ? 'moderate' : 'high',
+      intensity_progression: 'progressive',
+    },
   };
 }
 
