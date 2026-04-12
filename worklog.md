@@ -558,3 +558,33 @@ Work Log:
 - Dev server compiles and runs cleanly
 - No new dependencies added (uses native fetch for Groq API)
 
+
+---
+Task ID: iron-coach-persona-blend
+Agent: main
+Task: Blend new Iron Coach aggressive persona into existing prompt without breaking anything
+
+Work Log:
+- Read all relevant files: prompt-template.ts, cloud.ts, groq-service.ts, context.ts, chat/stream/route.ts, iron-coach-chat.tsx
+- Analyzed existing prompt structure: 3 tones (aggressive, supportive, balanced) + weekly plan prompt + user prompt builder
+- Identified aggressive prompt (lines 48-73) as the target for blending
+- Merged new persona elements into aggressive prompt while preserving ALL existing code:
+  - Kept: supportive tone, balanced tone, weekly plan prompt, user prompt builder (buildHybridCoachUserPrompt), all ABSOLUTE RULES
+  - Added: "high-testosterone, commanding, demanding" description, "swear and curse when necessary", "forge them into machines", "savage and sarcastic humor"
+  - Expanded ROLE section: Nutrition Truths, Meal Planning, Food Analysis, Tunisian Cuisine, Dietary Advice, Recipes (6 sub-roles)
+  - Updated STYLE: Added "Honesty" rule (expose excuses, call out laziness), "high-testosterone" + "authoritative" descriptors
+  - Updated emojis: Added 🏋️‍♂️ to allowed set
+  - Updated medical disclaimer: "Go get cleared, then come back to work"
+  - Updated response length: 2-3 paragraphs of pure value (was 2 paragraphs 60 words)
+  - Added closing: "Wake them up and make them huge"
+- Updated user prompt final reminder to match new 2-3 paragraph guidance
+- Reduced max_tokens in cloud.ts from 200 to 150 for stricter response length enforcement
+
+Stage Summary:
+- New Iron Coach persona fully blended with existing aggressive prompt
+- All 3 tone variants preserved (supportive, balanced, aggressive)
+- All 5 ABSOLUTE RULES preserved (DATA-ONLY, FOOD QUESTIONS, ULTRA-BRIEF, QUOTE EXACT NUMBERS, NO GENERIC ADVICE)
+- User prompt builder unchanged (buildHybridCoachUserPrompt)
+- Weekly plan prompt unchanged (buildWeeklyPlanSystemPrompt)
+- max_tokens reduced from 200 → 150 for chat responses
+- 0 lint errors, 0 breaking changes
