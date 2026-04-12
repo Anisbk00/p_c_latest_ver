@@ -385,3 +385,23 @@ Stage Summary:
 - API returns `generation_source` and `ai_errors` so frontend can display diagnostics
 - Frontend shows clear visual indicators: green badge for AI plans, amber banner with expandable error details for fallback plans
 - User can now see exactly what went wrong (e.g., "Groq API rate limit hit" or "AI returned invalid JSON after 3 attempts")
+---
+Task ID: push-deploy
+Agent: main
+Task: Push improved weekly planner error handling to Vercel production
+
+Work Log:
+- Verified existing code already has comprehensive error handling:
+  - Backend: AIErrorDetail interface, AIPlanResult with structured errors, generatePlanWithAI tracks all failure stages
+  - POST handler returns generation_source and ai_errors in response
+  - Frontend: aiErrorSummary classifies errors (rate_limit, timeout, overloaded, parse_error), amber fallback banner with collapsible technical details, green AI success badge
+- Ran lint: 0 errors, 9 pre-existing warnings
+- Deployed to Vercel production: https://my-project-nu-three-55.vercel.app
+- Build succeeded in 41s, all routes compiled
+
+Stage Summary:
+- Error handling for weekly planner is now live in production
+- Users will see: amber "Smart Fallback Plan" banner when AI fails, with expandable error details showing exactly which model failed, at what stage (api_call/json_parse/json_repair), and the error message
+- Green "AI-Generated Plan" badge when AI succeeds
+- Fallback plan continues to work alongside the diagnostic info
+
