@@ -750,43 +750,165 @@ function buildPrecisionWeeklyPlanPrompt(
     ? Math.round((data.workoutPatterns.total_workouts_30d / 4) * 10) / 10
     : 0;
   const recentDaysPerWeek = data.workoutPatterns.total_workouts_7d;
-  
-  const systemPrompt = `You are Iron Coach 💀 — an elite personal trainer and nutritionist with 20+ years of experience. You create detailed, science-based weekly plans tailored to each client's data, goals, and habits. You roast laziness, celebrate discipline, and always use emojis 🔥💪.
+  const workoutDays = Math.max(3, Math.min(6, Math.round(actualDaysPerWeek) || 4));
+  const restDays = 7 - workoutDays;
 
-CRITICAL RULES:
-1. You MUST complete ALL 7 days. NEVER cut off mid-plan. Every single day from Monday to Sunday must be present.
-2. Each workout must have 4-6 exercises with specific sets, reps, and rest times.
-3. Each meal must list real foods the user actually eats (from their data). Use food names only — NO calorie/macro numbers per food (you don't have that data).
-4. Be PERSONAL — reference their name (${p.name}), their stats, their streak, their habits. Generic plans are unacceptable.
-5. Output ONLY valid JSON. No markdown, no code fences, no explanations outside JSON.
-6. On rest days, set is_workout_day:false and include active recovery suggestions in coach_message.`;
+  // Build coaching context based on data
+  const coachingHooks: string[] = [];
+  if (data.nutritionPatterns.protein_adherence_percent < 70) {
+    coachingHooks.push(`${p.name}'s protein adherence is only ${data.nutritionPatterns.protein_adherence_percent}% — that's unacceptable! They need to be called out HARD on this.`);
+  }
+  if (data.momentum.current_streak >= 7) {
+    coachingHooks.push(`${p.name} has a ${data.momentum.current_streak} day streak — that's serious dedication! Acknowledge this and push them to keep going.`);
+  } else if (data.momentum.current_streak === 0) {
+    coachingHooks.push(`${p.name} has NO active streak right now. Light a fire under them to start one today.`);
+  }
+  if (data.bodyMetrics.weight_trend === 'up' && (goal.includes('lose') || goal.includes('fat'))) {
+    coachingHooks.push(`Weight is trending UP but their goal is fat loss — need to tighten the nutrition plan and increase cardio.`);
+  }
+  if (data.bodyMetrics.weight_trend === 'down' && (goal.includes('gain') || goal.includes('muscle'))) {
+    coachingHooks.push(`Weight is trending DOWN but their goal is muscle gain — need to increase calories and protein intake.`);
+  }
+  if (data.workoutPatterns.total_workouts_7d === 0) {
+    coachingHooks.push(`${p.name} hasn't worked out at ALL this week. The plan needs to get them back in the gym ASAP.`);
+  }
+  if (data.sleepPatterns.avg_duration_hours < 7) {
+    coachingHooks.push(`Average sleep is only ${data.sleepPatterns.avg_duration_hours}h — recovery is suffering. Push better sleep habits.`);
+  }
+  if (coachingHooks.length === 0) {
+    coachingHooks.push(`${p.name} is maintaining solid consistency. Keep the momentum going with progressive overload.`);
+  }
 
-  const userPrompt = `Create a COMPLETE 7-day fitness plan for ${p.name}.
+  const systemPrompt = `You are Iron Coach 💀 — an elite CSCS-certified personal trainer and sports nutritionist with 20+ years of experience training professional athletes and dedicated lifters. You create hyper-personalized, science-based weekly plans. You are direct, intense, and use emojis. You reference the client by name and use their actual data.
 
-👤 PROFILE:
-• Name: ${p.name} | Level: ${p.fitness_level || 'intermediate'} | Goal: ${p.primary_goal || 'get fit'}
-• Weight: ${p.current_weight_kg || '?'}kg → Target: ${p.target_weight_kg || '?'}kg
-• Daily targets: ${data.targets.daily_calories}cal | ${data.targets.daily_protein}g protein | ${data.targets.daily_carbs}g carbs | ${data.targets.daily_fat}g fat
+OUTPUT FORMAT: Return ONLY a single valid JSON object. No markdown, no code fences, no explanations, no commentary. Just the raw JSON.
 
-📊 BEHAVIOR DATA:
-• Workout frequency: ~${actualDaysPerWeek}x/week | Recent week: ${recentDaysPerWeek} workouts
-• Preferred types: ${data.workoutPatterns.favorite_workout_types.slice(0, 4).join(', ') || 'strength/cardio'}
-• Best training days: ${data.workoutPatterns.best_performing_days.slice(0, 3).join(', ') || 'Mon/Wed/Fri'}
-• Avg workout duration: ${data.workoutPatterns.avg_duration_minutes}min | Avg calories burned: ${data.workoutPatterns.avg_calories_burned}
-• Streak: ${data.momentum.current_streak} days | Momentum: ${data.momentum.momentum_score}/100
+GENERATION METHOD (follow exactly):
+1. Read the client data below
+2. Decide the training split based on their goal, level, and workout frequency
+3. Assign workout types to specific days (Mon-Sun)
+4. Plan rest days strategically
+5. Generate ALL 7 days one by one — Monday, Tuesday, Wednesday, Thursday, Friday, Saturday, Sunday
+6. After generating all 7 days, STOP and verify you have exactly 7 entries in daily_plan
+7. If you have fewer than 7, DO NOT submit — add the missing days
+8. Output the final JSON
 
-🍽️ NUTRITION DATA:
-• Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}% | Calorie adherence: ${data.nutritionPatterns.calorie_adherence_percent}%
-• Weight trend: ${data.bodyMetrics.weight_trend} | 7d change: ${data.bodyMetrics.weight_change_7d}kg
-• Foods they actually eat: ${data.nutritionPatterns.most_common_foods.slice(0, 8).join(', ') || 'chicken, rice, eggs, tuna'}
-• Macro split: P${data.nutritionPatterns.macro_distribution.protein_percent}% C${data.nutritionPatterns.macro_distribution.carbs_percent}% F${data.nutritionPatterns.macro_distribution.fat_percent}%
-• Avg daily intake: ${data.nutritionPatterns.avg_daily_calories_7d}cal | ${data.nutritionPatterns.avg_daily_protein_7d}g protein
-${data.nutritionPatterns.protein_adherence_percent < 70 ? '⚠️ CRITICAL: They are SLACKING on protein. Call them out hard!' : data.momentum.current_streak > 5 ? '🔥 They have a ${data.momentum.current_streak} day streak — hype them up!' : ''}
+WORKOUT RULES:
+- Workout days get: 5 exercises (3-4 compound + 1-2 isolation), each with sets, reps, rest_seconds, muscle_groups, type (compound/isolation)
+- Rest days get: is_workout_day: false, workout: null
+- Every exercise must have realistic reps (e.g., "8-10", "12-15", "6-8", "AMRAP") and rest times (60-180s)
+- Match workout split to goal: Push/Pull/Legs for muscle gain, Upper/Lower + cardio for fat loss, Full Body for general fitness
+- Use exercises the user's level can handle (beginner = simpler moves, advanced = more complex)
+- duration_minutes should be realistic: 40-60min for workouts, estimated_calories_burned: 250-500
 
-OUTPUT THIS EXACT JSON STRUCTURE (fill in ALL fields, ALL 7 days):
-{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"<your strategy for ${p.name} in 2 sentences>","weekly_overview":{"total_workout_days":${Math.max(3, Math.min(6, Math.round(actualDaysPerWeek)))},"total_rest_days":${7 - Math.max(3, Math.min(6, Math.round(actualDaysPerWeek)))},"weekly_calorie_target":${data.targets.daily_calories * 7},"weekly_protein_target":${data.targets.daily_protein * 7},"focus_areas":["primary muscle group"],"weekly_strategy":"<personal 2-sentence strategy for ${p.name}>"},"daily_plan":[{"date":"YYYY-MM-DD","day_name":"Monday","is_workout_day":true,"workout":{"focus":"muscle group","duration_minutes":50,"estimated_calories_burned":350,"intensity":"moderate","exercises":[{"name":"Exercise Name","type":"compound","muscle_groups":["target"],"sets":4,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":"coaching tip 💪"}],"warm_up":"5min dynamic stretch 🏃","cool_down":"5min static stretch 🧘","coach_notes":"personal note referencing ${p.name}'s data 🔥"},"nutrition":{"target_calories":${data.targets.daily_calories},"target_protein":${data.targets.daily_protein},"target_carbs":${data.targets.daily_carbs},"target_fat":${data.targets.daily_fat},"meals":[{"meal_type":"breakfast","time":"07:00","description":"Meal description with real foods","foods":["food 1","food 2","food 3"]},{"meal_type":"lunch","time":"12:30","description":"Meal description","foods":["food 1","food 2"]},{"meal_type":"dinner","time":"19:00","description":"Meal description","foods":["food 1","food 2","food 3"]},{"meal_type":"snack","time":"16:00","description":"Snack description","foods":["food 1"]}],"hydration_ml":2500},"sleep":{"target_bedtime":"22:30","target_wake_time":"06:30","target_duration_hours":8},"supplements":["supplement if applicable"],"coach_message":"personal emoji message for ${p.name} 💪🔥","confidence":0.85}],"recommendations":[{"category":"Nutrition","priority":"high","recommendation":"specific actionable tip for ${p.name}","reasoning":"why this matters for them"},{"category":"Training","priority":"medium","recommendation":"training tip","reasoning":"why"}]}
+NUTRITION RULES:
+- Use ONLY the foods listed in the user's "Foods they eat" section
+- Every day gets 4 meals: breakfast, lunch, dinner, snack
+- Each meal has: meal_type, time (HH:MM format), description (1 sentence), foods (array of food names)
+- target_calories/protein/carbs/fat are the same every day (given below)
+- hydration_ml: 2500-3500
 
-REMEMBER: Complete ALL 7 days. Use their real foods. Reference their name and stats. Be a real coach, not a template generator.`;
+COACHING TONE:
+- Be intense and motivational, not generic
+- Call out bad habits directly ("You've been slacking on protein, ${p.name}! Time to fix that 💪")
+- Celebrate good habits ("That ${data.momentum.current_streak} day streak is no joke, ${p.name}! 🔥")
+- Each day's coach_message should be 1-2 sentences, personal, with emojis
+- Each workout's coach_notes should be 1 sentence with a specific tip
+- Rest day coach_message should suggest active recovery (walk, stretch, foam roll)
+
+ABSOLUTE REQUIREMENTS:
+- EXACTLY 7 days in daily_plan array (Monday through Sunday)
+- Each day must have ALL fields populated
+- Every workout day must have exactly 5 exercises
+- Every day must have exactly 4 meals
+- Do NOT truncate. Do NOT use "...". Complete every single field.`;
+
+  const userPrompt = `Generate the weekly plan for ${p.name}.
+
+═══ CLIENT DATA ═══
+Name: ${p.name}
+Level: ${p.fitness_level || 'intermediate'}
+Goal: ${p.primary_goal || 'get fit'}
+Weight: ${p.current_weight_kg || '?'}kg → Target: ${p.target_weight_kg || '?'}kg
+Daily targets: ${data.targets.daily_calories}cal | ${data.targets.daily_protein}g protein | ${data.targets.daily_carbs}g carbs | ${data.targets.daily_fat}g fat
+
+Workout frequency: ~${actualDaysPerWeek}x/week (recent: ${recentDaysPerWeek})
+Preferred types: ${data.workoutPatterns.favorite_workout_types.slice(0, 4).join(', ') || 'strength training'}
+Best training days: ${data.workoutPatterns.best_performing_days.slice(0, 3).join(', ') || 'Mon/Wed/Fri'}
+Avg workout: ${data.workoutPatterns.avg_duration_minutes}min
+
+Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}%
+Weight trend: ${data.bodyMetrics.weight_trend} (${data.bodyMetrics.weight_change_7d}kg this week)
+Foods they eat: ${data.nutritionPatterns.most_common_foods.slice(0, 8).join(', ') || 'chicken, rice, eggs, tuna, oats, vegetables'}
+Sleep: ${data.sleepPatterns.avg_duration_hours}h avg
+Streak: ${data.momentum.current_streak} days
+
+═══ COACHING CONTEXT ═══
+${coachingHooks.join('\n')}
+
+═══ REQUIRED JSON STRUCTURE ═══
+Generate this exact JSON with ALL 7 DAYS filled in:
+
+{
+  "week_start": "${weekStart}",
+  "week_end": "${weekEnd}",
+  "plan_confidence": 0.85,
+  "generation_reasoning": "2-sentence strategy for ${p.name}",
+  "weekly_overview": {
+    "total_workout_days": ${workoutDays},
+    "total_rest_days": ${restDays},
+    "weekly_calorie_target": ${data.targets.daily_calories * 7},
+    "weekly_protein_target": ${data.targets.daily_protein * 7},
+    "focus_areas": ["muscle group 1", "muscle group 2"],
+    "weekly_strategy": "2-sentence weekly strategy for ${p.name}"
+  },
+  "daily_plan": [
+    {
+      "date": "${weekStart}",
+      "day_name": "Monday",
+      "is_workout_day": true,
+      "workout": {
+        "focus": "e.g. Push - Chest, Shoulders, Triceps",
+        "duration_minutes": 50,
+        "estimated_calories_burned": 350,
+        "intensity": "moderate",
+        "exercises": [
+          {"name":"Bench Press","type":"compound","muscle_groups":["chest","triceps","shoulders"],"sets":4,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":"Control the eccentric 💪"},
+          {"name":"Overhead Press","type":"compound","muscle_groups":["shoulders","triceps"],"sets":3,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":"Core tight!"},
+          {"name":"Incline Dumbbell Press","type":"compound","muscle_groups":["chest","shoulders"],"sets":3,"reps":"10-12","weight_kg":0,"rest_seconds":75,"notes":""},
+          {"name":"Tricep Pushdowns","type":"isolation","muscle_groups":["triceps"],"sets":3,"reps":"12-15","weight_kg":0,"rest_seconds":60,"notes":""},
+          {"name":"Lateral Raises","type":"isolation","muscle_groups":["shoulders"],"sets":3,"reps":"15","weight_kg":0,"rest_seconds":60,"notes":"Feel the burn 🔥"}
+        ],
+        "warm_up": "5min dynamic stretch + arm circles 🏃",
+        "cool_down": "5min chest/shoulder stretch 🧘",
+        "coach_notes": "Personal tip for ${p.name} based on their data 🔥"
+      },
+      "nutrition": {
+        "target_calories": ${data.targets.daily_calories},
+        "target_protein": ${data.targets.daily_protein},
+        "target_carbs": ${data.targets.daily_carbs},
+        "target_fat": ${data.targets.daily_fat},
+        "meals": [
+          {"meal_type":"breakfast","time":"07:00","description":"High protein start","foods":["eggs","oats","banana"]},
+          {"meal_type":"lunch","time":"12:30","description":"Balanced midday meal","foods":["chicken breast","rice","vegetables"]},
+          {"meal_type":"dinner","time":"19:00","description":"Recovery dinner","foods":["salmon","sweet potato","broccoli"]},
+          {"meal_type":"snack","time":"16:00","description":"Afternoon fuel","foods":["protein shake","almonds"]}
+        ],
+        "hydration_ml": 2500
+      },
+      "sleep": {"target_bedtime":"22:30","target_wake_time":"06:30","target_duration_hours":8},
+      "supplements": ["whey protein"],
+      "coach_message": "1-2 personal sentences for ${p.name} with emojis 💪🔥",
+      "confidence": 0.85
+    }
+  ],
+  "recommendations": [
+    {"category":"Nutrition","priority":"high","recommendation":"Specific tip for ${p.name}","reasoning":"Why it matters"},
+    {"category":"Training","priority":"medium","recommendation":"Training tip","reasoning":"Why"}
+  ]
+}
+
+CRITICAL: You MUST output ALL 7 days (Monday through Sunday). Copy the daily_plan object structure above for each day, changing the date, day_name, workout, meals, and coach_message. Rest days get "is_workout_day": false and "workout": null. Use the ACTUAL foods from the client's data. Reference ${p.name} in coach messages. DO NOT truncate or abbreviate — complete every field for every day.`;
 
   return { systemPrompt, userPrompt };
 }
@@ -1947,17 +2069,81 @@ function parsePlanFromText(responseText: string): { plan: any; errors: AIErrorDe
   
   try {
     const parsed = JSON.parse(jsonToParse);
-    if (parsed.daily_plan?.length === 7) {
-      console.log(`[weekly-planner] ✅ Valid plan: ${parsed.daily_plan.length} days`);
+    const dayCount = parsed.daily_plan?.length || 0;
+    
+    if (dayCount >= 7) {
+      console.log(`[weekly-planner] ✅ Valid plan: ${dayCount} days`);
       return { plan: parsed, errors };
     }
-    // Reject incomplete plans (less than 7 days)
-    console.warn(`[weekly-planner] ⚠️ Plan has only ${parsed.daily_plan?.length || 0}/7 days — rejecting as truncated`);
+    
+    // If we have 3+ days but not 7, pad missing days with rest days instead of rejecting
+    if (dayCount >= 3 && dayCount < 7) {
+      console.warn(`[weekly-planner] ⚠️ Plan has ${dayCount}/7 days — padding ${7 - dayCount} missing days with rest days`);
+      errors.push({
+        attempt: 'stream',
+        stage: 'padded',
+        model: 'groq-stream',
+        error: `Plan had ${dayCount}/7 days. Missing days padded with rest days.`,
+        timestamp: new Date().toISOString(),
+      });
+      
+      const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+      const existingDays = new Set(parsed.daily_plan.map((d: any) => d.day_name));
+      const weekStart = parsed.week_start || '';
+      const baseDate = weekStart ? new Date(weekStart + 'T00:00:00') : new Date();
+      
+      // Use nutrition targets from the last existing day as defaults
+      const lastDay = parsed.daily_plan[dayCount - 1];
+      const defaultNutrition = lastDay?.nutrition || {
+        target_calories: 2000,
+        target_protein: 150,
+        target_carbs: 200,
+        target_fat: 65,
+        meals: [
+          { meal_type: 'breakfast', time: '07:00', description: 'Balanced breakfast', foods: ['eggs', 'oats'] },
+          { meal_type: 'lunch', time: '12:30', description: 'Balanced lunch', foods: ['chicken', 'rice', 'vegetables'] },
+          { meal_type: 'dinner', time: '19:00', description: 'Light dinner', foods: ['salad', 'protein'] },
+          { meal_type: 'snack', time: '16:00', description: 'Healthy snack', foods: ['fruit', 'nuts'] },
+        ],
+        hydration_ml: 2500,
+      };
+      
+      for (let i = 0; i < 7; i++) {
+        if (!existingDays.has(dayNames[i])) {
+          const missingDate = new Date(baseDate);
+          missingDate.setDate(baseDate.getDate() + i);
+          const dateStr = missingDate.toISOString().split('T')[0];
+          
+          parsed.daily_plan.push({
+            date: dateStr,
+            day_name: dayNames[i],
+            is_workout_day: false,
+            workout: null,
+            nutrition: defaultNutrition,
+            sleep: { target_bedtime: '22:30', target_wake_time: '06:30', target_duration_hours: 8 },
+            supplements: [],
+            coach_message: 'Active recovery day — go for a 30min walk, do some light stretching, and let your muscles recover 💪🧘',
+            confidence: 0.6,
+          });
+        }
+      }
+      
+      // Sort by day order
+      parsed.daily_plan.sort((a: any, b: any) => dayNames.indexOf(a.day_name) - dayNames.indexOf(b.day_name));
+      
+      if (parsed.daily_plan.length === 7) {
+        console.log(`[weekly-planner] ✅ Plan padded to 7 days successfully`);
+        return { plan: parsed, errors };
+      }
+    }
+    
+    // Less than 3 days — reject completely
+    console.warn(`[weekly-planner] ⚠️ Plan has only ${dayCount}/7 days — too incomplete, rejecting`);
     errors.push({
       attempt: 'stream',
       stage: 'invalid_structure',
       model: 'groq-stream',
-      error: `Incomplete plan: ${parsed.daily_plan?.length || 0}/7 days. AI likely got cut off.`,
+      error: `Incomplete plan: ${dayCount}/7 days. AI likely got cut off.`,
       timestamp: new Date().toISOString(),
     });
   } catch (parseErr) {
@@ -1981,10 +2167,51 @@ function parsePlanFromText(responseText: string): { plan: any; errors: AIErrorDe
       repaired = repairTruncatedJSON(repaired);
       
       const parsed = JSON.parse(repaired);
-      if (parsed.daily_plan?.length === 7) {
-        console.log(`[weekly-planner] ✅ Valid plan after repair: ${parsed.daily_plan.length} days`);
-        return { plan: parsed, errors };
+      const dayCount = parsed.daily_plan?.length || 0;
+      
+      if (dayCount >= 3) {
+        // Pad like above
+        const dayNames = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+        const existingDays = new Set(parsed.daily_plan.map((d: any) => d.day_name));
+        const weekStart = parsed.week_start || '';
+        const baseDate = weekStart ? new Date(weekStart + 'T00:00:00') : new Date();
+        const lastDay = parsed.daily_plan[dayCount - 1];
+        const defaultNutrition = lastDay?.nutrition || {
+          target_calories: 2000, target_protein: 150, target_carbs: 200, target_fat: 65,
+          meals: [
+            { meal_type: 'breakfast', time: '07:00', description: 'Balanced breakfast', foods: ['eggs', 'oats'] },
+            { meal_type: 'lunch', time: '12:30', description: 'Balanced lunch', foods: ['chicken', 'rice'] },
+            { meal_type: 'dinner', time: '19:00', description: 'Light dinner', foods: ['salad', 'protein'] },
+            { meal_type: 'snack', time: '16:00', description: 'Healthy snack', foods: ['fruit', 'nuts'] },
+          ],
+          hydration_ml: 2500,
+        };
+        
+        for (let i = 0; i < 7; i++) {
+          if (!existingDays.has(dayNames[i])) {
+            const missingDate = new Date(baseDate);
+            missingDate.setDate(baseDate.getDate() + i);
+            parsed.daily_plan.push({
+              date: missingDate.toISOString().split('T')[0],
+              day_name: dayNames[i],
+              is_workout_day: false,
+              workout: null,
+              nutrition: defaultNutrition,
+              sleep: { target_bedtime: '22:30', target_wake_time: '06:30', target_duration_hours: 8 },
+              supplements: [],
+              coach_message: 'Active recovery day 💪🧘',
+              confidence: 0.5,
+            });
+          }
+        }
+        parsed.daily_plan.sort((a: any, b: any) => dayNames.indexOf(a.day_name) - dayNames.indexOf(b.day_name));
+        
+        if (parsed.daily_plan.length === 7) {
+          console.log(`[weekly-planner] ✅ Plan repaired and padded to 7 days`);
+          return { plan: parsed, errors };
+        }
       }
+      
       console.warn(`[weekly-planner] Repaired plan still only ${parsed.daily_plan?.length || 0}/7 days`);
     } catch {
       errors.push({
@@ -2288,7 +2515,7 @@ export async function POST(request: NextRequest) {
               if (result.plan) {
                 plan = result.plan;
                 aiErrors = result.errors;
-                generationSource = 'ai';
+                generationSource = 'auto';
               }
             }
           }
@@ -2304,7 +2531,7 @@ export async function POST(request: NextRequest) {
           // Save to DB (skip for template fallback)
           if (generationSource !== 'template') {
             try {
-              await capturedSb
+              const saveResult = await capturedSb
                 .from('weekly_plans')
                 .upsert({
                   user_id: user!.id,
@@ -2312,7 +2539,6 @@ export async function POST(request: NextRequest) {
                   week_end_date: capturedWeekEndStr,
                   status: 'active',
                   generation_source: capturedForceRegenerate ? 'regenerate' : 'auto',
-                  regenerations_used: capturedForceRegenerate ? (2 - capturedRegenerationsRemaining + 1) : 0,
                   plan_data: plan,
                   confidence_score: plan.plan_confidence || 0.85,
                   model_version: 'ai-v1',
@@ -2321,8 +2547,9 @@ export async function POST(request: NextRequest) {
                 }, {
                   onConflict: 'user_id,week_start_date',
                 });
+              console.log('[weekly-planner] ✅ Plan saved to DB:', saveResult.error ? String(saveResult.error) : 'OK');
             } catch (dbError) {
-              console.log('[weekly-planner] Could not save to weekly_plans table:', dbError);
+              console.error('[weekly-planner] ❌ Could not save to weekly_plans table:', dbError);
             }
           } else {
             console.log('[weekly-planner] Skipping DB save for template fallback');
