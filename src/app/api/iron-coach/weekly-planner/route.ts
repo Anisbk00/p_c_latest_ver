@@ -752,122 +752,22 @@ function buildPrecisionWeeklyPlanPrompt(
     : 0;
   const recentDaysPerWeek = data.workoutPatterns.total_workouts_7d;
   
-  const systemPrompt = `You are Iron Coach AI — an elite, no-nonsense fitness and nutrition planner with decades of experience. You are aggressive, direct, brutally honest, and demanding. You roast laziness but celebrate discipline. Generate a 7-day personalized JSON plan.
+  // COMPACT PROMPT — must fit in ~1000 tokens so 8B model can generate JSON in 5-9s
+  const systemPrompt = `You are Iron Coach 💀 — a no-nonsense personal fitness coach. You roast laziness, celebrate discipline, and always use emojis 🔥💪. Output ONLY valid JSON, no markdown.`;
 
-═══ USER PROFILE ═══
-Name: ${p.name} | Age: ${p.age || '?'} | Sex: ${p.sex || '?'}
-Weight: ${p.current_weight_kg || '?'}kg → Target: ${p.target_weight_kg || '?'}kg
-Height: ${p.height_cm || '?'}cm | Body Fat: ${data.bodyMetrics.latest_body_fat || '?'}% | Muscle: ${data.bodyMetrics.latest_muscle_mass || '?'}kg
-Goal: ${p.primary_goal} | Fitness Level: ${p.fitness_level} | Activity: ${p.activity_level}
-Allergies: [${p.allergies.join(', ') || 'none'}] | Restrictions: [${p.dietary_restrictions.join(', ') || 'none'}]
+  const userPrompt = `Create a 7-day fitness plan for ${p.name} (${p.fitness_level || 'intermediate'}, goal: ${p.primary_goal || 'get fit'}).
 
-═══ METABOLIC TARGETS ═══
-BMR: ${data.targets.bmr} | TDEE: ${data.targets.tdee}
-Daily: ${data.targets.daily_calories}cal | ${data.targets.daily_protein}g protein | ${data.targets.daily_carbs}g carbs | ${data.targets.daily_fat}g fat | Water: ${Math.round((data.targets.water_ml || 2500) / 1000)}L
+KEY DATA:
+• ${p.current_weight_kg || '?'}kg → ${p.target_weight_kg || '?'}kg target | ${data.targets.daily_calories}cal/day | ${data.targets.daily_protein}g protein
+• Trains ~${actualDaysPerWeek}x/week | Types: ${data.workoutPatterns.favorite_workout_types.slice(0, 3).join(', ') || 'strength/cardio'} | Best days: ${data.workoutPatterns.best_performing_days.slice(0, 3).join(', ') || 'Mon/Wed/Fri'}
+• Streak: ${data.momentum.current_stretch || data.momentum.current_streak}d | Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}% | Weight trend: ${data.bodyMetrics.weight_trend}
+• Foods they eat: ${data.nutritionPatterns.most_common_foods.slice(0, 5).join(', ') || 'chicken, rice, eggs'}
+${data.nutritionPatterns.protein_adherence_percent < 70 ? '• ⚠️ SLACKING on protein — call them out!' : data.momentum.current_streak > 5 ? '• 🔥 ON FIRE — hype them up!' : ''}
 
-═══ ACTUAL WORKOUT BEHAVIOR ═══
-Workouts last 30d: ${data.workoutPatterns.total_workouts_30d} total (~${actualDaysPerWeek}/week)
-Workouts last 7d: ${recentDaysPerWeek}
-Avg duration: ${data.workoutPatterns.avg_duration_minutes}min | Avg calories burned: ${data.workoutPatterns.avg_calories_burned}
-Favorite types: [${data.workoutPatterns.favorite_workout_types.join(', ')}]
-Best training days: [${data.workoutPatterns.best_performing_days.join(', ')}]
-Muscles trained (7d): [${data.workoutPatterns.muscles_trained_last_7d.join(', ')}]
-Recovery days last week: ${data.workoutPatterns.recovery_days_last_7d}
-Recent workouts: ${data.workoutPatterns.recent_workouts.slice(0, 5).map(w => `${w.date?.slice(5)} ${w.type} ${w.duration}min`).join(' | ')}
+RULES: Match their real training frequency. Use their foods. Reference their name, streak, and stats. Use emojis everywhere. Be personal — not generic.
 
-═══ ACTUAL NUTRITION BEHAVIOR ═══
-7d avg: ${data.nutritionPatterns.avg_daily_calories_7d}cal | ${data.nutritionPatterns.avg_daily_protein_7d}g P | ${data.nutritionPatterns.avg_daily_carbs_7d}g C | ${data.nutritionPatterns.avg_daily_fat_7d}g F
-Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}% of target | Calorie adherence: ${data.nutritionPatterns.calorie_adherence_percent}%
-Macro split: ${data.nutritionPatterns.macro_distribution.protein_percent}%P / ${data.nutritionPatterns.macro_distribution.carbs_percent}%C / ${data.nutritionPatterns.macro_distribution.fat_percent}%F
-Common foods: [${data.nutritionPatterns.most_common_foods.slice(0, 8).join(', ')}]
-Recent meals: ${data.nutritionPatterns.recent_meals.slice(0, 5).map(m => `${m.date?.slice(5)} ${m.meal_type} ${m.calories}cal ${m.protein}gP`).join(' | ')}
-
-═══ RECOVERY ═══
-Sleep avg: ${data.sleepPatterns.avg_duration_hours}h | Quality: ${data.sleepPatterns.avg_quality}/100 | Sleep debt: ${data.sleepPatterns.sleep_debt_hours}h
-Supplements: [${data.supplementUsage.active_supplements.join(', ')}] | Consistency: ${data.supplementUsage.consistency_percent}%
-
-═══ WEIGHT PROGRESS ═══
-Trend: ${data.bodyMetrics.weight_trend} | 7d: ${data.bodyMetrics.weight_change_7d}kg | 30d: ${data.bodyMetrics.weight_change_30d}kg
-History: ${data.bodyMetrics.weight_history.map(w => `${w.date}: ${w.weight}kg`).join(' → ')}
-
-═══ ACTIVE GOALS ═══
-${data.activeGoals.map(g => `${g.type}: ${g.target} (${g.deadline || 'no deadline'}) — ${g.progress}% progress`).join(' | ') || 'No active goals set'}
-
-═══ MOMENTUM ═══
-Streak: ${data.momentum.current_streak}d | Longest: ${data.momentum.longest_streak}d | Score: ${data.momentum.momentum_score}/100
-
-═══ CRITICAL RULES ═══
-1. This is a PERSONAL plan for ${p.name}. Every field MUST reference their actual data above. Generic plans = FAILURE.
-2. WORKOUT DAYS: Match their ACTUAL training frequency (${actualDaysPerWeek}x/week). If they train 5x/week, plan 5 workout days. Don't invent a random split.
-3. WORKOUT TYPES: Only use exercises from their favorite types: [${data.workoutPatterns.favorite_workout_types.join(', ') || 'general strength/cardio'}].
-4. TRAINING DAYS: Schedule workouts on their BEST days: [${data.workoutPatterns.best_performing_days.length > 0 ? data.workoutPatterns.best_performing_days.join(', ') : 'any'}].
-5. NUTRITION: Use THEIR common foods: [${data.nutritionPatterns.most_common_foods.slice(0, 6).join(', ') || 'high-protein whole foods'}]. Calculate portions to hit ${data.targets.daily_calories}cal / ${data.targets.daily_protein}gP.
-6. PERSONALITY: Be their PRIVATE COACH. Reference their streak (${data.momentum.current_streak}d), protein adherence (${data.nutritionPatterns.protein_adherence_percent}%), weight trend (${data.bodyMetrics.weight_trend}). Call them by name.
-7. If they've been slacking (low adherence, skipping workouts) — ROAST THEM mildly. If they've been grinding — HYPE THEM UP.
-8. EMOJIS: Every text field must have emojis 🔥💪🏋️‍♂️🍗⏰😴🎯🥗💧⚡. Coach messages read like an energetic text from your trainer.
-9. NEVER train same muscle 2 days in a row. Include warm-up + cool-down for every session.
-10. Output ONLY valid JSON. No markdown. No explanation. No code fences.
-11. generation_reasoning: Write 2-3 sentences explaining YOUR strategy for THIS specific user based on THEIR data.
-12. weekly_strategy: Write 2-3 motivating sentences about the week ahead, referencing their goals and progress.
-13. Each meal should use foods they actually eat, with realistic calories/protein calculated to hit daily targets.`;
-
-  const userPrompt = `Create a highly personalized 7-day plan for ${p.name} from ${weekStart} to ${weekEnd}.
-
-They are ${p.fitness_level || 'intermediate'} level, goal: ${p.primary_goal || 'get fit'}, training ~${actualDaysPerWeek}x/week.
-Target: ${data.targets.daily_calories}cal/day, ${data.targets.daily_protein}g protein, ${data.targets.daily_carbs}g carbs, ${data.targets.daily_fat}g fat.
-Streak: ${data.momentum.current_streak}d | Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}% | Weight trend: ${data.bodyMetrics.weight_trend}
-
-Return ONLY this JSON structure (fill EVERY field with real personalized content — NO placeholders):
-{
-  "week_start": "${weekStart}",
-  "week_end": "${weekEnd}",
-  "plan_confidence": <0.0-1.0 based on data quality>,
-  "generation_reasoning": "<2-3 sentences: WHY you chose this specific plan for ${p.name} based on their data>",
-  "weekly_overview": {
-    "total_workout_days": <match their ${actualDaysPerWeek}x/week habit>,
-    "total_rest_days": <7 minus workout days>,
-    "weekly_calorie_target": <daily_calories * 7>,
-    "weekly_protein_target": <daily_protein * 7>,
-    "focus_areas": ["<muscle groups based on their workout history>"],
-    "weekly_strategy": "<2-3 motivating sentences about this week's plan for ${p.name}>"
-  },
-  "daily_plan": [
-    {
-      "date": "<YYYY-MM-DD>",
-      "day_name": "<Monday-Sunday>",
-      "is_workout_day": <true/false>,
-      "workout": {
-        "focus": "<specific muscle groups>",
-        "duration_minutes": <40-60 based on level>,
-        "estimated_calories_burned": <realistic number>,
-        "intensity": "<low/moderate/high>",
-        "exercises": [
-          {"name": "<real exercise name>", "type": "<compound/isolation>", "muscle_groups": ["<muscles>"], "sets": <3-4>, "reps": "<8-12>", "weight_kg": 0, "rest_seconds": <60-120>, "notes": "<tip with emoji>"}
-        ],
-        "warm_up": "<5min dynamic warm-up with emojis>",
-        "cool_down": "<5min cooldown stretches with emojis>",
-        "coach_notes": "<personalized coaching note with emojis, reference their stats>"
-      },
-      "nutrition": {
-        "target_calories": ${data.targets.daily_calories},
-        "target_protein": ${data.targets.daily_protein},
-        "target_carbs": ${data.targets.daily_carbs},
-        "target_fat": ${data.targets.daily_fat},
-        "meals": [
-          {"meal_type": "<breakfast/lunch/dinner/snack>", "time": "<HH:MM>", "foods": [{"name": "<their actual food>", "quantity": <1>, "unit": "<serving/plate/g>", "calories": <number>, "protein": <number>, "carbs": <number>, "fat": <number>}], "total_calories": <sum>, "total_protein": <sum>}
-        ],
-        "hydration_ml": ${data.targets.water_ml || 2500}
-      },
-      "sleep": {"target_bedtime": "22:30", "target_wake_time": "06:30", "target_duration_hours": 8},
-      "supplements": [],
-      "coach_message": "<personalized daily message for ${p.name} — reference their streak, goals, yesterday's performance. Use emojis!>",
-      "confidence": <0.7-0.95>
-    }
-  ],
-  "recommendations": [
-    {"category": "<Nutrition/Training/Recovery/Mindset>", "priority": "<high/medium/low>", "recommendation": "<specific actionable advice>", "reasoning": "<why this matters for ${p.name}>"}
-  ]
-}`;
+Return JSON:
+{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"<2 sentences: your strategy for ${p.name}>","weekly_overview":{"total_workout_days":${actualDaysPerWeek},"total_rest_days":${7 - actualDaysPerWeek},"weekly_calorie_target":${data.targets.daily_calories * 7},"weekly_protein_target":${data.targets.daily_protein * 7},"focus_areas":["<muscles>"],"weekly_strategy":"<2 sentences motivational plan for ${p.name}>"},"daily_plan":[{"date":"<YYYY-MM-DD>","day_name":"<Monday>","is_workout_day":true,"workout":{"focus":"<muscles>","duration_minutes":50,"estimated_calories_burned":350,"intensity":"moderate","exercises":[{"name":"<exercise>","type":"compound","muscle_groups":["<muscles>"],"sets":4,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":"<tip 💪>"}],"warm_up":"<with emojis 🏃>","cool_down":"<with emojis 🧘>","coach_notes":"<personal note for ${p.name} with stats reference 🔥>"},"nutrition":{"target_calories":${data.targets.daily_calories},"target_protein":${data.targets.daily_protein},"target_carbs":${data.targets.daily_carbs},"target_fat":${data.targets.daily_fat},"meals":[{"meal_type":"breakfast","time":"07:00","foods":[{"name":"<their food>","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0},{"meal_type":"lunch","time":"12:30","foods":[{"name":"<their food>","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0},{"meal_type":"dinner","time":"19:00","foods":[{"name":"<their food>","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0},{"meal_type":"snack","time":"16:00","foods":[{"name":"<their food>","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0}],"hydration_ml":2500},"sleep":{"target_bedtime":"22:30","target_wake_time":"06:30","target_duration_hours":8},"supplements":[],"coach_message":"<personal emoji message for ${p.name} 💪🔥>","confidence":0.85}],"recommendations":[{"category":"Nutrition","priority":"high","recommendation":"<specific tip for ${p.name}>","reasoning":"<why>"}]}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -1172,7 +1072,7 @@ async function generateTextFast(
             { role: 'user', content: userPrompt },
           ],
           temperature: 0.3,
-          max_tokens: 4096,
+          max_tokens: 3000,
         }),
         signal: controller.signal,
       });
