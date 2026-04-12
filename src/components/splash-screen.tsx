@@ -461,13 +461,23 @@ export function SplashScreen({ isLoading = true }: SplashScreenProps) {
       }
       style={{
         background: 'linear-gradient(135deg, #0a0f0d 0%, #0d1512 50%, #0a1210 100%)',
+        touchAction: 'none',
+        overscrollBehavior: 'none',
+        WebkitOverflowScrolling: 'auto',
       }}
       role="status"
       aria-live="polite"
       aria-label="Loading Progress Companion"
     >
+      {/* ═══ SCROLL LOCK — prevents overscroll bounce/white circle ═══ */}
+      <div
+        className="absolute inset-0"
+        style={{ touchAction: 'none', overscrollBehavior: 'none' }}
+        aria-hidden="true"
+      />
+
       {/* ═══ AMBIENT GRADIENT BACKGROUND ═══ */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+      <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ touchAction: 'none' }} aria-hidden="true">
         <div 
           className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] rounded-full opacity-30"
           style={{
@@ -494,7 +504,7 @@ export function SplashScreen({ isLoading = true }: SplashScreenProps) {
       
       {/* ═══ PARTICLE SYSTEM (client-only) ═══ */}
       {clientReady && (
-        <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+        <div className="absolute inset-0 overflow-hidden pointer-events-none" style={{ touchAction: 'none' }} aria-hidden="true">
           {particles.map((particle) => (
             <div
               key={particle.id}

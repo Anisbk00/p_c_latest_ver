@@ -34,8 +34,8 @@ export const metadata: Metadata = {
   description: "Your AI fitness companion - Photo-first, privacy-first, explainable",
   authors: [{ name: "Progress Companion" }],
   icons: {
-    icon: "/logo.svg",
-    apple: "/logo.svg",
+    icon: "/favicon-icon.png",
+    apple: "/apple-touch-icon.png",
   },
   appleWebApp: {
     capable: true,
@@ -61,6 +61,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="mobile-web-app-capable" content="yes" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
         {/* FOUC prevention: apply saved theme class before React hydrates.
             This reads next-themes' localStorage key and sets the class on <html>
             so there's zero flash of the wrong theme on refresh/navigation. */}
