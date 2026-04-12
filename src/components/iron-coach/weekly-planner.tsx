@@ -467,6 +467,8 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
+  const [generationSource, setGenerationSource] = useState<'ai' | 'fallback' | null>(null);
+  const [aiErrors, setAiErrors] = useState<Array<{ attempt: string; stage: string; error: string }> | null>(null);
 
   const loadPlan = useCallback(async (forceRegenerate = false) => {
     setIsLoading(true);
@@ -487,6 +489,8 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       
       if (data.success && data.plan) {
         setPlan(data.plan);
+        setGenerationSource(data.generation_source || null);
+        setAiErrors(data.ai_errors || null);
         const today = new Date().toISOString().split('T')[0];
         const todayIndex = data.plan.daily_plan?.findIndex((d: DailyPlan) => d.date === today);
         if (todayIndex >= 0) setSelectedDayIndex(todayIndex);
@@ -506,6 +510,33 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   }, [loadPlan]);
 
   const currentDay = plan?.daily_plan[selectedDayIndex];
+
+  // Derive a human-readable error summary from AI errors
+  const aiErrorSummary = useMemo(() => {
+    if (!aiErrors || aiErrors.length === 0) return null;
+    const stages = new Set(aiErrors.map(e => e.stage));
+    const messages = aiErrors.map(e => e.error);
+    
+    // Classify the main problem
+    const apiErrors = aiErrors.filter(e => e.stage === 'api_call');
+    const parseErrors = aiErrors.filter(e => e.stage === 'json_parse' || e.stage === 'json_repair');
+    
+    if (apiErrors.length === aiErrors.length) {
+      // All failures were API-level
+      const hasRateLimit = messages.some(m => m.includes('429') || m.includes('rate limit') || m.includes('high demand'));
+      const hasTimeout = messages.some(m => m.includes('timeout') || m.includes('timed out'));
+      const hasUnavailable = messages.some(m => m.includes('503') || m.includes('unavailable') || m.includes('busy'));
+      
+      if (hasRateLimit) return { type: 'rate_limit' as const, detail: 'Groq API rate limit hit. Too many requests — wait a minute and retry.' };
+      if (hasTimeout) return { type: 'timeout' as const, detail: 'AI API timed out. The model may be overloaded.' };
+      if (hasUnavailable) return { type: 'overloaded' as const, detail: 'All AI models are currently overloaded. Groq free tier limitation.' };
+      return { type: 'api_error' as const, detail: apiErrors[apiErrors.length - 1]?.error || 'Unknown API error' };
+    }
+    if (parseErrors.length > 0) {
+      return { type: 'parse_error' as const, detail: `AI returned invalid JSON after ${aiErrors.length} attempts. Model may be too small for this task.` };
+    }
+    return { type: 'mixed' as const, detail: `${aiErrors.length} failures across multiple stages. See logs for details.` };
+  }, [aiErrors]);
 
   // Loading state
   if (isLoading) {
@@ -538,6 +569,54 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
 
   return (
     <div className={cn("flex flex-col h-full min-h-0", styles.container)}>
+      {/* Fallback Banner — shown when AI was unavailable */}
+      {generationSource === 'fallback' && aiErrorSummary && (
+        <div className={cn("shrink-0 px-4 py-2.5 border-b", styles.border, "bg-amber-500/10")}>
+          <div className="flex items-start gap-2">
+            <AlertCircle className={cn("w-4 h-4 shrink-0 mt-0.5 text-amber-500")} />
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2 mb-1">
+                <span className={cn("text-xs font-semibold text-amber-600 dark:text-amber-400")}>
+                  Smart Fallback Plan
+                </span>
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/30 text-amber-600 dark:text-amber-400">
+                  not AI-generated
+                </Badge>
+              </div>
+              <p className={cn("text-xs", styles.textMuted)}>
+                AI is currently unavailable. This plan was built from your profile data.
+              </p>
+              {/* Collapsible error details */}
+              <details className="mt-1.5">
+                <summary className={cn("text-[10px] cursor-pointer hover:underline", styles.textSub)}>
+                  Technical details ({aiErrors?.length || 0} errors)
+                </summary>
+                <div className={cn("mt-1 p-2 rounded text-[10px] font-mono overflow-x-auto max-h-24 overflow-y-auto", styles.card)}>
+                  <div className="mb-1 font-semibold">Problem: {aiErrorSummary.detail}</div>
+                  {aiErrors?.map((e, i) => (
+                    <div key={i} className="opacity-70">
+                      [{e.attempt}] {e.stage}: {e.error.length > 120 ? e.error.slice(0, 120) + '...' : e.error}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* AI Success Badge */}
+      {generationSource === 'ai' && (
+        <div className={cn("shrink-0 px-4 py-1.5 border-b", styles.border)}>
+          <div className="flex items-center gap-1.5">
+            <Brain className={cn("w-3.5 h-3.5 text-emerald-500")} />
+            <span className={cn("text-[11px] font-medium text-emerald-600 dark:text-emerald-400")}>
+              AI-Generated Plan
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Compact Header */}
       <div className={cn("shrink-0 px-4 py-3 border-b", styles.header)}>
         <div className="flex items-center gap-2">

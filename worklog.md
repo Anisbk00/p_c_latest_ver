@@ -360,3 +360,28 @@ Stage Summary:
 - Rate limit cooldown reduced from 120s to 30s max
 - 0 lint errors
 
+---
+Task ID: 1
+Agent: Main
+Task: Add better error handling to weekly planner — show WHY AI fails + keep fallback working
+
+Work Log:
+- Read full weekly-planner route.ts (1311 lines) and frontend component
+- Identified issue: `generatePlanWithAI()` silently returns null on failure, no error details propagated
+- Refactored `generatePlanWithAI()` to return `AIPlanResult` with structured error tracking
+- Added `AIErrorDetail` interface with attempt, stage (api_call/json_parse/json_repair/invalid_structure), error message, timestamp
+- Added detailed console logging at every stage: response length, parse failures with snippets, repair attempts
+- Updated POST handler to return `generation_source` ('ai' | 'fallback') and `ai_errors` array in API response
+- Updated GET handler to also return `generation_source` from cached plans
+- Updated frontend `WeeklyPlanner` component with:
+  - `generationSource` and `aiErrors` state
+  - `aiErrorSummary` memoized hook that classifies errors (rate_limit/timeout/overloaded/parse_error/api_error/mixed)
+  - Amber "Smart Fallback Plan" banner with collapsible "Technical details" section showing all errors
+  - Green "AI-Generated Plan" badge when AI succeeds
+- All changes compile cleanly (0 lint errors)
+
+Stage Summary:
+- Backend now tracks exactly WHERE and WHY AI fails across all 3 retry attempts
+- API returns `generation_source` and `ai_errors` so frontend can display diagnostics
+- Frontend shows clear visual indicators: green badge for AI plans, amber banner with expandable error details for fallback plans
+- User can now see exactly what went wrong (e.g., "Groq API rate limit hit" or "AI returned invalid JSON after 3 attempts")

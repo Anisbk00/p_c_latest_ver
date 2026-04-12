@@ -792,7 +792,21 @@ function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<any> {
+interface AIErrorDetail {
+  attempt: string;
+  stage: 'api_call' | 'json_parse' | 'json_repair' | 'invalid_structure';
+  error: string;
+  timestamp: string;
+}
+
+interface AIPlanResult {
+  plan: any;
+  success: boolean;
+  errors: AIErrorDetail[];
+}
+
+async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
+  const errors: AIErrorDetail[] = [];
   // Use default fallback chain: llama-3.3-70b-versatile → llama-3.1-8b-instant
   // Same as Iron Coach chat — no forced model
   const attempts = [
@@ -805,7 +819,9 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
     if (attempt.delay > 0) await sleep(attempt.delay);
     
     try {
+      console.log(`[weekly-planner] ${attempt.label}: calling generateText...`);
       const responseText = await generateText(userPrompt, systemPrompt, 4096);
+      console.log(`[weekly-planner] ${attempt.label}: got response (${responseText.length} chars)`);
 
       // Clean response
       let cleaned = responseText
@@ -821,12 +837,33 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
 
       try {
         const parsed = JSON.parse(cleaned);
-        if (parsed.daily_plan?.length === 7) return parsed;
-        if (parsed.daily_plan?.length > 0) {
-          console.warn(`[weekly-planner] Got ${parsed.daily_plan.length}/7 days, accepting`);
-          return parsed;
+        if (parsed.daily_plan?.length === 7) {
+          console.log(`[weekly-planner] ${attempt.label}: SUCCESS — 7 days`);
+          return { plan: parsed, success: true, errors };
         }
-      } catch {
+        if (parsed.daily_plan?.length > 0) {
+          console.warn(`[weekly-planner] ${attempt.label}: Got ${parsed.daily_plan.length}/7 days, accepting`);
+          return { plan: parsed, success: true, errors };
+        }
+        // Valid JSON but no daily_plan — log the structure
+        errors.push({
+          attempt: attempt.label,
+          stage: 'invalid_structure',
+          error: `Valid JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
+          timestamp: new Date().toISOString(),
+        });
+        console.warn(`[weekly-planner] ${attempt.label}: Invalid structure — keys: ${Object.keys(parsed).join(', ')}`);
+      } catch (parseErr) {
+        // JSON parse failed — log snippet
+        const errSnippet = cleaned.substring(0, 200);
+        errors.push({
+          attempt: attempt.label,
+          stage: 'json_parse',
+          error: `JSON parse failed. Snippet: ${errSnippet}`,
+          timestamp: new Date().toISOString(),
+        });
+        console.warn(`[weekly-planner] ${attempt.label}: JSON parse failed. First 200 chars: ${errSnippet}`);
+        
         // Try repair
         try {
           const repaired = cleaned
@@ -835,16 +872,42 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
             .replace(/\n/g, '')
             .replace(/\s{2,}/g, ' ');
           const parsed = JSON.parse(repaired);
-          if (parsed.daily_plan?.length > 0) return parsed;
+          if (parsed.daily_plan?.length > 0) {
+            console.log(`[weekly-planner] ${attempt.label}: SUCCESS after JSON repair`);
+            return { plan: parsed, success: true, errors };
+          }
+          errors.push({
+            attempt: attempt.label,
+            stage: 'invalid_structure',
+            error: `Repaired JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
+            timestamp: new Date().toISOString(),
+          });
         } catch {
-          console.warn(`[weekly-planner] JSON parse failed (${attempt.label})`);
+          errors.push({
+            attempt: attempt.label,
+            stage: 'json_repair',
+            error: `JSON repair also failed. Last 100 chars: ${cleaned.slice(-100)}`,
+            timestamp: new Date().toISOString(),
+          });
+          console.warn(`[weekly-planner] ${attempt.label}: JSON repair failed`);
         }
       }
     } catch (err) {
-      console.warn(`[weekly-planner] AI error (${attempt.label}):`, err instanceof Error ? err.message : err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      errors.push({
+        attempt: attempt.label,
+        stage: 'api_call',
+        error: errMsg,
+        timestamp: new Date().toISOString(),
+      });
+      console.error(`[weekly-planner] ${attempt.label}: AI API error — ${errMsg}`);
     }
   }
-  return null;
+  
+  // All attempts exhausted
+  console.error(`[weekly-planner] ALL AI ATTEMPTS FAILED. Error summary:`);
+  errors.forEach(e => console.error(`  [${e.attempt}] ${e.stage}: ${e.error}`));
+  return { plan: null, success: false, errors };
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -1185,25 +1248,30 @@ export async function POST(request: NextRequest) {
     );
 
     // ═══ PRODUCTION PLAN GENERATION ═══
-    // 1. Try AI (llama-3.1-8b-instant — more available than 70b)
+    // 1. Try AI (fallback chain: llama-3.3-70b → llama-3.1-8b-instant)
     // 2. If AI fails, build a deterministic plan from user data (zero AI dependency)
     let plan: any = null;
+    let generationSource: 'ai' | 'fallback' = 'fallback';
+    let aiErrors: AIErrorDetail[] = [];
 
     // ── STEP 1: AI Generation ──
-    try {
-      const aiPlan = await generatePlanWithAI(systemPrompt, userPrompt);
-      if (aiPlan && aiPlan.daily_plan?.length > 0) {
-        plan = aiPlan;
-        console.log('[weekly-planner] AI plan generated successfully');
-      }
-    } catch (aiErr) {
-      console.warn('[weekly-planner] AI generation failed, falling back to deterministic plan:', aiErr instanceof Error ? aiErr.message : aiErr);
+    console.log('[weekly-planner] Starting AI plan generation...');
+    const aiResult = await generatePlanWithAI(systemPrompt, userPrompt);
+    aiErrors = aiResult.errors;
+    
+    if (aiResult.success && aiResult.plan?.daily_plan?.length > 0) {
+      plan = aiResult.plan;
+      generationSource = 'ai';
+      console.log('[weekly-planner] AI plan generated successfully');
+    } else {
+      console.log('[weekly-planner] AI failed, using deterministic fallback');
     }
 
     // ── STEP 2: Deterministic Fallback (if AI failed) ──
     if (!plan) {
-      console.log('[weekly-planner] Building deterministic fallback plan');
       plan = buildDeterministicPlan(userData, weekStartStr, weekEndStr);
+      generationSource = 'fallback';
+      console.log('[weekly-planner] Deterministic fallback plan built');
     }
 
     // Try to store plan in database (optional, may fail if table doesn't exist)
@@ -1236,6 +1304,8 @@ export async function POST(request: NextRequest) {
       plan_id: null,
       generated_at: new Date().toISOString(),
       confidence: plan.plan_confidence || 0.85,
+      generation_source: generationSource,
+      ai_errors: generationSource === 'fallback' ? aiErrors : undefined,
     });
 
   } catch (error) {
@@ -1295,6 +1365,7 @@ export async function GET(request: NextRequest) {
       cached: !!plan,
       generated_at: plan?.created_at || null,
       confidence: plan?.confidence_score || null,
+      generation_source: plan?.generation_source || null,
       completions: completions || [],
       week_start: weekStartStr,
       week_end: weekEnd.toISOString().split('T')[0],
