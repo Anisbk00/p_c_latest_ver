@@ -153,7 +153,7 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
   // Single attempt — streamText handles model fallback internally
   try {
     let fullText = '';
-    const stream = streamText(effectiveUserPrompt, effectiveSystemPrompt, 384);
+    const stream = streamText(effectiveUserPrompt, effectiveSystemPrompt, 200);
     
     for await (const token of stream) {
       if (signal?.aborted) return fullText;

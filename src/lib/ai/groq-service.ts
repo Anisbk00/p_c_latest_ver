@@ -163,7 +163,7 @@ interface GroqStreamChunk {
 async function callGroqAPI(
   messages: GroqMessage[],
   model: string = MODEL_NAME,
-  temperature: number = 0.35,
+  temperature: number = 0.2,
   maxTokens: number = 2048,
   stream: boolean = false,
 ): Promise<Response> {
@@ -220,7 +220,7 @@ export interface ChatCompletionOptions {
  */
 export async function generateChatCompletion(options: ChatCompletionOptions): Promise<string> {
   return withRateLimitRetry(async () => {
-    const { messages, temperature = 0.35, maxTokens = 384, locale = 'en', systemPrompt } = options;
+    const { messages, temperature = 0.2, maxTokens = 200, locale = 'en', systemPrompt } = options;
 
     const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
 
@@ -256,7 +256,7 @@ export async function* generateStreamingChatCompletion(
 ): AsyncGenerator<string, void, unknown> {
   // Don't pre-check isRateLimited() — let the retry loop handle it.
 
-  const { messages, temperature = 0.35, maxTokens = 384, locale = 'en', systemPrompt } = options;
+  const { messages, temperature = 0.2, maxTokens = 200, locale = 'en', systemPrompt } = options;
   const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
 
   const groqMessages: GroqMessage[] = [
@@ -478,7 +478,7 @@ export async function analyzeBase64Image(
  * Generate text from a simple prompt (with fallback models)
  * @param model - Optional specific model to use (skips primary/fallback chain)
  */
-export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 768, preferredModel?: string): Promise<string> {
+export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 384, preferredModel?: string): Promise<string> {
   const messages: GroqMessage[] = [];
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
@@ -491,7 +491,7 @@ export async function generateText(prompt: string, systemPrompt?: string, maxTok
   for (const model of modelsToTry) {
     try {
       const response = await withTimeout(
-        callGroqAPI(messages, model, 0.35, maxTokens),
+        callGroqAPI(messages, model, 0.2, maxTokens),
         AI_TIMEOUT_MS,
         'AI text generation timed out.'
       );
@@ -531,7 +531,7 @@ export async function generateText(prompt: string, systemPrompt?: string, maxTok
 /**
  * Stream text from a simple prompt (with fallback models)
  */
-export async function* streamText(prompt: string, systemPrompt?: string, maxTokens: number = 512): AsyncGenerator<string, void, unknown> {
+export async function* streamText(prompt: string, systemPrompt?: string, maxTokens: number = 200): AsyncGenerator<string, void, unknown> {
   const messages: GroqMessage[] = [];
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
