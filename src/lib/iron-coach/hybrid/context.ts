@@ -383,6 +383,8 @@ export async function buildIronCoachContext(userId: string, question: string): P
 
   // ═══ DAILY NUTRITION SUMMARIES (last 30 days for AI context) ═══
   const dailyNutritionMap = new Map<string, { calories: number; protein: number; carbs: number; fat: number; meals: number[] }>();
+  // CRITICAL: Always ensure today exists in the map even if no food logged (0g = 0g, not missing)
+  dailyNutritionMap.set(todayStr, { calories: 0, protein: 0, carbs: 0, fat: 0, meals: [] });
   foodLogsHistorical.forEach((f) => {
     const date = f.logged_at?.split('T')[0] || 'unknown';
     if (!dailyNutritionMap.has(date)) {

@@ -237,23 +237,26 @@ export function buildHybridCoachUserPrompt(input: {
   // Always show the MOST RECENT day's data as "today" even if date doesn't match exactly
   // (server may be in different timezone than user)
   lines.push('');
-  lines.push('=== TODAY\'S NUMBERS (MOST IMPORTANT — USE THESE) ===');
+  lines.push('=== TODAY\'S NUMBERS (MOST IMPORTANT — USE THESE FOR "TODAY") ===');
   if (ctx.dailyNutritionSummaries && ctx.dailyNutritionSummaries.length > 0) {
-    // Try exact date match first
+    // Try exact date match first (UTC-based)
     const todayStr = new Date().toISOString().split('T')[0];
+    const todayData = ctx.dailyNutritionSummaries.find(d => d.date === todayStr);
     const yesterdayStr = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-    const todayData = ctx.dailyNutritionSummaries.find(d => d.date === todayStr)
-      || ctx.dailyNutritionSummaries.find(d => d.date === yesterdayStr)
-      || ctx.dailyNutritionSummaries[0]; // fallback to most recent
+    const yesterdayData = ctx.dailyNutritionSummaries.find(d => d.date === yesterdayStr);
+
     if (todayData) {
-      lines.push(`Date: ${todayData.date} (most recent data available)`);
-      lines.push(`Calories: ${todayData.totalCalories} cal`);
-      lines.push(`Protein: ${todayData.totalProtein}g`);
-      lines.push(`Carbs: ${todayData.totalCarbs}g`);
-      lines.push(`Fat: ${todayData.totalFat}g`);
+      lines.push(`TODAY (${todayData.date}): ${todayData.totalCalories} cal | ${todayData.totalProtein}g protein | ${todayData.totalCarbs}g carbs | ${todayData.totalFat}g fat`);
+    } else {
+      lines.push(`TODAY: NO FOOD LOGGED — 0 cal, 0g protein, 0g carbs, 0g fat`);
+    }
+
+    // Also show yesterday for comparison
+    if (yesterdayData && (!todayData || todayData.totalCalories === 0)) {
+      lines.push(`YESTERDAY (${yesterdayData.date}): ${yesterdayData.totalCalories} cal | ${yesterdayData.totalProtein}g protein | ${yesterdayData.totalCarbs}g carbs | ${yesterdayData.totalFat}g fat`);
     }
   } else {
-    lines.push('NO FOOD LOGGED TODAY — user has not logged any food yet');
+    lines.push('TODAY: NO FOOD LOGGED — 0 cal, 0g protein');
   }
   lines.push('');
 
