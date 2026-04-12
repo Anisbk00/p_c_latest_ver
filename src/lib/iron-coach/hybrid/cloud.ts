@@ -163,8 +163,8 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
     }
     
     // Each model has its own rate limit pool on Groq.
-    // llama-3.1-70b-versatile was decommissioned — do NOT add it back.
-    const models = ['llama-3.1-8b-instant', 'gemma2-9b-it', 'mixtral-8x7b-32768', 'llama-3.3-70b-versatile'];
+    // DECOMMISSIONED (do NOT add back): llama-3.1-70b-versatile, gemma2-9b-it, mixtral-8x7b-32768, llama3-8b-8192, llama3-70b-8192
+    const models = ['llama-3.1-8b-instant', 'deepseek-r1-distill-llama-70b', 'qwen-qwq-32b', 'llama-3.3-70b-versatile'];
     for (const model of models) {
       try {
         console.log(`[streamCloudPrompt] Direct fallback trying ${model}...`);

@@ -476,7 +476,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [generationSource, setGenerationSource] = useState<'ai' | 'fallback' | 'cached' | 'auto' | null>(null);
   const [aiErrors, setAiErrors] = useState<Array<{ attempt: string; stage: string; error: string }> | null>(null);
-  const [regenerationsRemaining, setRegenerationsRemaining] = useState(2);
+  const [regenerationsRemaining, setRegenerationsRemaining] = useState(1);
 
   // Week navigation state — same pattern as WeightProgressTracker
   const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -506,10 +506,17 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
     setToastMessage(null);
     
     try {
-      const response = await apiFetch(`/api/iron-coach/weekly-planner?week_start=${weekStartStr}`, {
-        method: 'POST',
-        body: JSON.stringify({ force_regenerate: forceRegenerate }),
-      });
+      // GET for initial load (fetches saved plan from DB, no AI generation)
+      // POST only for forced regeneration (triggers AI generation)
+      const response = await apiFetch(
+        forceRegenerate
+          ? `/api/iron-coach/weekly-planner?week_start=${weekStartStr}`
+          : `/api/iron-coach/weekly-planner?week_start=${weekStartStr}&week_offset=0`,
+        {
+          method: forceRegenerate ? 'POST' : 'GET',
+          ...(forceRegenerate ? { body: JSON.stringify({ force_regenerate: true }) } : {}),
+        }
+      );
 
       console.log('[WeeklyPlanner] API response status:', response.status);
 
@@ -520,7 +527,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
         if (data.error === 'regeneration_limit') {
           setRegenerationsRemaining(data.regenerations_remaining ?? 0);
           setError('regeneration_limit');
-          setErrorMessage(data.message || 'You can only regenerate 2 times per week.');
+          setErrorMessage(data.message || 'You can only regenerate 1 time per week.');
           return;
         }
         throw new Error('AI temporarily unavailable');
@@ -576,7 +583,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
                   setPlan(msg.plan);
                   setGenerationSource(msg.generation_source || null);
                   setAiErrors(msg.ai_errors || null);
-                  setRegenerationsRemaining(msg.regenerations_remaining ?? 2);
+                  setRegenerationsRemaining(msg.regenerations_remaining ?? 1);
                   const today = new Date().toISOString().split('T')[0];
                   const todayIndex = msg.plan.daily_plan?.findIndex((d: DailyPlan) => d.date === today);
                   if (todayIndex >= 0) setSelectedDayIndex(todayIndex);
@@ -615,10 +622,16 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
           setPlan(data.plan);
           setGenerationSource(data.generation_source || (data.cached ? 'cached' : null));
           setAiErrors(data.ai_errors || null);
-          setRegenerationsRemaining(data.regenerations_remaining ?? 2);
+          setRegenerationsRemaining(data.regenerations_remaining ?? 1);
           const today = new Date().toISOString().split('T')[0];
           const todayIndex = data.plan.daily_plan?.findIndex((d: DailyPlan) => d.date === today);
           if (todayIndex >= 0) setSelectedDayIndex(todayIndex);
+        } else if (!forceRegenerate && !data.plan) {
+          // No saved plan exists for this week — trigger first generation
+          console.log('[WeeklyPlanner] No saved plan found, generating for the first time...');
+          setIsLoading(false);
+          loadPlan(true, targetWeek);
+          return;
         } else {
           throw new Error(data.message || 'Failed to generate plan');
         }

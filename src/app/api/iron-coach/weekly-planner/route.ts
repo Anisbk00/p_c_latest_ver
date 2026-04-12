@@ -1182,8 +1182,8 @@ async function generateTextFast(
   if (GROQ_API_KEY) {
     console.log('[weekly-planner] Attempting direct Groq API...');
     // Each model has its own rate limit pool on Groq. Order: best quality first, then fallbacks.
-    // llama-3.1-70b-versatile was decommissioned — do NOT add it back.
-    const modelsToTry = ['llama-3.3-70b-versatile', 'gemma2-9b-it', 'mixtral-8x7b-32768', 'llama-3.1-8b-instant'];
+    // DECOMMISSIONED (do NOT add back): llama-3.1-70b-versatile, gemma2-9b-it, mixtral-8x7b-32768, llama3-8b-8192, llama3-70b-8192
+    const modelsToTry = ['llama-3.3-70b-versatile', 'deepseek-r1-distill-llama-70b', 'qwen-qwq-32b', 'llama-3.1-8b-instant'];
 
     for (let i = 0; i < modelsToTry.length; i++) {
       const model = modelsToTry[i];
@@ -2231,16 +2231,16 @@ function parsePlanFromText(responseText: string): { plan: any; errors: AIErrorDe
 
 /**
  * Stream a plan generation from Groq API. Returns accumulated text.
- * Model fallback chain: llama-3.3-70b-versatile → gemma2-9b-it → mixtral-8x7b-32768 → llama-3.1-8b-instant
+ * Model fallback chain: llama-3.3-70b-versatile → deepseek-r1-distill-llama-70b → qwen-qwq-32b → llama-3.1-8b-instant
  * Each model has its own rate limit pool on Groq, so if one is at daily limit, others likely still have quota.
- * llama-3.1-70b-versatile was decommissioned — do NOT add it back.
+ * DECOMMISSIONED (do NOT add back): llama-3.1-70b-versatile, gemma2-9b-it, mixtral-8x7b-32768, llama3-8b-8192, llama3-70b-8192
  */
 async function streamGroqPlan(
   systemPrompt: string, 
   userPrompt: string, 
   apiKey: string
 ): Promise<{ text: string; errors: AIErrorDetail[] } | null> {
-  const models = ['llama-3.3-70b-versatile', 'gemma2-9b-it', 'mixtral-8x7b-32768', 'llama-3.1-8b-instant'];
+  const models = ['llama-3.3-70b-versatile', 'deepseek-r1-distill-llama-70b', 'qwen-qwq-32b', 'llama-3.1-8b-instant'];
   const allErrors: AIErrorDetail[] = [];
   
   for (const model of models) {
@@ -2384,7 +2384,7 @@ export async function POST(request: NextRequest) {
           .gte('created_at', new Date(weekStart + 'T00:00:00').toISOString());
 
         // Count manual regenerations this week for rate limit display
-        let regenerationsRemaining = 2;
+        let regenerationsRemaining = 1;
         try {
           const { count: regenCount } = await sb
             .from('weekly_plans')
@@ -2392,7 +2392,7 @@ export async function POST(request: NextRequest) {
             .eq('user_id', user.id)
             .gte('created_at', new Date(weekStart + 'T00:00:00').toISOString())
             .eq('generation_source', 'regenerate');
-          regenerationsRemaining = Math.max(0, 2 - (regenCount || 0));
+          regenerationsRemaining = Math.max(0, 1 - (regenCount || 0));
         } catch { /* ignore */ }
 
         // Find the latest plan for this week (prefer AI over others)
@@ -2443,8 +2443,8 @@ export async function POST(request: NextRequest) {
       weekEndStr
     );
 
-    // ═══ RATE LIMITING: max 2 manual regenerations per week ═══
-    let regenerationsRemaining = 2;
+    // ═══ RATE LIMITING: max 1 manual regeneration per week ═══
+    let regenerationsRemaining = 1;
     try {
       const weekMonday = new Date(weekStart);
       const { count: regenCount } = await sb
@@ -2453,13 +2453,13 @@ export async function POST(request: NextRequest) {
         .eq('user_id', user.id)
         .gte('created_at', weekMonday.toISOString())
         .eq('generation_source', 'regenerate');
-      regenerationsRemaining = Math.max(0, 2 - (regenCount || 0));
+      regenerationsRemaining = Math.max(0, 1 - (regenCount || 0));
 
       if (forceRegenerate && regenerationsRemaining <= 0) {
         return NextResponse.json({
           success: false,
           error: 'regeneration_limit',
-          message: `You can only regenerate 2 times per week. Next Monday you'll get a fresh plan.`,
+          message: `You can only regenerate 1 time per week. Next Monday you'll get a fresh plan.`,
           regenerations_remaining: 0,
         }, { status: 429 });
       }
@@ -2644,23 +2644,48 @@ export async function GET(request: NextRequest) {
 
     const url = new URL(request.url);
     const weekOffset = parseInt(url.searchParams.get('week_offset') || '0');
+    const weekStartParam = url.searchParams.get('week_start');
 
     // Calculate week dates
-    const today = new Date();
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay() + 1 + (weekOffset * 7));
+    let weekStart: Date;
+    if (weekStartParam) {
+      weekStart = new Date(weekStartParam + 'T00:00:00');
+    } else {
+      const today = new Date();
+      weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - today.getDay() + 1 + (weekOffset * 7));
+    }
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);
 
     const weekStartStr = weekStart.toISOString().split('T')[0];
 
-    // Fetch existing plan
-    const { data: plan } = await sb
+    // Fetch existing plan (prefer AI-generated over others)
+    const { data: plans } = await sb
       .from('weekly_plans')
       .select('*')
       .eq('user_id', user.id)
       .eq('week_start_date', weekStartStr)
-      .maybeSingle();
+      .eq('status', 'active')
+      .order('created_at', { ascending: false })
+      .limit(3);
+
+    // Prefer AI-generated plan, fallback to most recent
+    const plan = plans?.find((p: any) => p.generation_source === 'auto' || p.generation_source === 'regenerate')
+      || plans?.[0]
+      || null;
+
+    // Count manual regenerations this week
+    let regenerationsRemaining = 1;
+    try {
+      const { count: regenCount } = await sb
+        .from('weekly_plans')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('created_at', weekStart.toISOString())
+        .eq('generation_source', 'regenerate');
+      regenerationsRemaining = Math.max(0, 1 - (regenCount || 0));
+    } catch { /* ignore */ }
 
     // Fetch completion data
     const { data: completions } = await sb
@@ -2678,6 +2703,7 @@ export async function GET(request: NextRequest) {
       generated_at: plan?.created_at || null,
       confidence: plan?.confidence_score || null,
       generation_source: plan?.generation_source || null,
+      regenerations_remaining: regenerationsRemaining,
       completions: completions || [],
       week_start: weekStartStr,
       week_end: weekEnd.toISOString().split('T')[0],
