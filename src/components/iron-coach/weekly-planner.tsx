@@ -13,7 +13,7 @@ import {
   Dumbbell, Utensils, Moon, Pill, 
   Flame, Loader2, Target, Droplets, Brain,
   AlertCircle, Coffee, Sun, Sunset, Info, ChevronDown, ChevronUp,
-  Zap, Activity, RefreshCw, Shield, TrendingUp, Clock,
+  Zap, Activity, RefreshCw, Clock,
   ChevronLeft, ChevronRight
 } from 'lucide-react';
 import { subWeeks, addWeeks, startOfWeek, endOfWeek, getISOWeek, getYear, format } from 'date-fns';
@@ -471,9 +471,11 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   const [isLoading, setIsLoading] = useState(true);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
-  const [generationSource, setGenerationSource] = useState<'ai' | 'fallback' | null>(null);
+  const [generationSource, setGenerationSource] = useState<'ai' | 'fallback' | 'cached' | 'auto' | null>(null);
   const [aiErrors, setAiErrors] = useState<Array<{ attempt: string; stage: string; error: string }> | null>(null);
+  const [regenerationsRemaining, setRegenerationsRemaining] = useState(2);
 
   // Week navigation state — same pattern as WeightProgressTracker
   const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
@@ -506,17 +508,25 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
         body: JSON.stringify({ force_regenerate: forceRegenerate }),
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const errBody = await response.json().catch(() => ({}));
-        throw new Error(errBody.error || errBody.details || 'Failed to generate plan');
+        // Rate limit hit
+        if (data.error === 'regeneration_limit') {
+          setRegenerationsRemaining(data.regenerations_remaining ?? 0);
+          setError('regeneration_limit');
+          setErrorMessage(data.message || 'You can only regenerate 2 times per week.');
+          return;
+        }
+        // AI unavailable
+        throw new Error(data.message || 'Failed to generate plan');
       }
 
-      const data = await response.json();
-      
       if (data.success && data.plan) {
         setPlan(data.plan);
         setGenerationSource(data.generation_source || (data.cached ? 'cached' : null));
         setAiErrors(data.ai_errors || null);
+        setRegenerationsRemaining(data.regenerations_remaining ?? 2);
         const today = new Date().toISOString().split('T')[0];
         const todayIndex = data.plan.daily_plan?.findIndex((d: DailyPlan) => d.date === today);
         if (todayIndex >= 0) setSelectedDayIndex(todayIndex);
@@ -525,7 +535,8 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       }
     } catch (err) {
       console.error('[WeeklyPlanner] Error:', err);
-      setError('AI unavailable');
+      setError('ai_unavailable');
+      setErrorMessage(err instanceof Error ? err.message : 'AI unavailable');
     } finally {
       setIsLoading(false);
       setIsRegenerating(false);
@@ -567,21 +578,49 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
           Building your plan...
         </div>
         <div className={cn("text-sm mt-1", styles.textMuted)}>
-          Analyzing your fitness data
+          Iron Coach AI is analyzing your data
         </div>
       </div>
     );
   }
 
-  // Error state
-  if (error || !plan) {
+  // Rate limit error — still show existing plan
+  if (error === 'regeneration_limit' && plan) {
+    // Don't show error banner, just disable button — plan is still valid
+    setError(null);
+  }
+
+  // AI unavailable error
+  if ((error === 'ai_unavailable') && !plan) {
+    return (
+      <div className={cn("flex flex-col items-center justify-center h-full p-8", styles.container)}>
+        <AlertCircle className="w-10 h-10 mb-4 text-amber-500" />
+        <div className={cn("text-lg font-semibold mb-2", styles.text)}>AI Unavailable</div>
+        <div className={cn("text-sm mb-4 text-center max-w-xs", styles.textMuted)}>{errorMessage || 'Iron Coach AI is currently unavailable. Try again later.'}</div>
+        <button
+          onClick={() => { setError(null); setErrorMessage(null); loadPlan(true); }}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white",
+            "hover:opacity-80 transition-all",
+            styles.button
+          )}
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </button>
+      </div>
+    );
+  }
+
+  // Generic error (no plan)
+  if (error && !plan) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full p-8", styles.container)}>
         <AlertCircle className="w-10 h-10 mb-4 text-red-400" />
-        <div className={cn("text-lg font-semibold mb-2", styles.text)}>AI unavailable</div>
-        <div className={cn("text-sm mb-4 text-center max-w-xs", styles.textMuted)}>Please try again later</div>
+        <div className={cn("text-lg font-semibold mb-2", styles.text)}>Something went wrong</div>
+        <div className={cn("text-sm mb-4 text-center max-w-xs", styles.textMuted)}>{errorMessage || 'Please try again later'}</div>
         <button
-          onClick={() => loadPlan(true)}
+          onClick={() => { setError(null); setErrorMessage(null); loadPlan(false, currentWeekStart); }}
           className={cn(
             "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white",
             "hover:opacity-80 transition-all",
@@ -599,47 +638,13 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
 
   return (
     <div className={cn("flex flex-col h-full min-h-0", styles.container)}>
-      {/* Data-Driven Banner — shown when using data-based plan */}
-      {generationSource === 'fallback' && (
-        <div className={cn("shrink-0 px-4 py-2.5 border-b", styles.border, "bg-emerald-500/5")}>
-          <div className="flex items-start gap-2">
-            <Shield className={cn("w-4 h-4 shrink-0 mt-0.5 text-emerald-500")} />
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-1">
-                <span className={cn("text-xs font-semibold text-emerald-600 dark:text-emerald-400")}>
-                  Personalized Plan
-                </span>
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
-                  based on your data
-                </Badge>
-              </div>
-              <p className={cn("text-xs", styles.textMuted)}>
-                Built from your actual meals, workouts, and nutrition logs.
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* AI Unavailable Badge — simple, no diagnostics */}
-      {generationSource === 'fallback' && aiErrors && aiErrors.length > 0 && (
-        <div className={cn("shrink-0 px-4 py-1.5 border-b", styles.border)}>
-          <div className="flex items-center gap-1.5">
-            <AlertCircle className={cn("w-3.5 h-3.5 text-amber-500")} />
-            <span className={cn("text-[11px] font-medium text-amber-600 dark:text-amber-400")}>
-              AI unavailable — smart fallback plan active
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* AI Success Badge */}
-      {generationSource === 'ai' && (
+      {(generationSource === 'ai' || generationSource === 'auto') && (
         <div className={cn("shrink-0 px-4 py-1.5 border-b", styles.border)}>
           <div className="flex items-center gap-1.5">
             <Brain className={cn("w-3.5 h-3.5 text-emerald-500")} />
             <span className={cn("text-[11px] font-medium text-emerald-600 dark:text-emerald-400")}>
-              AI-Generated Plan
+              AI-Generated Plan{generationSource === 'auto' ? ' (auto)' : ''}
             </span>
           </div>
         </div>
@@ -695,15 +700,15 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
           </div>
           <button
             onClick={handleRegenerate}
-            disabled={isRegenerating}
+            disabled={isRegenerating || regenerationsRemaining <= 0}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
-              "hover:opacity-80 disabled:opacity-50",
+              "hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed",
               styles.button
             )}
           >
             <RefreshCw className={cn("w-3.5 h-3.5", isRegenerating && "animate-spin")} />
-            {isRegenerating ? 'Updating...' : 'Regenerate'}
+            {isRegenerating ? 'Generating...' : regenerationsRemaining <= 0 ? 'Limit Reached' : `Regenerate (${regenerationsRemaining} left)`}
           </button>
         </div>
       </div>

@@ -1823,25 +1823,51 @@ export async function POST(request: NextRequest) {
     // Check for existing plan (unless forcing regeneration)
     if (!forceRegenerate) {
       try {
-        const { data: existingPlan } = await sb
+        const { data: existingPlan, count: planCount } = await sb
+          .from('weekly_plans')
+          .select('id, generation_source, plan_data, confidence_score, created_at', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .gte('created_at', new Date(weekStart + 'T00:00:00').toISOString());
+
+        // Count manual regenerations this week for rate limit display
+        let regenerationsRemaining = 2;
+        try {
+          const { count: regenCount } = await sb
+            .from('weekly_plans')
+            .select('id', { count: 'exact', head: true })
+            .eq('user_id', user.id)
+            .gte('created_at', new Date(weekStart + 'T00:00:00').toISOString())
+            .eq('generation_source', 'regenerate');
+          regenerationsRemaining = Math.max(0, 2 - (regenCount || 0));
+        } catch { /* ignore */ }
+
+        // Find the latest plan for this week (prefer AI over others)
+        const plans = await sb
           .from('weekly_plans')
           .select('*')
           .eq('user_id', user.id)
           .eq('week_start_date', weekStartStr)
           .eq('status', 'active')
-          .maybeSingle();
+          .order('created_at', { ascending: false })
+          .limit(3);
 
-        if (existingPlan?.plan_data) {
-          return NextResponse.json({
-            success: true,
-            plan: existingPlan.plan_data,
-            cached: true,
-            plan_id: existingPlan.id,
-            generated_at: existingPlan.created_at,
-            confidence: existingPlan.confidence_score,
-            generation_source: existingPlan.generation_source === 'ai' ? 'ai' : 'cached',
-            ai_errors: undefined,
-          });
+        if (plans.data && plans.data.length > 0) {
+          // Prefer AI-generated plan, fallback to most recent
+          const aiPlan = plans.data.find((p: any) => p.generation_source === 'ai' || p.generation_source === 'auto');
+          const latestPlan = aiPlan || plans.data[0];
+          if (latestPlan?.plan_data) {
+            return NextResponse.json({
+              success: true,
+              plan: latestPlan.plan_data,
+              cached: true,
+              plan_id: latestPlan.id,
+              generated_at: latestPlan.created_at,
+              confidence: latestPlan.confidence_score,
+              generation_source: latestPlan.generation_source === 'ai' ? 'ai' : latestPlan.generation_source,
+              ai_errors: undefined,
+              regenerations_remaining,
+            });
+          }
         }
       } catch (dbError) {
         console.log('[weekly-planner] weekly_plans table may not exist, continuing without cache');
@@ -1863,14 +1889,36 @@ export async function POST(request: NextRequest) {
       weekEndStr
     );
 
-    // ═══ PRODUCTION PLAN GENERATION ═══
-    // 1. Try AI (fallback chain: llama-3.3-70b → llama-3.1-8b-instant)
-    // 2. If AI fails, build a deterministic plan from user data (zero AI dependency)
+    // ═══ RATE LIMITING: max 2 manual regenerations per week ═══
+    let regenerationsRemaining = 2;
+    try {
+      const weekMonday = new Date(weekStart);
+      const { count: regenCount } = await sb
+        .from('weekly_plans')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('created_at', weekMonday.toISOString())
+        .eq('generation_source', 'regenerate');
+      regenerationsRemaining = Math.max(0, 2 - (regenCount || 0));
+
+      if (forceRegenerate && regenerationsRemaining <= 0) {
+        return NextResponse.json({
+          success: false,
+          error: 'regeneration_limit',
+          message: `You can only regenerate 2 times per week. Next Monday you'll get a fresh plan.`,
+          regenerations_remaining: 0,
+        }, { status: 429 });
+      }
+    } catch (e) {
+      console.log('[weekly-planner] Could not check regeneration count:', e);
+    }
+
+    // ═══ AI-ONLY PLAN GENERATION ═══
+    // No fallback — if AI fails, return error so the user knows.
     let plan: any = null;
-    let generationSource: 'ai' | 'fallback' = 'fallback';
+    let generationSource: 'ai';
     let aiErrors: AIErrorDetail[] = [];
 
-    // ── STEP 1: AI Generation ──
     console.log('[weekly-planner] Starting AI plan generation (direct Groq API, JSON mode, 70b)...');
     const aiResult = await generatePlanWithAI(systemPrompt, userPrompt);
     aiErrors = aiResult.errors;
@@ -1880,14 +1928,14 @@ export async function POST(request: NextRequest) {
       generationSource = 'ai';
       console.log('[weekly-planner] AI plan generated successfully');
     } else {
-      console.log('[weekly-planner] AI failed, using deterministic fallback');
-    }
-
-    // ── STEP 2: Deterministic Fallback (if AI failed) ──
-    if (!plan) {
-      plan = buildDeterministicPlan(userData, weekStartStr, weekEndStr);
-      generationSource = 'fallback';
-      console.log('[weekly-planner] Deterministic fallback plan built');
+      console.error('[weekly-planner] AI generation failed — no fallback');
+      return NextResponse.json({
+        success: false,
+        error: 'ai_generation_failed',
+        message: 'Iron Coach AI is currently unavailable. Please try again later.',
+        ai_errors: aiErrors,
+        regenerations_remaining: regenerationsRemaining,
+      }, { status: 503 });
     }
 
     // Try to store plan in database (optional, may fail if table doesn't exist)
@@ -1900,6 +1948,7 @@ export async function POST(request: NextRequest) {
           week_end_date: weekEndStr,
           status: 'active',
           generation_source: forceRegenerate ? 'regenerate' : 'auto',
+          regenerations_used: forceRegenerate ? (2 - regenerationsRemaining + 1) : 0,
           plan_data: plan,
           confidence_score: plan.plan_confidence || 0.85,
           model_version: 'ai-v1',
@@ -1922,6 +1971,7 @@ export async function POST(request: NextRequest) {
       confidence: plan.plan_confidence || 0.85,
       generation_source: generationSource,
       ai_errors: aiErrors.length > 0 ? aiErrors : undefined,
+      regenerations_remaining: regenerationsRemaining,
     });
 
   } catch (error) {
