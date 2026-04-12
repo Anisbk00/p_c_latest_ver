@@ -1181,7 +1181,7 @@ async function generateTextFast(
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (GROQ_API_KEY) {
     console.log('[weekly-planner] Attempting direct Groq API...');
-    const modelsToTry = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+    const modelsToTry = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'];
 
     for (let i = 0; i < modelsToTry.length; i++) {
       const model = modelsToTry[i];
@@ -2229,14 +2229,14 @@ function parsePlanFromText(responseText: string): { plan: any; errors: AIErrorDe
 
 /**
  * Stream a plan generation from Groq API. Returns accumulated text.
- * Model fallback chain: llama-3.3-70b-versatile → llama-3.1-8b-instant
+ * Model fallback chain: llama-3.3-70b-versatile → llama-3.1-70b-versatile → llama-3.1-8b-instant
  */
 async function streamGroqPlan(
   systemPrompt: string, 
   userPrompt: string, 
   apiKey: string
 ): Promise<string | null> {
-  const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+  const models = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'];
   
   for (const model of models) {
     try {

@@ -154,6 +154,82 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
   }
 
   // Single attempt — streamText handles model fallback internally
+  // If that fails, try direct Groq API call as second chance
+  const directGroqFallback = async (userMsg: string, sysMsg: string | undefined) => {
+    const apiKey = process.env.GROQ_API_KEY;
+    if (!apiKey) {
+      console.error('[streamCloudPrompt] Direct fallback: no GROQ_API_KEY');
+      return null;
+    }
+    
+    const models = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
+    for (const model of models) {
+      try {
+        console.log(`[streamCloudPrompt] Direct fallback trying ${model}...`);
+        const resp = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: [
+              ...(sysMsg ? [{ role: 'system' as const, content: sysMsg }] : []),
+              { role: 'user' as const, content: userMsg },
+            ],
+            temperature: 0.35,
+            max_tokens: 1024,
+            stream: true,
+          }),
+        });
+
+        if (!resp.ok || !resp.body) {
+          const errText = await resp.text().catch(() => '');
+          console.error(`[streamCloudPrompt] Direct fallback ${model} failed: HTTP ${resp.status} ${errText.substring(0, 200)}`);
+          continue;
+        }
+
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = '';
+        let text = '';
+        let hasContent = false;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || !trimmed.startsWith('data: ')) continue;
+            const data = trimmed.slice(6);
+            if (data === '[DONE]') continue;
+            try {
+              const chunk = JSON.parse(data);
+              const token = chunk.choices?.[0]?.delta?.content;
+              if (token) {
+                hasContent = true;
+                text += token;
+                onToken(token);
+              }
+            } catch {}
+          }
+        }
+
+        if (hasContent && text.trim()) {
+          console.log(`[streamCloudPrompt] ✅ Direct fallback ${model} succeeded: ${text.length} chars`);
+          return text;
+        }
+      } catch (err) {
+        console.error(`[streamCloudPrompt] Direct fallback ${model} exception:`, err instanceof Error ? err.message : err);
+      }
+    }
+    return null;
+  };
+
   try {
     let fullText = '';
     const stream = streamText(effectiveUserPrompt, effectiveSystemPrompt, 1024);
@@ -167,6 +243,11 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
     console.log('[streamCloudPrompt] AI response length:', fullText?.length || 0);
 
     if (!fullText?.trim()) {
+      // Try direct Groq API as second chance
+      console.log('[streamCloudPrompt] Empty response from streamText, trying direct fallback...');
+      const fallbackResult = await directGroqFallback(effectiveUserPrompt, effectiveSystemPrompt);
+      if (fallbackResult) return fallbackResult;
+      
       const fallback = "Listen up! I'm having a moment here. Try asking me again in a few seconds. 💪";
       for (const ch of fallback) onToken(ch);
       return fallback;
@@ -190,6 +271,11 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
     console.error('[IronCoach] System prompt length:', effectiveSystemPrompt?.length || 0);
     console.error('[IronCoach] User prompt length:', effectiveUserPrompt?.length || 0);
     console.error('══════════════════════════════════════════════════');
+
+    // Try direct Groq API as second chance before giving up
+    console.log('[IronCoach] streamText failed, trying direct Groq fallback...');
+    const fallbackResult = await directGroqFallback(effectiveUserPrompt, effectiveSystemPrompt);
+    if (fallbackResult) return fallbackResult;
 
     // NEVER show raw API errors to users — only a friendly message
     const userFallback = "💪 I'm slammed right now. Give me a sec and try again!";
