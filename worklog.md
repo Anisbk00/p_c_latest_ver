@@ -163,3 +163,42 @@ Stage Summary:
 - Timeout increased to 45s for reliable 7-day JSON generation
 - Cron auto-generates weekly plans every Monday at 5 AM (Africa/Tunis)
 - Rate limit detection skips to next model instead of wasting retries
+
+---
+Task ID: 2
+Agent: Main Agent
+Task: Fix weekly planner 503 — fast Groq path + client null safety
+
+Work Log:
+- Analyzed Vercel Hobby plan constraint: 10s hard cap on serverless functions, regardless of maxDuration config
+- Previous fix used maxDuration:60 + 3-model fallback chain + 45s timeout — all ineffective on Hobby plan
+- Server-side root causes:
+  1. generateText() uses 70b model with 25s per-model timeout + rate limit backoff (8s base × 1.3^n) — can consume 50s+ total
+  2. max_tokens: 16384 allows extremely long generation
+  3. maxDuration: 60 is completely ignored by Vercel Hobby plan
+- Client-side root cause: TypeError: Cannot read properties of null (reading 'weekly_overview')
+  - When 503 received, component crashed accessing plan.weekly_overview on null plan
+  - Crash triggered AuthErrorBoundary cascade disconnecting all 9 Supabase realtime channels
+  - React Query retry loop amplified the problem with repeated failing requests
+- Applied server fix:
+  1. Created generateTextFast() — direct Groq API call bypassing shared groq-service
+  2. Model: llama-3.1-8b-instant (fastest available, ~500 tok/s on Groq LPU)
+  3. Timeout: 7s hard (AbortController) — leaves 3s for data fetch + JSON parse
+  4. max_tokens: 4096 (enough for 7-day plan JSON, prevents runaway generation)
+  5. No retry loop — single attempt, one shot
+  6. Removed maxDuration: 60 (useless)
+  7. Removed import of generateText from groq-service
+  8. Simplified GROQ_API_KEY check (direct process.env access)
+- Applied client fix:
+  1. Added final null guard: if (!plan) return loading UI — before accessing plan.weekly_overview
+  2. Safe JSON parse: wrapped response.json() in try/catch to handle Vercel HTML 503 pages
+  3. Optional chaining: plan?.weekly_overview with defaults in WhyThisPlanSection
+  4. Optional chaining: overview?.total_workout_days ?? 4 in render JSX
+- Lint: 0 errors, 11 pre-existing warnings
+- Pushed: commit 90a373c
+
+Stage Summary:
+- Planner AI generation should now complete within Vercel Hobby 10s limit
+- Client no longer crashes on 503 — shows graceful error UI instead
+- Prevents AuthErrorBoundary cascade that disconnected all realtime channels
+- Budget breakdown: ~2s data fetch + ~5s AI generation + ~1s JSON parse = ~8s total
