@@ -859,7 +859,7 @@ export async function POST(request: NextRequest) {
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       try {
-        lastResponseText = await generateText(userPrompt, systemPrompt, 4096, 'llama-3.1-8b-instant');
+        lastResponseText = await generateText(userPrompt, systemPrompt, 4096);
 
         // Clean up response — strip markdown fences, leading/trailing text
         let cleaned = lastResponseText
