@@ -7,7 +7,10 @@
  * This provides AI-powered coaching responses.
  */
 
-import { generateText, streamText, MODEL_NAME } from '@/lib/ai/gemini-service';
+import { generateText, streamText } from '@/lib/ai/groq-service';
+
+// Groq model name for cache keys
+const MODEL_NAME = 'groq-llama-3.3-70b';
 import { getCachedPromptResult, setCachedPromptResult } from './prompt-cache';
 import { buildHybridCoachSystemPrompt, type CoachingTone } from './prompt-template';
 
