@@ -1065,12 +1065,19 @@ async function generateTextFast(
 
         if (!response.ok) {
           const errText = await response.text().catch(() => '');
-          console.error(`[weekly-planner] Direct ${model}: API ${response.status}: ${errText.substring(0, 200)}`);
+          const errStatus = response.status;
+          const errCategory = errStatus === 429 ? 'RATE_LIMIT' : errStatus === 401 ? 'AUTH' : errStatus === 400 ? 'BAD_REQUEST' : errStatus >= 500 ? 'SERVER_ERROR' : 'UNKNOWN';
+          console.error(`══════════════════════════════════════════════════`);
+          console.error(`[weekly-planner] ❌ Direct ${model} FAILED`);
+          console.error(`[weekly-planner] HTTP ${errStatus} (${errCategory})`);
+          console.error(`[weekly-planner] Response: ${errText.substring(0, 500)}`);
+          console.error(`[weekly-planner] Model: ${model}`);
+          console.error(`══════════════════════════════════════════════════`);
           errors.push({
             attempt: `direct-${i + 1}`,
             stage: 'api_call',
             model,
-            error: `API ${response.status}: ${errText.substring(0, 200)}`,
+            error: `API ${errStatus} (${errCategory}): ${errText.substring(0, 200)}`,
             timestamp: new Date().toISOString(),
           });
           if (i < modelsToTry.length - 1) continue;
@@ -1091,7 +1098,7 @@ async function generateTextFast(
           continue;
         }
 
-        console.log(`[weekly-planner] Direct SUCCESS: ${model} (${content.length} chars)`);
+        console.log(`[weekly-planner] ✅ Direct SUCCESS: ${model} (${content.length} chars)`);
         return content;
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -1111,7 +1118,12 @@ async function generateTextFast(
   }
 
   // Direct Groq failed or no API key
-  console.error('[weekly-planner] Direct Groq failed — will use template fallback');
+  console.error('══════════════════════════════════════════════════');
+  console.error('[weekly-planner] ❌ ALL direct Groq models failed');
+  console.error(`[weekly-planner] Total errors: ${errors.length}`);
+  errors.forEach((e, i) => console.error(`  ${i + 1}. [${e.stage}] ${e.model}: ${e.error}`));
+  console.error('[weekly-planner] Will use template fallback');
+  console.error('══════════════════════════════════════════════════');
   return null;
 }
 
@@ -1997,7 +2009,16 @@ async function streamGroqPlan(
       
       if (!groqResp.ok || !groqResp.body) {
         const errText = await groqResp.text().catch(() => '');
-        console.error(`[weekly-planner] Groq stream ${model}: HTTP ${groqResp.status} ${errText.substring(0, 200)}`);
+        const errStatus = groqResp.status;
+        const errCategory = errStatus === 429 ? 'RATE_LIMIT' : errStatus === 401 ? 'AUTH' : errStatus === 400 ? 'BAD_REQUEST' : errStatus >= 500 ? 'SERVER_ERROR' : 'UNKNOWN';
+        console.error(`══════════════════════════════════════════════════`);
+        console.error(`[weekly-planner] ❌ Groq stream ${model} FAILED`);
+        console.error(`[weekly-planner] HTTP ${errStatus} (${errCategory})`);
+        console.error(`[weekly-planner] Response: ${errText.substring(0, 500)}`);
+        console.error(`[weekly-planner] Model: ${model}`);
+        console.error(`[weekly-planner] System prompt: ${systemPrompt.length} chars`);
+        console.error(`[weekly-planner] User prompt: ${userPrompt.length} chars`);
+        console.error(`══════════════════════════════════════════════════`);
         continue;
       }
       
@@ -2032,12 +2053,26 @@ async function streamGroqPlan(
         }
       }
       
+      console.log(`[weekly-planner] ✅ Stream complete from ${model}: ${fullContent.length} chars`);
+        
       if (fullContent.length > 100) {
-        console.log(`[weekly-planner] Stream complete from ${model}: ${fullContent.length} chars`);
         return fullContent;
+      } else {
+        console.warn(`[weekly-planner] ⚠️ Stream too short (${fullContent.length} chars), response may be incomplete`);
+        console.warn(`[weekly-planner] Content preview: ${fullContent.substring(0, 200)}`);
       }
     } catch (err) {
-      console.error(`[weekly-planner] Groq streaming ${model} error:`, err instanceof Error ? err.message : err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      const errName = err instanceof Error ? err.constructor.name : typeof err;
+      console.error(`══════════════════════════════════════════════════`);
+      console.error(`[weekly-planner] ❌ Groq streaming ${model} EXCEPTION`);
+      console.error(`[weekly-planner] Type: ${errName}`);
+      console.error(`[weekly-planner] Message: ${errMsg}`);
+      console.error(`[weekly-planner] Model: ${model}`);
+      if (err instanceof Error && err.stack) {
+        console.error(`[weekly-planner] Stack: ${err.stack.split('\n').slice(0, 3).join('\n')}`);
+      }
+      console.error(`══════════════════════════════════════════════════`);
     }
   }
   

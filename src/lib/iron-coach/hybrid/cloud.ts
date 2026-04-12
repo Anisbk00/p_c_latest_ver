@@ -178,7 +178,18 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
     return fullText;
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
-    console.error('[streamCloudPrompt] Error:', errorMessage);
+
+    // ── Detailed console logging ──
+    console.error('══════════════════════════════════════════════════');
+    console.error('[IronCoach] ❌ AI ERROR');
+    console.error('[IronCoach] Question:', actualQuestion?.slice(0, 120));
+    console.error('[IronCoach] Error type:', error instanceof Error ? error.constructor.name : typeof error);
+    console.error('[IronCoach] Message:', errorMessage);
+    console.error('[IronCoach] Locale:', locale);
+    console.error('[IronCoach] Prompt type:', typeof prompt === 'object' ? 'split system+user' : 'string');
+    console.error('[IronCoach] System prompt length:', effectiveSystemPrompt?.length || 0);
+    console.error('[IronCoach] User prompt length:', effectiveUserPrompt?.length || 0);
+    console.error('══════════════════════════════════════════════════');
 
     // NEVER show raw API errors to users — only a friendly message
     const userFallback = "💪 I'm slammed right now. Give me a sec and try again!";
