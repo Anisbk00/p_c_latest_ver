@@ -260,6 +260,45 @@ export function SplashScreen({ isLoading = true }: SplashScreenProps) {
   const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const holdStartRef = useRef<number>(0);
   const rippleIdRef = useRef(0);
+
+  // ═══════════════════════════════════════════════════════════
+  // BODY SCROLL LOCK — Prevents white circle on iOS overscroll
+  // ═══════════════════════════════════════════════════════════
+  useEffect(() => {
+    const html = document.documentElement;
+    const body = document.body;
+    // Save original values
+    const origHtmlOverflow = html.style.overflow;
+    const origBodyOverflow = body.style.overflow;
+    const origBodyPosition = body.style.position;
+    const origBodyWidth = body.style.width;
+    const origBodyHeight = body.style.height;
+    const origBodyTouchAction = body.style.touchAction;
+    const origHtmlOverscroll = html.style.overscrollBehavior;
+    // Lock everything
+    html.style.overflow = 'hidden';
+    html.style.overscrollBehavior = 'none';
+    body.style.overflow = 'hidden';
+    body.style.position = 'fixed';
+    body.style.width = '100%';
+    body.style.height = '100%';
+    body.style.touchAction = 'none';
+    // Kill iOS overscroll bounce globally while splash is visible
+    const preventScroll = (e: Event) => { e.preventDefault(); };
+    document.addEventListener('touchmove', preventScroll, { passive: false });
+    document.addEventListener('wheel', preventScroll, { passive: false });
+    return () => {
+      html.style.overflow = origHtmlOverflow;
+      html.style.overscrollBehavior = origHtmlOverscroll;
+      body.style.overflow = origBodyOverflow;
+      body.style.position = origBodyPosition;
+      body.style.width = origBodyWidth;
+      body.style.height = origBodyHeight;
+      body.style.touchAction = origBodyTouchAction;
+      document.removeEventListener('touchmove', preventScroll);
+      document.removeEventListener('wheel', preventScroll);
+    };
+  }, []);
   
   // ═══════════════════════════════════════════════════════════
   // CLIENT-ONLY INITIALIZATION (useLayoutEffect for sync)
@@ -463,7 +502,9 @@ export function SplashScreen({ isLoading = true }: SplashScreenProps) {
         background: 'linear-gradient(135deg, #0a0f0d 0%, #0d1512 50%, #0a1210 100%)',
         touchAction: 'none',
         overscrollBehavior: 'none',
-        WebkitOverflowScrolling: 'auto',
+        WebkitOverflowScrolling: 'none',
+        position: 'fixed',
+        inset: 0,
       }}
       role="status"
       aria-live="polite"
