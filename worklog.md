@@ -100,3 +100,42 @@ Stage Summary:
 - AI generation still requires GROQ_API_KEY (will show "AI unavailable — smart fallback plan active" badge without it)
 - Deterministic fallback plan generation works with zero AI dependency
 - No design changes — only backend resilience improvements
+
+---
+Task ID: 4
+Agent: Main Agent
+Task: Planner — AI-only generation, remove fallback, add weekly rate limit
+
+Work Log:
+- Analyzed user request: "i want the AI to generate not the fallback plan"
+- Identified that GROQ_API_KEY is NOT set in local .env (only on Vercel) — AI always fails locally
+- Previous behavior: AI fails → silently falls back to deterministic plan → user sees "fallback" badge
+- Applied fixes:
+  1. **API (`weekly-planner/route.ts`)**:
+     - Removed deterministic fallback entirely — if AI fails, return 503 error with clear message
+     - Added rate limiting: max 2 manual regenerations per week per user
+     - Track regenerations via `generation_source='regenerate'` in `weekly_plans` table
+     - Return `regenerations_remaining` in all API responses (cached + fresh)
+     - Cache lookup now prefers AI/auto plans over fallback plans
+     - When saving, tag generation_source as 'auto' (first load) or 'regenerate' (manual)
+  2. **UI (`weekly-planner.tsx`)**:
+     - Added `regenerationsRemaining` state (starts at 2)
+     - Regenerate button shows count: "Regenerate (2 left)" → "Regenerate (1 left)" → "Limit Reached"
+     - Button disabled (opacity-40, cursor-not-allowed) when limit reached
+     - Removed ALL fallback banners (Personalized Plan banner, AI unavailable fallback banner)
+     - Added "AI-Generated Plan (auto)" badge for auto-generated plans
+     - Improved error states: separate AI unavailable / regeneration limit / generic errors
+     - Try Again buttons now properly reset error state before retrying
+  3. **Vercel cron (`vercel.json`)**:
+     - Added cron: `/api/cron/weekly-plan` every Monday at 05:00 UTC
+     - This triggers auto-generation for all users weekly
+
+- Lint: 0 errors, 11 pre-existing warnings (all pre-existing)
+- Pushed: commit `b5aff6a`
+
+Stage Summary:
+- Planner now uses AI-only generation — no silent fallback to deterministic plan
+- Rate limiting: max 2 manual regenerations per week
+- Auto-generation: cron job runs every Monday, plus auto-generates on first open of each week
+- Clear error handling: shows "AI Unavailable" with retry button when AI is down
+- `GROQ_API_KEY` must be set in Vercel env for AI to work in production
