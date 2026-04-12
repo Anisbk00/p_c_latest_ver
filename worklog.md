@@ -294,3 +294,43 @@ Stage Summary:
 - AI prompt produces much more structured, complete output
 - Plans with 3+ days are accepted and padded instead of rejected
 - Next visit to planner loads saved plan from DB instead of regenerating
+
+---
+Task ID: 8
+Agent: Main Agent
+Task: Fix Iron Coach chat tone (AAVE/street slang), real name usage, emojis, today's data + splash screen scroll lock
+
+Work Log:
+- Analyzed user complaints about Iron Coach:
+  1. Coach refers to user as "User" instead of their real name
+  2. Coach doesn't have/use latest data (today's calories, macros)
+  3. Coach doesn't use emojis
+  4. User wants AAVE/street slang tone with cursing
+  5. Splash screen shows white circle when scrolling (iOS overscroll bounce)
+- Fixed chat prompt in `prompt-template.ts`:
+  - Rewrote aggressive prompt completely in AAVE/urban slang with cursing
+  - Added slang examples: "nah fam", "bruh", "on god", "no cap", "deadass", "brazy"
+  - Added cursing permission: "hell yeah, shit, damn, tf, bs, ass"
+  - Rule #1: ALWAYS use user's real name from profile, NEVER "User". If no name, use "bro", "my guy", "champ", "king"
+  - Rule #8: Emojis are MANDATORY in every response: 💀🔥😤💪💯🥩⚡🏋️‍♂️
+  - Rewrote balanced tone prompt with same style
+  - Changed "User"/"Coach" chat history labels to "Them"/"You"
+- Fixed user prompt data in `buildHybridCoachUserPrompt()`:
+  - Added "TODAY'S NUMBERS" section at top of data (today's calories, protein, carbs, fat)
+  - Made weekly totals clearer: "Calories consumed (week total):"
+  - Updated final instruction to emphasize using today's data and real name
+- Fixed splash screen scroll lock in `splash-screen.tsx`:
+  - Added useEffect to lock body/html overflow, position, and touch-action while splash is visible
+  - Added global touchmove/wheel event prevention with { passive: false } to kill iOS overscroll bounce
+  - Changed WebkitOverflowScrolling from 'auto' to 'none'
+  - Added explicit position: fixed and inset: 0 inline styles
+  - All locks properly restored on component unmount
+- Lint: 0 errors, 11 pre-existing warnings
+- Pushed: commit `47f17d7`
+
+Stage Summary:
+- Iron Coach now speaks in AAVE/street slang with cursing and emojis
+- Coach uses user's real name (never "User")
+- Today's nutrition data prominently displayed in AI context
+- Splash screen scroll lock prevents iOS white circle overscroll effect
+- No design changes, no architectural changes
