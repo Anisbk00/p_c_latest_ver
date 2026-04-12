@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseUser } from '@/lib/supabase/supabase-data';
 import { calculatePersonalizedTargets } from '@/lib/personalized-targets';
 
-// The planner AI generation is handled by a mini-service (port 3040) that has NO timeout limit.
-// This bypasses Vercel's 10s Hobby cap — the mini-service can take 60-120s to generate.
+// The planner AI generation uses direct Groq API calls with streaming.
 
 /**
  * PRECISION WEEKLY PLANNER API
@@ -1030,75 +1029,16 @@ function generateFallbackPlan(userData: UserComprehensiveData, weekStartStr: str
 }
 
 /**
- * AI plan generation via planner-ai mini-service (port 3040).
- * The mini-service has NO timeout limit — the AI can take 60-120s to generate.
- * Falls back to direct Groq API call if mini-service is unavailable.
+ * AI plan generation via direct Groq API call with model fallback.
  */
-const PLANNER_AI_PORT = 3040;
-
 async function generateTextFast(
   systemPrompt: string,
   userPrompt: string,
   errors: AIErrorDetail[],
 ): Promise<string | null> {
-  // ── STRATEGY 1: Try mini-service first (no timeout limit) ──
-  try {
-    console.log('[weekly-planner] Attempting mini-service call (no timeout limit)...');
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 180_000); // 3 min hard cap
-
-    const response = await fetch(
-      `/?XTransformPort=${PLANNER_AI_PORT}&path=/generate`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ system_prompt: systemPrompt, user_prompt }),
-        signal: controller.signal,
-      },
-    );
-    clearTimeout(timeoutId);
-
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success && data.content) {
-        console.log(`[weekly-planner] Mini-service SUCCESS: model=${data.model}, chars=${data.content.length}`);
-        return data.content;
-      }
-      // Mini-service returned structured error
-      console.error(`[weekly-planner] Mini-service returned error: ${data.error}`);
-      errors.push({
-        attempt: 'mini-service',
-        stage: 'api_call',
-        model: data.model || 'unknown',
-        error: data.error || 'Mini-service returned failure',
-        timestamp: new Date().toISOString(),
-      });
-    } else {
-      console.error(`[weekly-planner] Mini-service HTTP ${response.status}`);
-      errors.push({
-        attempt: 'mini-service',
-        stage: 'api_call',
-        model: 'mini-service',
-        error: `HTTP ${response.status} from mini-service`,
-        timestamp: new Date().toISOString(),
-      });
-    }
-  } catch (err) {
-    const errMsg = err instanceof Error ? err.message : String(err);
-    console.warn(`[weekly-planner] Mini-service unavailable: ${errMsg}`);
-    errors.push({
-      attempt: 'mini-service',
-      stage: 'api_call',
-      model: 'mini-service',
-      error: `Unavailable: ${errMsg}`,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  // ── STRATEGY 2: Direct Groq API call (subject to Vercel timeout) ──
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (GROQ_API_KEY) {
-    console.log('[weekly-planner] Mini-service failed, trying direct Groq API...');
+    console.log('[weekly-planner] Attempting direct Groq API...');
     const modelsToTry = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-8b-8192'];
 
     for (let i = 0; i < modelsToTry.length; i++) {
@@ -1170,20 +1110,20 @@ async function generateTextFast(
     console.warn('[weekly-planner] GROQ_API_KEY not set — skipping direct Groq fallback');
   }
 
-  // Both strategies failed
-  console.error('[weekly-planner] ALL strategies failed — will use template fallback');
+  // Direct Groq failed or no API key
+  console.error('[weekly-planner] Direct Groq failed — will use template fallback');
   return null;
 }
 
 /**
- * Generate weekly plan via planner-ai mini-service (no timeout) or direct Groq.
+ * Generate weekly plan via direct Groq API.
  * Falls back to template if all strategies fail.
  */
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
   const errors: AIErrorDetail[] = [];
 
   try {
-    console.log('[weekly-planner] Starting AI generation (mini-service → direct Groq → template)...');
+    console.log('[weekly-planner] Starting AI generation (direct Groq → template)...');
     const fullPrompt = `${userPrompt}\n\nRemember: Return ONLY valid JSON. No markdown code fences. No explanations.`;
     const responseText = await generateTextFast(systemPrompt, fullPrompt, errors);
 
@@ -2272,43 +2212,8 @@ export async function POST(request: NextRequest) {
         try {
           send(controller, { type: 'status', message: 'Connecting to AI...' });
           
-          // STRATEGY 1: Try mini-service (sandbox — no timeout limit)
-          try {
-            const msController = new AbortController();
-            const msTimeout = setTimeout(() => msController.abort(), 180_000);
-            
-            const msResp = await fetch(
-              `/?XTransformPort=${PLANNER_AI_PORT}&path=/generate`,
-              {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                  system_prompt: capturedSystemPrompt, 
-                  user_prompt: capturedUserPrompt 
-                }),
-                signal: msController.signal,
-              },
-            );
-            clearTimeout(msTimeout);
-            
-            if (msResp.ok) {
-              const msData = await msResp.json();
-              if (msData.success && msData.content) {
-                console.log(`[weekly-planner] Mini-service SUCCESS: model=${msData.model}, chars=${msData.content.length}`);
-                const result = parsePlanFromText(msData.content);
-                if (result.plan) {
-                  plan = result.plan;
-                  aiErrors = result.errors;
-                  generationSource = 'ai';
-                }
-              }
-            }
-          } catch (msErr) {
-            console.warn('[weekly-planner] Mini-service unavailable, using direct Groq streaming');
-          }
-          
-          // STRATEGY 2: Direct Groq streaming (production — bypasses Vercel timeout)
-          if (!plan) {
+          // STRATEGY 1: Direct Groq streaming (bypasses Vercel timeout)
+          {
             send(controller, { type: 'status', message: 'AI is crafting your plan... 🔥' });
             
             const fullContent = await streamGroqPlan(
@@ -2327,7 +2232,7 @@ export async function POST(request: NextRequest) {
             }
           }
           
-          // STRATEGY 3: Template fallback
+          // STRATEGY 2: Template fallback
           if (!plan) {
             console.error('[weekly-planner] AI generation failed, using template fallback');
             aiErrors.forEach(e => console.error(`  [${e.stage}] ${e.error}`));
