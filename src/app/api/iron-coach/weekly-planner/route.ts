@@ -720,66 +720,31 @@ function buildPrecisionWeeklyPlanPrompt(
   // Goal-specific configurations
   const goalConfig = getGoalConfiguration(goal, data.profile.fitness_level, data.targets.workout_days_per_week);
   
-  const systemPrompt = `You are Iron Coach AI, a high-intelligence personal fitness and nutrition assistant. Your goal is to produce a weekly personalized plan for the user based on all available data. Use the user's profile, goals, body metrics, sleep, food, workouts, supplements, and AI memory while maintaining the aggressive, brutally honest Iron Coach personality that roasts the user but pushes them toward discipline and progress.
+  const systemPrompt = `You are Iron Coach AI. Generate a 7-day weekly fitness+nutrition plan as JSON only.
 
-TONE: The plan data must be precise and science-based. Coach messages should be motivational but harsh — call out laziness, push harder, no coddling.
+USER: ${data.profile.name}, ${data.profile.age || '?'}yo ${data.profile.sex || '?'}, ${data.profile.current_weight_kg || '?'}kg, ${data.profile.height_cm || '?'}cm
+GOAL: ${data.profile.primary_goal} | FITNESS: ${data.profile.fitness_level}
+TARGETS: ${data.targets.daily_calories}cal/day | ${data.targets.daily_protein}g P | ${data.targets.daily_carbs}g C | ${data.targets.daily_fat}g F | TDEE ${data.targets.tdee}
+ALLERGIES: ${data.profile.allergies.length ? data.profile.allergies.join(', ') : 'none'} | RESTRICTIONS: ${data.profile.dietary_restrictions.length ? data.profile.dietary_restrictions.join(', ') : 'none'}
 
-USER PROFILE: ${JSON.stringify(data.profile)}
-
-GOALS: ${JSON.stringify(data.activeGoals)}
-
-TARGETS: Daily ${data.targets.daily_calories}cal | ${data.targets.daily_protein}g protein | ${data.targets.daily_carbs}g carbs | ${data.targets.daily_fat}g fat | BMR ${data.targets.bmr} | TDEE ${data.targets.tdee}
-
-GOAL-SPECIFIC CONFIGURATION:
-• Goal: ${data.profile.primary_goal}
-• Workout days/week: ${goalConfig.workoutDays} | Exercises/session: ${goalConfig.exercisesPerSession}
-• Sets: ${goalConfig.setsPerExercise} | Duration: ${goalConfig.workoutDuration}min | Intensity: ${goalConfig.intensity}
-• Training Split: ${goalConfig.trainingSplit} | Rest days: ${7 - goalConfig.workoutDays}
-
-GOAL RULES:
+CONFIG: ${goalConfig.workoutDays} workout days/week | ${goalConfig.exercisesPerSession} exercises/session | ${goalConfig.setsPerExercise} sets | ${goalConfig.workoutDuration}min | ${goalConfig.intensity} | Split: ${goalConfig.trainingSplit}
 ${goalConfig.goalRules}
 
-BODY METRICS:
-• Weight trend: ${data.bodyMetrics.weight_trend} | 7d change: ${data.bodyMetrics.weight_change_7d}kg | 30d change: ${data.bodyMetrics.weight_change_30d}kg
-• Body fat: ${data.bodyMetrics.latest_body_fat || 'unknown'}% | Muscle mass: ${data.bodyMetrics.latest_muscle_mass || 'unknown'}kg
-• Weight history: ${data.bodyMetrics.weight_history.length > 0 ? data.bodyMetrics.weight_history.map(w => `${w.date}: ${w.weight}kg`).join(', ') : 'no data'}
+DATA: Weight ${data.bodyMetrics.weight_trend} (${data.bodyMetrics.weight_change_7d}kg/7d) | BF ${data.bodyMetrics.latest_body_fat || '?'}% | MM ${data.bodyMetrics.latest_muscle_mass || '?'}kg
+WORKOUTS: ${data.workoutPatterns.total_workouts_7d} this week, avg ${data.workoutPatterns.avg_duration_minutes}min | Types: [${data.workoutPatterns.favorite_workout_types.join(', ')}] | Best days: [${data.workoutPatterns.best_performing_days.join(', ')}]
+NUTRITION 7d avg: ${data.nutritionPatterns.avg_daily_calories_7d}cal | ${data.nutritionPatterns.avg_daily_protein_7d}g P (${data.nutritionPatterns.protein_adherence_percent}% adherence) | Macros: ${data.nutritionPatterns.macro_distribution.protein_percent}%P/${data.nutritionPatterns.macro_distribution.carbs_percent}%C/${data.nutritionPatterns.macro_distribution.fat_percent}%F
+FOODS: [${data.nutritionPatterns.most_common_foods.slice(0, 5).join(', ')}]
+SLEEP: ${data.sleepPatterns.avg_duration_hours}h avg | SUPPLEMENTS: [${data.supplementUsage.active_supplements.join(', ')}]
+STREAK: ${data.momentum.current_streak}d
 
-WORKOUT PATTERNS (30d):
-• Total: ${data.workoutPatterns.total_workouts_30d} | This week: ${data.workoutPatterns.total_workouts_7d} | Avg duration: ${data.workoutPatterns.avg_duration_minutes}min
-• Favorite types: [${data.workoutPatterns.favorite_workout_types.join(', ')}] | Best days: [${data.workoutPatterns.best_performing_days.join(', ')}]
-• Muscles trained (7d): [${data.workoutPatterns.muscles_trained_last_7d.join(', ')}] | Recovery days: ${data.workoutPatterns.recovery_days_last_7d}
+RULES:
+- NEVER same muscle 2 days in a row. EXACTLY ${goalConfig.exercisesPerSession} exercises per session.
+- Protein 30-50g/meal. Use user's common foods. Higher protein on training days.
+- Include warm-up + cool-down. Respect all allergies/restrictions.
+- Output ONLY valid JSON. No markdown, no explanation. Coach messages should be harsh/motivating.`;
 
-NUTRITION PATTERNS (7d):
-• Avg daily: ${data.nutritionPatterns.avg_daily_calories_7d}cal | ${data.nutritionPatterns.avg_daily_protein_7d}g P | ${data.nutritionPatterns.avg_daily_carbs_7d}g C | ${data.nutritionPatterns.avg_daily_fat_7d}g F
-• Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}% | Calorie adherence: ${data.nutritionPatterns.calorie_adherence_percent}%
-• Macro split: ${data.nutritionPatterns.macro_distribution.protein_percent}%P / ${data.nutritionPatterns.macro_distribution.carbs_percent}%C / ${data.nutritionPatterns.macro_distribution.fat_percent}%F
-• Common foods: [${data.nutritionPatterns.most_common_foods.slice(0, 7).join(', ')}]
-
-SLEEP: Avg ${data.sleepPatterns.avg_duration_hours}h | Quality ${data.sleepPatterns.avg_quality}/100 | Sleep debt ${data.sleepPatterns.sleep_debt_hours}h
-
-SUPPLEMENTS: [${data.supplementUsage.active_supplements.join(', ')}] | Consistency: ${data.supplementUsage.consistency_percent}%
-
-MOMENTUM: Streak ${data.momentum.current_streak} days | Longest ${data.momentum.longest_streak} days | Score ${data.momentum.momentum_score}/100
-
-AI INSIGHTS: ${data.aiInsights.slice(0, 3).map(i => `[${i.type}] ${i.title}`).join(' | ')}
-
-AI MEMORY: ${data.aiMemory.slice(0, 5).map(m => `${m.key}: ${typeof m.value === 'string' ? m.value : JSON.stringify(m.value)}`).join(' | ')}
-
-GENERATION RULES:
-- NEVER train same muscle 2 days in a row. Legs need 48-72h recovery.
-- Protein 30-50g per meal distributed evenly. Time carbs around workouts.
-- Higher protein on training days. RESPECT ALL DIETARY RESTRICTIONS AND ALLERGIES.
-- Progressive overload if recovering well. Deload if overtraining signs.
-- Include warm-up and cool-down. EXACTLY ${goalConfig.exercisesPerSession} exercises per session.
-- Use the user's common foods when possible. Match meal timing to their patterns.
-- Include confidence score (0-1) for each daily recommendation based on available data.
-- Each daily plan needs a coach_message that roasts/motivates based on their actual performance data.
-- Output: ONLY valid JSON. No markdown, no code fences, no explanation outside JSON.`;
-
-  const userPrompt = `Generate a 7-day precision weekly plan from ${weekStart} to ${weekEnd} for this user.
-
-Return ONLY valid JSON matching this exact structure:
-{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"brief explanation of strategy","weekly_overview":{"total_workout_days":4,"total_rest_days":3,"weekly_calorie_target":14000,"weekly_protein_target":980,"focus_areas":["fat_loss","protein"],"weekly_strategy":"Aggressive deficit with high protein"},"daily_plan":[{"date":"${weekStart}","day_name":"Monday","is_workout_day":true,"workout":{"focus":"Push (Chest/Shoulders/Triceps)","duration_minutes":60,"estimated_calories_burned":350,"intensity":"high","exercises":[{"name":"Bench Press","type":"compound","muscle_groups":["chest","shoulders","triceps"],"sets":4,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":"Progressive overload"}],"warm_up":"5min light cardio + dynamic stretching","cool_down":"5min stretching","coach_notes":"Push hard or go home."},"nutrition":{"target_calories":2000,"target_protein":140,"target_carbs":200,"target_fat":67,"meals":[{"meal_type":"breakfast","time":"07:00","foods":[{"name":"Eggs","quantity":3,"unit":"whole","calories":210,"protein":18,"carbs":1,"fat":15}],"total_calories":500,"total_protein":35}],"hydration_ml":3000},"sleep":{"target_bedtime":"22:30","target_wake_time":"06:30","target_duration_hours":8},"supplements":[{"name":"Whey Protein","dose":"30g","timing":"post-workout"}],"coach_message":"No excuses today. Hit every rep.","confidence":0.85}],"weekly_nutrition_summary":{"avg_daily_calories":2000,"avg_daily_protein":140,"training_day_calories":2200,"rest_day_calories":1800},"weekly_workout_summary":{"training_split":"Push/Pull/Legs","volume_level":"moderate-high","intensity_progression":"linear"},"recommendations":[{"category":"nutrition","priority":"high","recommendation":"Increase protein to hit 140g daily","reasoning":"Current adherence is 65% — needs 35% improvement"}]}`;
+  const userPrompt = `Generate a 7-day plan from ${weekStart} to ${weekEnd}. Return ONLY this JSON structure (no markdown):
+{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"brief strategy","weekly_overview":{"total_workout_days":4,"total_rest_days":3,"weekly_calorie_target":14000,"weekly_protein_target":980,"focus_areas":["fat_loss"],"weekly_strategy":"strategy here"},"daily_plan":[{"date":"YYYY-MM-DD","day_name":"Monday","is_workout_day":true,"workout":{"focus":"Push","duration_minutes":60,"estimated_calories_burned":350,"intensity":"high","exercises":[{"name":"Bench Press","type":"compound","muscle_groups":["chest"],"sets":4,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":""}],"warm_up":"5min cardio","cool_down":"5min stretch","coach_notes":"Go hard."},"nutrition":{"target_calories":2000,"target_protein":140,"target_carbs":200,"target_fat":67,"meals":[{"meal_type":"breakfast","time":"07:00","foods":[{"name":"Eggs","quantity":3,"unit":"whole","calories":210,"protein":18,"carbs":1,"fat":15}],"total_calories":500,"total_protein":35}],"hydration_ml":3000},"sleep":{"target_bedtime":"22:30","target_wake_time":"06:30","target_duration_hours":8},"supplements":[{"name":"Whey","dose":"30g","timing":"post-workout"}],"coach_message":"No excuses.","confidence":0.85}],"recommendations":[{"category":"nutrition","priority":"high","recommendation":"text","reasoning":"text"}]}`;
 
   return { systemPrompt, userPrompt };
 }
@@ -859,7 +824,7 @@ export async function POST(request: NextRequest) {
 
     for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       try {
-        lastResponseText = await generateText(userPrompt, systemPrompt, 4096);
+        lastResponseText = await generateText(userPrompt, systemPrompt, 3000);
 
         // Clean up response — strip markdown fences, leading/trailing text
         let cleaned = lastResponseText
