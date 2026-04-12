@@ -16,6 +16,7 @@
 
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
+import { startOfWeek, format } from 'date-fns';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Send, X, Sparkles, Zap, Dumbbell, Target, Utensils, Cpu, Crown, Loader2, Trash2, MoreVertical, CalendarDays, MessageSquare, RefreshCw, AlertTriangle, TrendingUp, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -562,6 +563,22 @@ export function IronCoach({ className }: IronCoachProps) {
 
     loadHistory();
   }, [isOpen, historyLoaded]);
+
+  // Auto-generate current week's plan when panel opens (background, non-blocking)
+  useEffect(() => {
+    if (!isOpen) return;
+    const currentWeekStart = startOfWeek(new Date(), { weekStartsOn: 1 });
+    const weekStartStr = format(currentWeekStart, 'yyyy-MM-dd');
+
+    apiFetch(`/api/iron-coach/weekly-planner?week_start=${weekStartStr}`, {
+      method: 'POST',
+      body: JSON.stringify({ force_regenerate: false }),
+    })
+      .then(res => {
+        if (res.ok) console.log('[IronCoach] Weekly plan auto-cached for', weekStartStr);
+      })
+      .catch(err => console.error('[IronCoach] Auto plan gen failed (non-blocking):', err));
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Focus input on open
   useEffect(() => {
