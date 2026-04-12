@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseUser } from '@/lib/supabase/supabase-data';
-import { generateText } from '@/lib/ai/gemini-service';
 import { calculatePersonalizedTargets } from '@/lib/personalized-targets';
+
+// Direct Groq API call for weekly planner — bypasses generateText fallback chain
+// Uses llama-3.3-70b-versatile with JSON mode for reliable structured output
+const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
+const PLANNER_MODEL = 'llama-3.3-70b-versatile';
+const PLANNER_TIMEOUT_MS = 60000; // 60s — large JSON needs more time
 
 /**
  * PRECISION WEEKLY PLANNER API
@@ -785,7 +790,7 @@ Streak: ${data.momentum.current_streak}d | Longest: ${data.momentum.longest_stre
 }
 
 // ═══════════════════════════════════════════════════════════════
-// AI PLAN GENERATION — tries all models, waits between attempts
+// AI PLAN GENERATION — Direct Groq API call with JSON mode
 // ═══════════════════════════════════════════════════════════════
 
 function sleep(ms: number): Promise<void> {
@@ -794,7 +799,8 @@ function sleep(ms: number): Promise<void> {
 
 interface AIErrorDetail {
   attempt: string;
-  stage: 'api_call' | 'json_parse' | 'json_repair' | 'invalid_structure';
+  stage: 'api_call' | 'json_parse' | 'json_repair' | 'invalid_structure' | 'truncated';
+  model: string;
   error: string;
   timestamp: string;
 }
@@ -805,80 +811,246 @@ interface AIPlanResult {
   errors: AIErrorDetail[];
 }
 
+/**
+ * Extract JSON from response using balanced brace counting.
+ * Handles trailing text and nested objects correctly.
+ */
+function extractJSON(text: string): { json: string; wasTruncated: boolean } {
+  let cleaned = text
+    .replace(/```json\s*/gi, '')
+    .replace(/```\s*/g, '')
+    .trim();
+
+  const firstBrace = cleaned.indexOf('{');
+  if (firstBrace === -1) return { json: cleaned, wasTruncated: false };
+
+  // Use balanced brace counting to find the CORRECT outer closing brace
+  let depth = 0;
+  let inString = false;
+  let escapeNext = false;
+  let lastBalancedBrace = -1;
+
+  for (let i = firstBrace; i < cleaned.length; i++) {
+    const ch = cleaned[i];
+
+    if (escapeNext) {
+      escapeNext = false;
+      continue;
+    }
+    if (ch === '\\' && inString) {
+      escapeNext = true;
+      continue;
+    }
+    if (ch === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+
+    if (ch === '{') depth++;
+    if (ch === '}') {
+      depth--;
+      if (depth === 0) {
+        lastBalancedBrace = i;
+        break;
+      }
+    }
+  }
+
+  if (lastBalancedBrace > 0) {
+    const extracted = cleaned.slice(firstBrace, lastBalancedBrace + 1);
+    const wasTruncated = cleaned.length > lastBalancedBrace + 10;
+    return { json: extracted, wasTruncated };
+  }
+
+  // Balanced brace not found — JSON is truncated. Use last brace as fallback.
+  const lastBrace = cleaned.lastIndexOf('}');
+  if (lastBrace > firstBrace) {
+    return { json: cleaned.slice(firstBrace, lastBrace + 1), wasTruncated: true };
+  }
+
+  return { json: cleaned.slice(firstBrace), wasTruncated: true };
+}
+
+/**
+ * Attempt to repair truncated JSON by closing unclosed structures.
+ */
+function repairTruncatedJSON(json: string): string {
+  let repaired = json;
+
+  // Count unclosed brackets/braces/strings
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inString = false;
+  let escapeNext = false;
+
+  for (let i = 0; i < repaired.length; i++) {
+    const ch = repaired[i];
+    if (escapeNext) { escapeNext = false; continue; }
+    if (ch === '\\' && inString) { escapeNext = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
+    if (inString) continue;
+    if (ch === '{') openBraces++;
+    if (ch === '}') openBraces--;
+    if (ch === '[') openBrackets++;
+    if (ch === ']') openBrackets--;
+  }
+
+  // If we're in a string, close it
+  if (inString) repaired += '"';
+
+  // Remove trailing comma before closing
+  repaired = repaired.replace(/,\s*$/, '');
+  // Close open arrays and objects (reverse order — innermost first)
+  while (openBrackets > 0) { repaired += ']'; openBrackets--; }
+  while (openBraces > 0) { repaired += '}'; openBraces--; }
+
+  return repaired;
+}
+
+/**
+ * Call Groq API directly for weekly planner with JSON mode.
+ * Uses 70b model with temperature 0.1 for maximum JSON reliability.
+ */
+async function callGroqForPlanner(
+  systemPrompt: string,
+  userPrompt: string,
+): Promise<{ text: string; model: string; finishReason: string }> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), PLANNER_TIMEOUT_MS);
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: PLANNER_MODEL,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.1,           // Low temp for deterministic JSON
+        max_tokens: 16384,          // Large output — 7-day plan is massive
+        response_format: { type: 'json_object' }, // Force JSON mode
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      throw new Error(`API ${response.status}: ${errorBody.slice(0, 200)}`);
+    }
+
+    const result = await response.json();
+    const content = result.choices?.[0]?.message?.content;
+    const finishReason = result.choices?.[0]?.finish_reason || 'unknown';
+
+    if (!content) throw new Error('Empty response from AI');
+
+    return { text: content, model: PLANNER_MODEL, finishReason };
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
+ * Extract retry-after delay from error message
+ */
+function extractRetryDelayMs(errorMsg: string): number {
+  const retryMatch = errorMsg.match(/retry.in (\d+(?:\.\d+)?)/i);
+  if (retryMatch) return Math.ceil(parseFloat(retryMatch[1]) * 1000);
+  return 15000; // Default 15s
+}
+
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
   const errors: AIErrorDetail[] = [];
-  // Use default fallback chain: llama-3.3-70b-versatile → llama-3.1-8b-instant
-  // Same as Iron Coach chat — no forced model
+
   const attempts = [
     { delay: 0, label: 'attempt 1 (immediate)' },
-    { delay: 5000, label: 'attempt 2 (5s delay)' },
-    { delay: 10000, label: 'attempt 3 (10s delay)' },
+    { delay: 15000, label: 'attempt 2 (15s delay)' },
+    { delay: 30000, label: 'attempt 3 (30s delay)' },
   ];
 
   for (const attempt of attempts) {
-    if (attempt.delay > 0) await sleep(attempt.delay);
-    
+    if (attempt.delay > 0) {
+      console.log(`[weekly-planner] ${attempt.label}: waiting ${attempt.delay / 1000}s...`);
+      await sleep(attempt.delay);
+    }
+
     try {
-      console.log(`[weekly-planner] ${attempt.label}: calling generateText...`);
-      const responseText = await generateText(userPrompt, systemPrompt, 4096);
-      console.log(`[weekly-planner] ${attempt.label}: got response (${responseText.length} chars)`);
+      console.log(`[weekly-planner] ${attempt.label}: calling Groq API (${PLANNER_MODEL})...`);
+      const { text: responseText, model, finishReason } = await callGroqForPlanner(systemPrompt, userPrompt);
+      console.log(`[weekly-planner] ${attempt.label}: got response (${responseText.length} chars, finish: ${finishReason})`);
 
-      // Clean response
-      let cleaned = responseText
-        .replace(/```json\s*/gi, '')
-        .replace(/```\s*/g, '')
-        .trim();
+      // Step 1: Extract JSON using balanced brace counting
+      const { json: extracted, wasTruncated } = extractJSON(responseText);
 
-      const firstBrace = cleaned.indexOf('{');
-      const lastBrace = cleaned.lastIndexOf('}');
-      if (firstBrace !== -1 && lastBrace > firstBrace) {
-        cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+      // Step 2: If truncated, try to repair
+      let jsonToParse = extracted;
+      if (wasTruncated || finishReason === 'length') {
+        console.warn(`[weekly-planner] ${attempt.label}: Response truncated (finish: ${finishReason}), repairing...`);
+        jsonToParse = repairTruncatedJSON(extracted);
+        errors.push({
+          attempt: attempt.label,
+          stage: 'truncated',
+          model,
+          error: `Response truncated at ${responseText.length} chars (finish_reason: ${finishReason}). Auto-repair attempted.`,
+          timestamp: new Date().toISOString(),
+        });
       }
 
+      // Step 3: Try parsing
       try {
-        const parsed = JSON.parse(cleaned);
+        const parsed = JSON.parse(jsonToParse);
         if (parsed.daily_plan?.length === 7) {
-          console.log(`[weekly-planner] ${attempt.label}: SUCCESS — 7 days`);
+          console.log(`[weekly-planner] ${attempt.label}: SUCCESS — 7 days (${model})`);
           return { plan: parsed, success: true, errors };
         }
         if (parsed.daily_plan?.length > 0) {
           console.warn(`[weekly-planner] ${attempt.label}: Got ${parsed.daily_plan.length}/7 days, accepting`);
           return { plan: parsed, success: true, errors };
         }
-        // Valid JSON but no daily_plan — log the structure
         errors.push({
           attempt: attempt.label,
           stage: 'invalid_structure',
+          model,
           error: `Valid JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
           timestamp: new Date().toISOString(),
         });
-        console.warn(`[weekly-planner] ${attempt.label}: Invalid structure — keys: ${Object.keys(parsed).join(', ')}`);
       } catch (parseErr) {
-        // JSON parse failed — log snippet
-        const errSnippet = cleaned.substring(0, 200);
+        const errSnippet = jsonToParse.substring(0, 200);
         errors.push({
           attempt: attempt.label,
           stage: 'json_parse',
+          model,
           error: `JSON parse failed. Snippet: ${errSnippet}`,
           timestamp: new Date().toISOString(),
         });
-        console.warn(`[weekly-planner] ${attempt.label}: JSON parse failed. First 200 chars: ${errSnippet}`);
-        
-        // Try repair
+
+        // Aggressive repair
         try {
-          const repaired = cleaned
+          let repaired = jsonToParse
+            .replace(/[\x00-\x1F\x7F]/g, '')
             .replace(/,\s*([}\]])/g, '$1')
             .replace(/'/g, '"')
-            .replace(/\n/g, '')
-            .replace(/\s{2,}/g, ' ');
+            .replace(/\n/g, ' ')
+            .replace(/\s{2,}/g, ' ')
+            .trim();
+
+          repaired = repairTruncatedJSON(repaired);
+
           const parsed = JSON.parse(repaired);
           if (parsed.daily_plan?.length > 0) {
-            console.log(`[weekly-planner] ${attempt.label}: SUCCESS after JSON repair`);
+            console.log(`[weekly-planner] ${attempt.label}: SUCCESS after aggressive repair`);
             return { plan: parsed, success: true, errors };
           }
           errors.push({
             attempt: attempt.label,
             stage: 'invalid_structure',
+            model,
             error: `Repaired JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
             timestamp: new Date().toISOString(),
           });
@@ -886,10 +1058,10 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
           errors.push({
             attempt: attempt.label,
             stage: 'json_repair',
-            error: `JSON repair also failed. Last 100 chars: ${cleaned.slice(-100)}`,
+            model,
+            error: `JSON repair failed. Last 100 chars: ${jsonToParse.slice(-100)}`,
             timestamp: new Date().toISOString(),
           });
-          console.warn(`[weekly-planner] ${attempt.label}: JSON repair failed`);
         }
       }
     } catch (err) {
@@ -897,16 +1069,25 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
       errors.push({
         attempt: attempt.label,
         stage: 'api_call',
+        model: PLANNER_MODEL,
         error: errMsg,
         timestamp: new Date().toISOString(),
       });
       console.error(`[weekly-planner] ${attempt.label}: AI API error — ${errMsg}`);
+
+      // Adaptive delay for rate limits
+      if (errMsg.includes('429') || errMsg.includes('rate limit')) {
+        const retryMs = extractRetryDelayMs(errMsg);
+        const nextIdx = attempts.indexOf(attempt) + 1;
+        if (nextIdx < attempts.length && retryMs > attempts[nextIdx].delay) {
+          attempts[nextIdx].delay = retryMs;
+        }
+      }
     }
   }
-  
-  // All attempts exhausted
-  console.error(`[weekly-planner] ALL AI ATTEMPTS FAILED. Error summary:`);
-  errors.forEach(e => console.error(`  [${e.attempt}] ${e.stage}: ${e.error}`));
+
+  console.error(`[weekly-planner] ALL AI ATTEMPTS FAILED:`);
+  errors.forEach(e => console.error(`  [${e.attempt}] ${e.model} ${e.stage}: ${e.error}`));
   return { plan: null, success: false, errors };
 }
 
@@ -1645,7 +1826,7 @@ export async function POST(request: NextRequest) {
     let aiErrors: AIErrorDetail[] = [];
 
     // ── STEP 1: AI Generation ──
-    console.log('[weekly-planner] Starting AI plan generation...');
+    console.log('[weekly-planner] Starting AI plan generation (direct Groq API, JSON mode, 70b)...');
     const aiResult = await generatePlanWithAI(systemPrompt, userPrompt);
     aiErrors = aiResult.errors;
     
@@ -1695,7 +1876,7 @@ export async function POST(request: NextRequest) {
       generated_at: new Date().toISOString(),
       confidence: plan.plan_confidence || 0.85,
       generation_source: generationSource,
-      ai_errors: generationSource === 'fallback' ? aiErrors : undefined,
+      ai_errors: aiErrors.length > 0 ? aiErrors : undefined,
     });
 
   } catch (error) {

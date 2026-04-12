@@ -517,3 +517,44 @@ Stage Summary:
 - Users can regenerate to retry AI or get a fresh plan
 - 0 lint errors, deployed to production
 
+---
+Task ID: weekly-planner-json-fix
+Agent: main
+Task: Fix Iron Coach weekly planner JSON parse errors, truncation, and rate limits
+
+Work Log:
+- Read full weekly-planner route.ts (~1880 lines) to understand the AI generation pipeline
+- Identified 5 root causes of failures:
+  1. JSON truncated at 4096 max_tokens (evidence: "co..." cutoff in last 100 chars)
+  2. lastIndexOf('}') grabs inner braces when JSON is truncated
+  3. llama-3.1-8b-instant fallback model too small for complex JSON, causes 429 rate limits
+  4. Temperature 0.35 too high for structured JSON output
+  5. Retry delays (5s/10s) insufficient for Groq rate limits
+
+### Changes Made:
+
+1. **Replaced imports** (lines 1-4):
+   - Removed `generateText` from `@/lib/ai/gemini-service` (was using generic fallback chain)
+   - Added direct Groq API constants: `GROQ_API_KEY`, `PLANNER_MODEL` (llama-3.3-70b-versatile), `PLANNER_TIMEOUT_MS` (60s)
+
+2. **Replaced entire AI generation section** (lines 787-911):
+   - New `extractJSON()` — uses balanced brace counting instead of `lastIndexOf('}')`, handles nested objects and strings correctly
+   - New `repairTruncatedJSON()` — counts and closes unclosed braces/brackets/strings, removes trailing commas
+   - New `callGroqForPlanner()` — direct Groq API with `response_format: { type: 'json_object' }`, `max_tokens: 16384`, `temperature: 0.1`, 60s timeout
+   - New `extractRetryDelayMs()` — parses retry-after from error messages for adaptive backoff
+   - Updated `generatePlanWithAI()`:
+     - 3 attempts with delays 0s/15s/30s (was 0s/5s/10s)
+     - Checks `finish_reason === 'length'` to detect truncation
+     - Multi-stage parse: balanced extraction → truncation repair → parse → aggressive repair → parse
+     - `AIErrorDetail` interface now includes `model` and `'truncated'` stage
+     - Adaptive delay on 429 errors (reads retry-after from response)
+
+3. **Updated POST handler log message**: More descriptive log indicating direct Groq API usage
+
+4. **Updated final response**: `ai_errors` now returned whenever there are errors, not just on fallback (for diagnostics when AI succeeds after retries)
+
+### Verification:
+- `bun run lint` passes: 0 errors, 9 pre-existing warnings (unchanged, all in other files)
+- Dev server compiles and runs cleanly
+- No new dependencies added (uses native fetch for Groq API)
+
