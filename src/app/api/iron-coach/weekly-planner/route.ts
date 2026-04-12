@@ -2,15 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseUser } from '@/lib/supabase/supabase-data';
 import { calculatePersonalizedTargets } from '@/lib/personalized-targets';
 
+// Vercel: extend serverless function timeout to 60s (default is 10s on Hobby)
+export const config = { maxDuration: 60 };
+
 // Direct Groq API call for weekly planner — bypasses generateText fallback chain
-// Uses llama-3.3-70b-versatile with JSON mode for reliable structured output
+// Uses current Groq models with JSON mode for reliable structured output
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const PLANNER_MODEL = 'llama-3.3-70b-versatile';
-const PLANNER_TIMEOUT_MS = 45000; // 45s per attempt — fits within Vercel 60s maxDuration
+const PLANNER_TIMEOUT_MS = 25000; // 25s per attempt — fits 2 attempts within 60s maxDuration
 const PLANNER_MODELS = [
-  { model: 'llama-3.3-70b-versatile', maxTokens: 12288, jsonMode: true },
-  { model: 'llama-3.1-70b-versatile', maxTokens: 12288, jsonMode: true },
-  { model: 'llama-3.1-8b-instant', maxTokens: 8192, jsonMode: false },
+  { model: 'llama-3.3-70b-versatile', maxTokens: 16384, jsonMode: true },
+  { model: 'llama3-70b-8192', maxTokens: 8192, jsonMode: true },
+  { model: 'mixtral-8x7b-32768', maxTokens: 8192, jsonMode: true },
 ];
 
 /**
@@ -1010,14 +1013,14 @@ function extractRetryDelayMs(errorMsg: string): number {
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
   const errors: AIErrorDetail[] = [];
 
-  // Strategy: try each model in order, with retries for rate limits
+  // Strategy: try each model in order, 1 attempt each to stay within 60s maxDuration
+  // 3 models × 25s timeout = 75s worst case, but most will succeed or fail fast
   for (const modelConfig of PLANNER_MODELS) {
     const { model, maxTokens, jsonMode } = modelConfig;
 
-    // Up to 2 attempts per model
+    // Single attempt per model (no retry delay) to minimize total time
     const modelAttempts = [
       { delay: 0, label: `${model} attempt 1` },
-      { delay: 3000, label: `${model} attempt 2 (3s delay)` },
     ];
 
     for (const attempt of modelAttempts) {
@@ -1883,7 +1886,7 @@ export async function POST(request: NextRequest) {
               confidence: latestPlan.confidence_score,
               generation_source: latestPlan.generation_source === 'ai' ? 'ai' : latestPlan.generation_source,
               ai_errors: undefined,
-              regenerations_remaining,
+              regenerations_remaining: regenerationsRemaining,
             });
           }
         }
