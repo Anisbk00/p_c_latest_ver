@@ -202,3 +202,37 @@ Stage Summary:
 - Client no longer crashes on 503 — shows graceful error UI instead
 - Prevents AuthErrorBoundary cascade that disconnected all realtime channels
 - Budget breakdown: ~2s data fetch + ~5s AI generation + ~1s JSON parse = ~8s total
+
+---
+Task ID: 5
+Agent: Main Agent
+Task: Create planner-ai mini-service to bypass Vercel 10s timeout
+
+Work Log:
+- Root cause: Vercel Hobby plan has a hard 10s timeout on serverless functions
+- The Groq API needs 15-30s to generate a 7-day JSON plan (4000 tokens) — always times out on Hobby
+- Previous attempts (9s timeout, model fallback, no AbortController) all failed because Vercel kills the function at 10s
+- Created `mini-services/planner-ai/` — standalone Bun HTTP service on port 3040
+  - Calls Groq API with 120s timeout per model (no Vercel limit)
+  - Model fallback chain: llama-3.3-70b-versatile → llama-3.1-8b-instant → llama3-8b-8192
+  - Strips markdown code fences from response
+  - Health check at GET /health
+  - CORS enabled for all origins
+- Updated `src/app/api/iron-coach/weekly-planner/route.ts`:
+  - `generateTextFast()` now uses 2-strategy approach:
+    1. Mini-service (no timeout, 3 min hard cap)
+    2. Direct Groq API (subject to Vercel timeout)
+  - Falls back to template if both strategies fail
+  - No more throwing — returns null gracefully
+- Added GROQ_API_KEY placeholder to .env
+- Verified: mini-service running on port 3040, health check returns OK
+- Lint: 0 errors, 11 pre-existing warnings
+- Pushed: commit 81470ca
+
+Stage Summary:
+- Planner AI generation now bypasses Vercel's 10s timeout via mini-service
+- Mini-service can take 60-120s to generate quality plans
+- Direct Groq API still available as fallback (for when mini-service is not deployed)
+- Template fallback still works if all strategies fail
+- GROQ_API_KEY needs to be set in .env for the mini-service to work
+- Chat (groq-service.ts) NOT modified — confirmed working

@@ -8,9 +8,9 @@ $ next dev -p 3000
   · optimizePackageImports
 
 ✓ Starting...
-✓ Ready in 1352ms
+✓ Ready in 1340ms
 ○ Compiling / ...
 [AuthScreen] Rendering, mode: welcome
 [AuthScreen] Rendering, mode: welcome
- GET / 200 in 2.1s (compile: 1626ms, render: 426ms)
- GET / 200 in 8.2s (compile: 7.8s, render: 390ms)
+ GET / 200 in 4.9s (compile: 4.5s, render: 441ms)
+ GET / 200 in 8.1s (compile: 7.7s, render: 404ms)
