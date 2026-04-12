@@ -796,21 +796,78 @@ ${data.activeGoals.map(g => `${g.type}: ${g.target} (${g.deadline || 'no deadlin
 ═══ MOMENTUM ═══
 Streak: ${data.momentum.current_streak}d | Longest: ${data.momentum.longest_streak}d | Score: ${data.momentum.momentum_score}/100
 
-═══ INSTRUCTIONS ═══
-1. ANALYZE the user's actual behavior — how often do they ACTUALLY train? Base workout days on reality, not theory. If they train 5x/week, plan 5 days. If 2x, plan 2-3 days (push them slightly).
-2. Pick workout TYPES they already do and enjoy (favorite types). Don't introduce random exercises.
-3. Schedule workouts on their BEST training days (the days they actually show up).
-4. NUTRITION: Use their common foods in meal plans. Adjust portions to hit targets. High protein is NON-NEGOTIABLE.
-5. SCALE difficulty to their fitness level. Beginner = fewer sets, longer rest, simpler exercises.
-6. Coach messages must reference their ACTUAL data (streak, adherence %, weight trend). Be harsh if they've been slacking. Celebrate if they've been grinding.
-7. EMOJIS: Use emojis everywhere! Coach messages must be packed with emojis — 🔥💪🏋️‍♂️🍗⏰😴🎯🥗💧⚡🧠📈📉⚡💪. Use them naturally, like a hype coach texting you. generation_reasoning, weekly_strategy, recommendations, workout coach_notes, warm_up, cool_down — all text fields should include relevant emojis.
-8. NEVER train same muscle 2 days in a row.
-9. Include warm-up and cool-down for every workout session.
+═══ CRITICAL RULES ═══
+1. This is a PERSONAL plan for ${p.name}. Every field MUST reference their actual data above. Generic plans = FAILURE.
+2. WORKOUT DAYS: Match their ACTUAL training frequency (${actualDaysPerWeek}x/week). If they train 5x/week, plan 5 workout days. Don't invent a random split.
+3. WORKOUT TYPES: Only use exercises from their favorite types: [${data.workoutPatterns.favorite_workout_types.join(', ') || 'general strength/cardio'}].
+4. TRAINING DAYS: Schedule workouts on their BEST days: [${data.workoutPatterns.best_performing_days.length > 0 ? data.workoutPatterns.best_performing_days.join(', ') : 'any'}].
+5. NUTRITION: Use THEIR common foods: [${data.nutritionPatterns.most_common_foods.slice(0, 6).join(', ') || 'high-protein whole foods'}]. Calculate portions to hit ${data.targets.daily_calories}cal / ${data.targets.daily_protein}gP.
+6. PERSONALITY: Be their PRIVATE COACH. Reference their streak (${data.momentum.current_streak}d), protein adherence (${data.nutritionPatterns.protein_adherence_percent}%), weight trend (${data.bodyMetrics.weight_trend}). Call them by name.
+7. If they've been slacking (low adherence, skipping workouts) — ROAST THEM mildly. If they've been grinding — HYPE THEM UP.
+8. EMOJIS: Every text field must have emojis 🔥💪🏋️‍♂️🍗⏰😴🎯🥗💧⚡. Coach messages read like an energetic text from your trainer.
+9. NEVER train same muscle 2 days in a row. Include warm-up + cool-down for every session.
 10. Output ONLY valid JSON. No markdown. No explanation. No code fences.
-11. Include confidence score (0.0-1.0) for each daily plan based on data quality and adherence patterns.`;
+11. generation_reasoning: Write 2-3 sentences explaining YOUR strategy for THIS specific user based on THEIR data.
+12. weekly_strategy: Write 2-3 motivating sentences about the week ahead, referencing their goals and progress.
+13. Each meal should use foods they actually eat, with realistic calories/protein calculated to hit daily targets.`;
 
-  const userPrompt = `Generate a 7-day plan from ${weekStart} to ${weekEnd}. Return ONLY this JSON (no markdown):
-{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"brief strategy based on their data","weekly_overview":{"total_workout_days":0,"total_rest_days":0,"weekly_calorie_target":0,"weekly_protein_target":0,"focus_areas":[],"weekly_strategy":""},"daily_plan":[{"date":"YYYY-MM-DD","day_name":"Monday","is_workout_day":true,"workout":{"focus":"","duration_minutes":0,"estimated_calories_burned":0,"intensity":"","exercises":[{"name":"","type":"compound","muscle_groups":[],"sets":0,"reps":"","weight_kg":0,"rest_seconds":0,"notes":""}],"warm_up":"","cool_down":"","coach_notes":""},"nutrition":{"target_calories":0,"target_protein":0,"target_carbs":0,"target_fat":0,"meals":[{"meal_type":"breakfast","time":"07:00","foods":[{"name":"","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0}],"hydration_ml":0},"sleep":{"target_bedtime":"","target_wake_time":"","target_duration_hours":0},"supplements":[{"name":"","dose":"","timing":""}],"coach_message":"","confidence":0.85}],"recommendations":[{"category":"","priority":"","recommendation":"","reasoning":""}]}`;
+  const userPrompt = `Create a highly personalized 7-day plan for ${p.name} from ${weekStart} to ${weekEnd}.
+
+They are ${p.fitness_level || 'intermediate'} level, goal: ${p.primary_goal || 'get fit'}, training ~${actualDaysPerWeek}x/week.
+Target: ${data.targets.daily_calories}cal/day, ${data.targets.daily_protein}g protein, ${data.targets.daily_carbs}g carbs, ${data.targets.daily_fat}g fat.
+Streak: ${data.momentum.current_streak}d | Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}% | Weight trend: ${data.bodyMetrics.weight_trend}
+
+Return ONLY this JSON structure (fill EVERY field with real personalized content — NO placeholders):
+{
+  "week_start": "${weekStart}",
+  "week_end": "${weekEnd}",
+  "plan_confidence": <0.0-1.0 based on data quality>,
+  "generation_reasoning": "<2-3 sentences: WHY you chose this specific plan for ${p.name} based on their data>",
+  "weekly_overview": {
+    "total_workout_days": <match their ${actualDaysPerWeek}x/week habit>,
+    "total_rest_days": <7 minus workout days>,
+    "weekly_calorie_target": <daily_calories * 7>,
+    "weekly_protein_target": <daily_protein * 7>,
+    "focus_areas": ["<muscle groups based on their workout history>"],
+    "weekly_strategy": "<2-3 motivating sentences about this week's plan for ${p.name}>"
+  },
+  "daily_plan": [
+    {
+      "date": "<YYYY-MM-DD>",
+      "day_name": "<Monday-Sunday>",
+      "is_workout_day": <true/false>,
+      "workout": {
+        "focus": "<specific muscle groups>",
+        "duration_minutes": <40-60 based on level>,
+        "estimated_calories_burned": <realistic number>,
+        "intensity": "<low/moderate/high>",
+        "exercises": [
+          {"name": "<real exercise name>", "type": "<compound/isolation>", "muscle_groups": ["<muscles>"], "sets": <3-4>, "reps": "<8-12>", "weight_kg": 0, "rest_seconds": <60-120>, "notes": "<tip with emoji>"}
+        ],
+        "warm_up": "<5min dynamic warm-up with emojis>",
+        "cool_down": "<5min cooldown stretches with emojis>",
+        "coach_notes": "<personalized coaching note with emojis, reference their stats>"
+      },
+      "nutrition": {
+        "target_calories": ${data.targets.daily_calories},
+        "target_protein": ${data.targets.daily_protein},
+        "target_carbs": ${data.targets.daily_carbs},
+        "target_fat": ${data.targets.daily_fat},
+        "meals": [
+          {"meal_type": "<breakfast/lunch/dinner/snack>", "time": "<HH:MM>", "foods": [{"name": "<their actual food>", "quantity": <1>, "unit": "<serving/plate/g>", "calories": <number>, "protein": <number>, "carbs": <number>, "fat": <number>}], "total_calories": <sum>, "total_protein": <sum>}
+        ],
+        "hydration_ml": ${data.targets.water_ml || 2500}
+      },
+      "sleep": {"target_bedtime": "22:30", "target_wake_time": "06:30", "target_duration_hours": 8},
+      "supplements": [],
+      "coach_message": "<personalized daily message for ${p.name} — reference their streak, goals, yesterday's performance. Use emojis!>",
+      "confidence": <0.7-0.95>
+    }
+  ],
+  "recommendations": [
+    {"category": "<Nutrition/Training/Recovery/Mindset>", "priority": "<high/medium/low>", "recommendation": "<specific actionable advice>", "reasoning": "<why this matters for ${p.name}>"}
+  ]
+}`;
 
   return { systemPrompt, userPrompt };
 }
