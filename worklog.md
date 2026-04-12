@@ -265,3 +265,32 @@ Stage Summary:
 - Cached plans return instantly (no streaming overhead)
 - Template fallback ensures users always get a plan
 - Production ready: just set GROQ_API_KEY in Vercel env vars
+
+---
+Task ID: 7
+Agent: Main Agent
+Task: Fix planner plan not saving + improve AI prompt quality
+
+Work Log:
+- Investigated why AI-generated plans don't persist — found 2 critical bugs:
+  1. `regenerations_used` column doesn't exist in `weekly_plans` table schema — upsert silently fails (catch only did console.log)
+  2. `generation_source='ai'` violates DB CHECK constraint (only allows 'auto', 'manual', 'regenerate') — insert rejected
+- Fixed saving: removed `regenerations_used`, changed `generation_source` from 'ai' to 'auto'
+- Changed silent console.log to console.error for DB save failures
+- Completely rewrote `buildPrecisionWeeklyPlanPrompt()`:
+  - Added structured 8-step GENERATION METHOD (read data → plan split → assign days → generate 7 → verify → output)
+  - Multi-line JSON template (was one unreadable 500+ char line)
+  - Dynamic coaching context builder based on user data (protein adherence, streak, weight trends, sleep, workout frequency)
+  - Explicit field counts: exactly 5 exercises per workout, 4 meals per day
+  - Clear workout rules by goal type (Push/Pull/Legs for muscle, Upper/Lower + cardio for fat loss)
+  - Clear nutrition rules (use only user's actual foods)
+  - Better coaching tone examples with specific language
+- Added smart plan padding: if AI generates 3-6 days, missing days padded with rest days instead of rejecting to template fallback
+- Lint: 0 errors, 11 pre-existing warnings
+- Pushed: commit `de2056b`
+
+Stage Summary:
+- Plans now save correctly to Supabase (was silently failing due to schema mismatch)
+- AI prompt produces much more structured, complete output
+- Plans with 3+ days are accepted and padded instead of rejected
+- Next visit to planner loads saved plan from DB instead of regenerating
