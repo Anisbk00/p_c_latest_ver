@@ -17,6 +17,10 @@
     "src/app/api/iron-coach/**/*.ts": {
       "memory": 2048,
       "maxDuration": 60
+    },
+    "src/app/api/iron-coach/weekly-planner/route.ts": {
+      "memory": 2048,
+      "maxDuration": 60
     }
   },
   "crons": [

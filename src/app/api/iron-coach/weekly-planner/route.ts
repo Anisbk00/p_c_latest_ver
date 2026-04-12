@@ -6,7 +6,7 @@ import { calculatePersonalizedTargets } from '@/lib/personalized-targets';
 // Uses llama-3.3-70b-versatile with JSON mode for reliable structured output
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const PLANNER_MODEL = 'llama-3.3-70b-versatile';
-const PLANNER_TIMEOUT_MS = 60000; // 60s — large JSON needs more time
+const PLANNER_TIMEOUT_MS = 25000; // 25s per attempt — fits within Vercel 60s maxDuration with data fetch
 
 /**
  * PRECISION WEEKLY PLANNER API
@@ -962,7 +962,7 @@ async function callGroqForPlanner(
 function extractRetryDelayMs(errorMsg: string): number {
   const retryMatch = errorMsg.match(/retry.in (\d+(?:\.\d+)?)/i);
   if (retryMatch) return Math.ceil(parseFloat(retryMatch[1]) * 1000);
-  return 15000; // Default 15s
+  return 5000; // Default 5s
 }
 
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
@@ -970,8 +970,7 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
 
   const attempts = [
     { delay: 0, label: 'attempt 1 (immediate)' },
-    { delay: 15000, label: 'attempt 2 (15s delay)' },
-    { delay: 30000, label: 'attempt 3 (30s delay)' },
+    { delay: 5000, label: 'attempt 2 (5s delay)' },
   ];
 
   for (const attempt of attempts) {
