@@ -472,6 +472,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [generationSource, setGenerationSource] = useState<'ai' | 'fallback' | 'cached' | 'auto' | null>(null);
   const [aiErrors, setAiErrors] = useState<Array<{ attempt: string; stage: string; error: string }> | null>(null);
@@ -501,7 +502,15 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       setIsLoading(true);
     }
     setError(null);
-    setPlan(null); // Force re-render even if new plan is identical
+    
+    // Save current plan so we can restore it if regenerate returns same template
+    const previousPlan = plan;
+    if (forceRegenerate) {
+      // Don't null the plan on regenerate — keep showing current plan until new one arrives
+      // This prevents the flash-to-loading-and-back-to-same-plan issue
+    } else {
+      setPlan(null);
+    }
     
     try {
       const response = await apiFetch(`/api/iron-coach/weekly-planner?week_start=${weekStartStr}`, {
@@ -531,6 +540,17 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       }
 
       if (data.success && data.plan) {
+        // If regenerate returned a template fallback, keep the existing plan
+        // and let the user know AI is busy (don't silently replace with same-looking plan)
+        if (forceRegenerate && data.generation_source === 'template' && previousPlan) {
+          console.log('[WeeklyPlanner] AI unavailable, keeping existing plan');
+          setRegenerationsRemaining(data.regenerations_remaining ?? regenerationsRemaining); // Don't consume regeneration
+          setAiErrors(data.ai_errors || null);
+          setError(null); // Clear error — plan is still valid
+          setToastMessage('⚡ AI is busy right now — your plan stays! Try again in a minute.');
+          setTimeout(() => setToastMessage(null), 4000);
+          return;
+        }
         setPlan(data.plan);
         setGenerationSource(data.generation_source || (data.cached ? 'cached' : null));
         setAiErrors(data.ai_errors || null);
@@ -604,7 +624,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
     setError(null);
   }
 
-  // AI unavailable error
+  // AI unavailable error — only when no plan exists
   if ((error === 'ai_unavailable') && !plan) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full p-8", styles.container)}>
@@ -662,7 +682,16 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   const overview = plan.weekly_overview;
 
   return (
-    <div className={cn("flex flex-col h-full min-h-0", styles.container)}>
+    <div className={cn("flex flex-col h-full min-h-0 relative", styles.container)}>
+      {/* Toast notification */}
+      {toastMessage && (
+        <div className="absolute top-2 left-2 right-2 z-50 px-3 py-2 rounded-lg bg-amber-500/90 text-white text-xs font-medium shadow-lg animate-in fade-in slide-in-from-top-1">
+          {toastMessage}
+        </div>
+      )}
+
+      {/* Regenerating overlay spinner on button area */}
+
       {/* AI Success Badge */}
       {(generationSource === 'ai' || generationSource === 'auto') && (
         <div className={cn("shrink-0 px-4 py-1.5 border-b", styles.border)}>
