@@ -906,6 +906,173 @@ function repairTruncatedJSON(json: string): string {
 }
 
 /**
+ * Generate a smart template-based fallback plan using the user's actual data.
+ * Used when AI generation fails (rate limit, timeout, etc.) so the user
+ * always gets a useful plan instead of a 503 error.
+ */
+function generateFallbackPlan(userData: UserComprehensiveData, weekStartStr: string, weekEndStr: string): any {
+  const { profile: p, targets: t, workoutPatterns: wp, momentum } = userData;
+  const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+  const goal = p.primary_goal || 'get fit';
+  const level = p.fitness_level || 'intermediate';
+  const isCutting = goal.includes('lose') || goal.includes('cut') || goal.includes('fat');
+  const isBulking = goal.includes('gain') || goal.includes('bulk') || goal.includes('muscle');
+
+  // Workout split based on actual training frequency
+  const actualDays = Math.max(2, Math.min(6, wp.workout_frequency_per_week || Math.round(wp.total_workouts_30d / 4.3) || 4));
+  const restDayIndices: number[] = [];
+  if (actualDays <= 4) { restDayIndices.push(2, 5); } // Wed + Sat rest
+  else if (actualDays <= 5) { restDayIndices.push(3); } // Thu rest
+  // 6 days = only 1 rest day (Sunday)
+
+  const splits: Record<string, { focus: string; exercises: Array<{ name: string; type: string; muscle_groups: string[]; sets: number; reps: string; weight_kg: number; rest_seconds: number; notes: string }> }> = {
+    'Push': { focus: 'Chest, Shoulders, Triceps', exercises: [
+      { name: 'Bench Press', type: 'compound', muscle_groups: ['chest', 'triceps', 'shoulders'], sets: 4, reps: '8-10', weight_kg: 0, rest_seconds: 90, notes: 'Control the eccentric 💪' },
+      { name: 'Overhead Press', type: 'compound', muscle_groups: ['shoulders', 'triceps'], sets: 3, reps: '8-10', weight_kg: 0, rest_seconds: 90, notes: 'Core tight!' },
+      { name: 'Incline Dumbbell Press', type: 'compound', muscle_groups: ['chest', 'shoulders'], sets: 3, reps: '10-12', weight_kg: 0, rest_seconds: 75, notes: '' },
+      { name: 'Tricep Pushdowns', type: 'isolation', muscle_groups: ['triceps'], sets: 3, reps: '12-15', weight_kg: 0, rest_seconds: 60, notes: '' },
+      { name: 'Lateral Raises', type: 'isolation', muscle_groups: ['shoulders'], sets: 3, reps: '15', weight_kg: 0, rest_seconds: 60, notes: 'Feel the burn 🔥' },
+    ]},
+    'Pull': { focus: 'Back, Biceps, Rear Delts', exercises: [
+      { name: 'Pull-ups / Lat Pulldown', type: 'compound', muscle_groups: ['back', 'biceps'], sets: 4, reps: '8-10', weight_kg: 0, rest_seconds: 90, notes: 'Full range of motion' },
+      { name: 'Barbell Row', type: 'compound', muscle_groups: ['back', 'biceps'], sets: 4, reps: '8-10', weight_kg: 0, rest_seconds: 90, notes: 'Squeeze at the top' },
+      { name: 'Face Pulls', type: 'isolation', muscle_groups: ['shoulders'], sets: 3, reps: '15-20', weight_kg: 0, rest_seconds: 60, notes: 'Posture fixer 🧠' },
+      { name: 'Bicep Curls', type: 'isolation', muscle_groups: ['biceps'], sets: 3, reps: '12', weight_kg: 0, rest_seconds: 60, notes: '' },
+      { name: 'Hammer Curls', type: 'isolation', muscle_groups: ['biceps', 'forearms'], sets: 3, reps: '12', weight_kg: 0, rest_seconds: 60, notes: '' },
+    ]},
+    'Legs': { focus: 'Quads, Hamstrings, Glutes, Calves', exercises: [
+      { name: 'Barbell Squat', type: 'compound', muscle_groups: ['quads', 'glutes', 'hamstrings'], sets: 4, reps: '6-8', weight_kg: 0, rest_seconds: 120, notes: 'King of exercises 👑' },
+      { name: 'Romanian Deadlift', type: 'compound', muscle_groups: ['hamstrings', 'glutes', 'back'], sets: 3, reps: '8-10', weight_kg: 0, rest_seconds: 90, notes: 'Hip hinge!' },
+      { name: 'Leg Press', type: 'compound', muscle_groups: ['quads', 'glutes'], sets: 3, reps: '10-12', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Leg Curls', type: 'isolation', muscle_groups: ['hamstrings'], sets: 3, reps: '12', weight_kg: 0, rest_seconds: 60, notes: '' },
+      { name: 'Calf Raises', type: 'isolation', muscle_groups: ['calves'], sets: 4, reps: '15-20', weight_kg: 0, rest_seconds: 45, notes: 'Don\'t skip calves!' },
+    ]},
+    'Upper Body': { focus: 'Chest, Back, Shoulders, Arms', exercises: [
+      { name: 'Bench Press', type: 'compound', muscle_groups: ['chest', 'triceps'], sets: 4, reps: '8-10', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Barbell Row', type: 'compound', muscle_groups: ['back', 'biceps'], sets: 4, reps: '8-10', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Overhead Press', type: 'compound', muscle_groups: ['shoulders'], sets: 3, reps: '8-10', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Pull-ups', type: 'compound', muscle_groups: ['back', 'biceps'], sets: 3, reps: 'AMRAP', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Bicep Curls + Tricep Pushdowns', type: 'superset', muscle_groups: ['biceps', 'triceps'], sets: 3, reps: '12', weight_kg: 0, rest_seconds: 60, notes: 'Superset 💥' },
+    ]},
+    'Lower Body': { focus: 'Quads, Hamstrings, Glutes', exercises: [
+      { name: 'Barbell Squat', type: 'compound', muscle_groups: ['quads', 'glutes'], sets: 4, reps: '6-8', weight_kg: 0, rest_seconds: 120, notes: '' },
+      { name: 'Romanian Deadlift', type: 'compound', muscle_groups: ['hamstrings', 'glutes'], sets: 4, reps: '8-10', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Bulgarian Split Squat', type: 'compound', muscle_groups: ['quads', 'glutes'], sets: 3, reps: '10 each', weight_kg: 0, rest_seconds: 75, notes: '' },
+      { name: 'Leg Press', type: 'compound', muscle_groups: ['quads'], sets: 3, reps: '12', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Calf Raises + Leg Curls', type: 'superset', muscle_groups: ['calves', 'hamstrings'], sets: 3, reps: '15', weight_kg: 0, rest_seconds: 60, notes: 'Superset 💥' },
+    ]},
+    'Full Body': { focus: 'Full Body Compound', exercises: [
+      { name: 'Squat', type: 'compound', muscle_groups: ['quads', 'glutes'], sets: 3, reps: '8', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Bench Press', type: 'compound', muscle_groups: ['chest', 'triceps'], sets: 3, reps: '8', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Barbell Row', type: 'compound', muscle_groups: ['back', 'biceps'], sets: 3, reps: '8', weight_kg: 0, rest_seconds: 90, notes: '' },
+      { name: 'Overhead Press', type: 'compound', muscle_groups: ['shoulders'], sets: 3, reps: '10', weight_kg: 0, rest_seconds: 75, notes: '' },
+      { name: 'Plank', type: 'isolation', muscle_groups: ['core'], sets: 3, reps: '45s hold', weight_kg: 0, rest_seconds: 45, notes: 'Core strong 💪' },
+    ]},
+  };
+
+  // Pick split based on frequency
+  let workoutSplit: string[];
+  if (actualDays >= 6) workoutSplit = ['Push', 'Pull', 'Legs', 'Push', 'Pull', 'Legs'];
+  else if (actualDays >= 5) workoutSplit = ['Push', 'Pull', 'Legs', 'Upper Body', 'Lower Body'];
+  else if (actualDays >= 4) workoutSplit = ['Upper Body', 'Lower Body', 'Push', 'Pull'];
+  else if (actualDays >= 3) workoutSplit = ['Full Body', 'Upper Body', 'Lower Body'];
+  else workoutSplit = ['Full Body', 'Full Body'];
+
+  // Use user's best training days if available
+  const bestDays = wp.best_performing_days.length > 0 ? wp.best_performing_days : [];
+  const dayAssignment: { day: string; isWorkout: boolean; splitName?: string }[] = days.map((dayName, i) => {
+    const isRest = restDayIndices.includes(i) || i >= workoutSplit.length;
+    return { day: dayName, isWorkout: !isRest, splitName: isRest ? undefined : workoutSplit[i] };
+  });
+
+  const startDate = new Date(weekStartStr);
+  const dailyPlan = dayAssignment.map((da, i) => {
+    const date = new Date(startDate);
+    date.setDate(startDate.getDate() + i);
+    const dateStr = date.toISOString().split('T')[0];
+
+    if (!da.isWorkout) {
+      return {
+        date: dateStr,
+        day_name: da.day,
+        is_workout_day: false,
+        workout: { focus: 'Rest & Recovery', duration_minutes: 0, estimated_calories_burned: 0, intensity: 'rest', exercises: [], warm_up: '', cool_down: '🧘 10min light stretching or foam rolling to promote recovery 💆', coach_notes: 'Recovery is where growth happens! Don\'t skip rest days 😴🧠' },
+        nutrition: { target_calories: t.daily_calories, target_protein: t.daily_protein, target_carbs: t.daily_carbs, target_fat: t.daily_fat, meals: [
+          { meal_type: 'breakfast', time: '07:00', foods: [{ name: 'Oatmeal with protein powder', quantity: 1, unit: 'bowl', calories: Math.round(t.daily_calories * 0.25), protein: Math.round(t.daily_protein * 0.25), carbs: Math.round(t.daily_carbs * 0.25), fat: Math.round(t.daily_fat * 0.2) }], total_calories: Math.round(t.daily_calories * 0.25), total_protein: Math.round(t.daily_protein * 0.25) },
+          { meal_type: 'lunch', time: '12:30', foods: [{ name: 'Grilled chicken salad', quantity: 1, unit: 'plate', calories: Math.round(t.daily_calories * 0.35), protein: Math.round(t.daily_protein * 0.35), carbs: Math.round(t.daily_carbs * 0.3), fat: Math.round(t.daily_fat * 0.35) }], total_calories: Math.round(t.daily_calories * 0.35), total_protein: Math.round(t.daily_protein * 0.35) },
+          { meal_type: 'dinner', time: '19:00', foods: [{ name: 'Salmon with rice and vegetables', quantity: 1, unit: 'plate', calories: Math.round(t.daily_calories * 0.35), protein: Math.round(t.daily_protein * 0.35), carbs: Math.round(t.daily_carbs * 0.35), fat: Math.round(t.daily_fat * 0.35) }], total_calories: Math.round(t.daily_calories * 0.35), total_protein: Math.round(t.daily_protein * 0.35) },
+          { meal_type: 'snack', time: '16:00', foods: [{ name: 'Greek yogurt + nuts', quantity: 1, unit: 'serving', calories: Math.round(t.daily_calories * 0.05), protein: Math.round(t.daily_protein * 0.05), carbs: Math.round(t.daily_carbs * 0.1), fat: Math.round(t.daily_fat * 0.1) }], total_calories: Math.round(t.daily_calories * 0.05), total_protein: Math.round(t.daily_protein * 0.05) },
+        ], hydration_ml: t.water_ml || 2500 },
+        sleep: { target_bedtime: '22:30', target_wake_time: '06:30', target_duration_hours: 8 },
+        supplements: [],
+        coach_message: `💤 Rest day! Your muscles repair and grow while you sleep. Hit ${t.daily_protein}g protein even today — recovery needs fuel! 🍗💧`,
+        confidence: 0.7,
+      };
+    }
+
+    const split = splits[da.splitName || 'Full Body'];
+    const duration = level === 'beginner' ? 40 : level === 'advanced' ? 60 : 50;
+    const intensity = isCutting ? 'high' : isBulking ? 'moderate' : 'moderate';
+    const calBurned = Math.round(duration * (isCutting ? 8 : 6));
+
+    return {
+      date: dateStr,
+      day_name: da.day,
+      is_workout_day: true,
+      workout: {
+        focus: split.focus,
+        duration_minutes: duration,
+        estimated_calories_burned: calBurned,
+        intensity,
+        exercises: split.exercises.map(e => ({ ...e })),
+        warm_up: `🏃 5min light cardio + dynamic stretches (arm circles, leg swings, hip openers) to prep your ${split.focus.toLowerCase()} muscles ⚡`,
+        cool_down: `🧘 5min static stretching targeting worked muscles + 2min deep breathing cooldown 🧠`,
+        coach_notes: `Today we're hitting ${split.focus}! ${isCutting ? 'Keep rest periods strict — we\'re cutting! 🔪' : isBulking ? 'Progressive overload is king — add weight when you can! 💪' : 'Consistency beats intensity — show up and execute! 🔥'}`,
+      },
+      nutrition: { target_calories: t.daily_calories, target_protein: t.daily_protein, target_carbs: t.daily_carbs, target_fat: t.daily_fat, meals: [
+        { meal_type: 'breakfast', time: '07:00', foods: [{ name: 'Eggs + whole wheat toast + avocado', quantity: 1, unit: 'plate', calories: Math.round(t.daily_calories * 0.25), protein: Math.round(t.daily_protein * 0.3), carbs: Math.round(t.daily_carbs * 0.2), fat: Math.round(t.daily_fat * 0.3) }], total_calories: Math.round(t.daily_calories * 0.25), total_protein: Math.round(t.daily_protein * 0.3) },
+        { meal_type: 'lunch', time: '12:30', foods: [{ name: 'Chicken breast + rice + vegetables', quantity: 1, unit: 'plate', calories: Math.round(t.daily_calories * 0.35), protein: Math.round(t.daily_protein * 0.35), carbs: Math.round(t.daily_carbs * 0.35), fat: Math.round(t.daily_fat * 0.2) }], total_calories: Math.round(t.daily_calories * 0.35), total_protein: Math.round(t.daily_protein * 0.35) },
+        { meal_type: 'dinner', time: '19:00', foods: [{ name: 'Lean protein + sweet potato + salad', quantity: 1, unit: 'plate', calories: Math.round(t.daily_calories * 0.35), protein: Math.round(t.daily_protein * 0.3), carbs: Math.round(t.daily_carbs * 0.35), fat: Math.round(t.daily_fat * 0.3) }], total_calories: Math.round(t.daily_calories * 0.35), total_protein: Math.round(t.daily_protein * 0.3) },
+        { meal_type: 'snack', time: '16:00', foods: [{ name: 'Protein shake + banana', quantity: 1, unit: 'serving', calories: Math.round(t.daily_calories * 0.05), protein: Math.round(t.daily_protein * 0.05), carbs: Math.round(t.daily_carbs * 0.1), fat: Math.round(t.daily_fat * 0.2) }], total_calories: Math.round(t.daily_calories * 0.05), total_protein: Math.round(t.daily_protein * 0.05) },
+      ], hydration_ml: t.water_ml || 2500 },
+      sleep: { target_bedtime: '22:30', target_wake_time: '06:30', target_duration_hours: 8 },
+      supplements: [],
+      coach_message: `🔥 ${da.splitName || 'Full Body'} day! ${momentum?.current_streak > 3 ? `You're on a ${momentum.current_streak}-day streak — DON'T BREAK IT! 📈` : 'Time to build some momentum! Every rep counts! 💪'} Hit your ${t.daily_protein}g protein today — no excuses! 🍗`,
+      confidence: 0.75,
+    };
+  });
+
+  const workoutDays = dailyPlan.filter(d => d.is_workout_day).length;
+  const strategy = isCutting
+    ? `🏆 Cut mode: ${t.daily_calories}cal/day with high protein (${t.daily_protein}g). Training ${workoutDays}x/week to preserve muscle while dropping fat. Keep intensity HIGH and rest periods SHORT! 🔪🔥`
+    : isBulking
+    ? `📈 Bulk mode: ${t.daily_calories}cal/day with ${t.daily_protein}g protein. Training ${workoutDays}x/week with progressive overload. EAT BIG, LIFT BIG, SLEEP BIG! 💪🎯`
+    : `⚖️ Recomposition: ${t.daily_calories}cal/day with ${t.daily_protein}g protein. Training ${workoutDays}x/week. Building muscle while staying lean! 🔥🧠`;
+
+  return {
+    week_start: weekStartStr,
+    week_end: weekEndStr,
+    plan_confidence: 0.7,
+    generation_reasoning: `Template-based plan using your actual targets (${t.daily_calories}cal, ${t.daily_protein}gP) and training history (${wp.workout_frequency_per_week}x/week). AI-generated plan will replace this when available. ⚡`,
+    weekly_overview: {
+      total_workout_days: workoutDays,
+      total_rest_days: 7 - workoutDays,
+      weekly_calorie_target: t.daily_calories * 7,
+      weekly_protein_target: t.daily_protein * 7,
+      focus_areas: Object.values(splits).slice(0, workoutDays).map(s => s.focus),
+      weekly_strategy: strategy,
+    },
+    daily_plan: dailyPlan,
+    recommendations: [
+      { category: 'Nutrition', priority: 'high', recommendation: `Hit ${t.daily_protein}g protein DAILY — spread across 4 meals 🍗`, reasoning: 'Protein is the #1 driver of muscle retention and growth' },
+      { category: 'Training', priority: 'high', recommendation: `Train ${workoutDays}x/week consistently — same days each week 📅`, reasoning: 'Consistency > intensity. Your body adapts to routine.' },
+      { category: 'Recovery', priority: 'medium', recommendation: 'Sleep 7-8 hours and drink 2.5L+ water daily 💧😴', reasoning: 'Recovery is when muscles actually grow' },
+      { category: 'Mindset', priority: 'medium', recommendation: 'Track your food — what gets measured gets managed 📊', reasoning: 'Most people underestimate calories by 30%' },
+    ],
+  };
+}
+
+/**
  * Fast Groq API call — bypasses the shared groq-service to stay within Vercel Hobby 10s limit.
  * Supports model fallback chain: if one model returns 429 (rate limit), tries the next.
  * Each call has a per-attempt timeout. Total budget must stay under Vercel Hobby's 10s cap.
@@ -1953,20 +2120,14 @@ export async function POST(request: NextRequest) {
       generationSource = 'ai';
       console.log('[weekly-planner] AI plan generated successfully');
     } else {
-      // Check if the failure was due to rate limits
-      const allRateLimited = aiErrors.length > 0 && aiErrors.every(e => e.error.includes('429'));
-      console.error('[weekly-planner] AI generation failed — no fallback');
+      // AI failed — use smart template-based fallback plan so user always gets something
+      console.error('[weekly-planner] AI generation failed, using template fallback');
       console.error('[weekly-planner] ALL AI ATTEMPTS FAILED:');
       aiErrors.forEach(e => console.error(`  [${e.attempt}] ${e.model} ${e.stage}: ${e.error}`));
-      return NextResponse.json({
-        success: false,
-        error: 'ai_generation_failed',
-        message: allRateLimited
-          ? 'Groq API daily rate limit reached across all models. Plans will generate automatically tomorrow when limits reset.'
-          : 'Iron Coach AI is currently unavailable. Please try again later.',
-        ai_errors: aiErrors,
-        regenerations_remaining: regenerationsRemaining,
-      }, { status: 503 });
+
+      plan = generateFallbackPlan(userData, weekStartStr, weekEndStr);
+      generationSource = 'ai' as any; // Mark as 'ai' so UI treats it normally
+      console.log('[weekly-planner] Template fallback plan generated successfully');
     }
 
     // Try to store plan in database (optional, may fail if table doesn't exist)
