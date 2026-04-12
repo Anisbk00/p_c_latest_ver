@@ -8,14 +8,9 @@ $ next dev -p 3000
   · optimizePackageImports
 
 ✓ Starting...
-Attention: Next.js now collects completely anonymous telemetry regarding usage.
-This information is used to shape Next.js' roadmap and prioritize features.
-You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
-https://nextjs.org/telemetry
-
-✓ Ready in 1329ms
+✓ Ready in 1352ms
 ○ Compiling / ...
 [AuthScreen] Rendering, mode: welcome
 [AuthScreen] Rendering, mode: welcome
- GET / 200 in 8.3s (compile: 7.9s, render: 387ms)
- GET / 200 in 6.1s (compile: 6.0s, render: 57ms)
+ GET / 200 in 2.1s (compile: 1626ms, render: 426ms)
+ GET / 200 in 8.2s (compile: 7.8s, render: 390ms)
