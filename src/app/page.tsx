@@ -988,9 +988,12 @@ function ProgressCompanionHome() {
     analyticsLoading
   );
   
-  // App ready when ALL data is loaded — no more loading after splash
-  // During splash, lazy chunks and all data are preloaded in the background
-  const isAppReady = !isAuthenticated || (!authLoading && !isDataLoading);
+  // App ready ONLY after auth check completes — prevents flash of login → home
+  // The splash MUST stay visible until we know whether the user is authenticated,
+  // then wait for data if they are. Without the !authLoading gate, isAppReady
+  // evaluates to true immediately on mount (because isAuthenticated starts false),
+  // causing the splash to dismiss before the session is resolved.
+  const isAppReady = !authLoading && (!isAuthenticated || !isDataLoading);
   
   // ═══════════════════════════════════════════════════════════════
   // SPLASH SCREEN LOGIC - Wait for ALL data + preload lazy tabs
