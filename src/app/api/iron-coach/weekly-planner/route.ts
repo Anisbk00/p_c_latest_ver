@@ -852,42 +852,88 @@ export async function POST(request: NextRequest) {
       weekEndStr
     );
 
-    // Generate plan with AI
+    // Generate plan with AI (retry once on JSON parse failure)
     let plan;
-    try {
-      let responseText = await generateText(userPrompt, systemPrompt, 2048);
+    let lastResponseText = '';
+    const MAX_GENERATION_ATTEMPTS = 2;
 
-      // Clean up response
-      responseText = responseText
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-
-      // Extract JSON from response
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
-
+    for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
       try {
-        plan = JSON.parse(jsonToParse);
-      } catch (parseError) {
-        console.error('[weekly-planner] JSON parse error:', parseError);
-        console.error('[weekly-planner] Response text (first 500 chars):', responseText?.slice(0, 500));
+        lastResponseText = await generateText(userPrompt, systemPrompt, 4096);
+
+        // Clean up response — strip markdown fences, leading/trailing text
+        let cleaned = lastResponseText
+          .replace(/```json\s*/gi, '')
+          .replace(/```\s*/g, '')
+          .trim();
+
+        // Remove any text before the first { and after the last }
+        const firstBrace = cleaned.indexOf('{');
+        const lastBrace = cleaned.lastIndexOf('}');
+        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+          cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+        }
+
+        try {
+          plan = JSON.parse(cleaned);
+          break; // success — exit retry loop
+        } catch (parseErr) {
+          console.error(`[weekly-planner] JSON parse error (attempt ${attempt}/${MAX_GENERATION_ATTEMPTS}):`, parseErr);
+          console.error('[weekly-planner] Response (first 300 chars):', lastResponseText?.slice(0, 300));
+          console.error('[weekly-planner] Cleaned (first 300 chars):', cleaned?.slice(0, 300));
+
+          if (attempt === MAX_GENERATION_ATTEMPTS) {
+            // Final attempt failed — try aggressive repair
+            try {
+              // Fix common issues: trailing commas, single quotes, unquoted keys
+              const repaired = cleaned
+                .replace(/,\s*([}\]])/g, '$1')          // trailing commas
+                .replace(/'/g, '"')                       // single → double quotes
+                .replace(/(\w+)(?=\s*:)/g, '"$1"')      // quote unquoted keys (best effort)
+                .replace(/\n/g, '')                        // remove newlines
+                .replace(/\s{2,}/g, ' ');                 // collapse whitespace
+              plan = JSON.parse(repaired);
+              console.log('[weekly-planner] Repaired JSON successfully');
+              break;
+            } catch (repairErr) {
+              console.error('[weekly-planner] Repair also failed');
+              return NextResponse.json({
+                success: false,
+                error: 'Failed to generate plan. Please try again.',
+                details: 'AI response could not be parsed as valid JSON',
+              }, { status: 503 });
+            }
+          }
+          // Continue to next attempt
+        }
+      } catch (aiError) {
+        console.error(`[weekly-planner] AI error (attempt ${attempt}/${MAX_GENERATION_ATTEMPTS}):`, aiError);
+        const msg = aiError instanceof Error ? aiError.message : 'Unknown error';
+        const isRateLimit = msg.includes('rate limit') || msg.includes('high demand') || msg.includes('busy') || msg.includes('quota') || msg.includes('429');
         return NextResponse.json({
           success: false,
-          error: 'Failed to generate plan. Please try again.',
-          details: 'AI response could not be parsed as JSON',
-        }, { status: 500 });
+          error: isRateLimit
+            ? `AI is busy. Wait a minute and try again.`
+            : `AI error: ${msg.slice(0, 150)}`,
+          details: msg,
+        }, { status: 503 });
       }
-    } catch (aiError) {
-      console.error('[weekly-planner] AI error:', aiError);
-      const msg = aiError instanceof Error ? aiError.message : 'Unknown error';
-      const isRateLimit = msg.includes('rate limit') || msg.includes('high demand') || msg.includes('busy') || msg.includes('quota') || msg.includes('429');
+    }
+
+    // Validate plan has minimum required structure
+    if (!plan || typeof plan !== 'object') {
       return NextResponse.json({
         success: false,
-        error: isRateLimit
-          ? `AI error: ${msg.slice(0, 150)}. Wait a minute and try again.`
-          : `AI error: ${msg.slice(0, 150)}`,
-        details: msg,
+        error: 'AI returned an invalid plan. Please try again.',
+        details: 'Plan is null or not an object',
+      }, { status: 503 });
+    }
+
+    if (!plan.daily_plan || !Array.isArray(plan.daily_plan) || plan.daily_plan.length === 0) {
+      return NextResponse.json({
+        success: false,
+        error: 'AI returned an empty plan. Please try again.',
+        details: 'No daily_plan array in response',
       }, { status: 503 });
     }
 
