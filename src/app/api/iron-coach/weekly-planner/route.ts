@@ -1,20 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseUser } from '@/lib/supabase/supabase-data';
 import { calculatePersonalizedTargets } from '@/lib/personalized-targets';
+import { generateText } from '@/lib/ai/groq-service';
 
 // Vercel: extend serverless function timeout to 60s (default is 10s on Hobby)
 export const config = { maxDuration: 60 };
 
-// Direct Groq API call for weekly planner — bypasses generateText fallback chain
-// Uses current Groq models with JSON mode for reliable structured output
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const PLANNER_MODEL = 'llama-3.3-70b-versatile';
-const PLANNER_TIMEOUT_MS = 25000; // 25s per attempt — fits 2 attempts within 60s maxDuration
-const PLANNER_MODELS = [
-  { model: 'llama-3.3-70b-versatile', maxTokens: 16384, jsonMode: true },
-  { model: 'llama3-70b-8192', maxTokens: 8192, jsonMode: true },
-  { model: 'mixtral-8x7b-32768', maxTokens: 8192, jsonMode: true },
-];
+// Uses shared groq-service.ts for all AI calls — proven rate limiting & fallback chain
 
 /**
  * PRECISION WEEKLY PLANNER API
@@ -826,12 +818,8 @@ Streak: ${data.momentum.current_streak}d | Longest: ${data.momentum.longest_stre
 }
 
 // ═══════════════════════════════════════════════════════════════
-// AI PLAN GENERATION — Direct Groq API call with JSON mode
+// AI PLAN GENERATION — Uses shared groq-service.ts
 // ═══════════════════════════════════════════════════════════════
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
 
 interface AIErrorDetail {
   attempt: string;
@@ -849,7 +837,6 @@ interface AIPlanResult {
 
 /**
  * Extract JSON from response using balanced brace counting.
- * Handles trailing text and nested objects correctly.
  */
 function extractJSON(text: string): { json: string; wasTruncated: boolean } {
   let cleaned = text
@@ -860,7 +847,6 @@ function extractJSON(text: string): { json: string; wasTruncated: boolean } {
   const firstBrace = cleaned.indexOf('{');
   if (firstBrace === -1) return { json: cleaned, wasTruncated: false };
 
-  // Use balanced brace counting to find the CORRECT outer closing brace
   let depth = 0;
   let inString = false;
   let escapeNext = false;
@@ -868,38 +854,22 @@ function extractJSON(text: string): { json: string; wasTruncated: boolean } {
 
   for (let i = firstBrace; i < cleaned.length; i++) {
     const ch = cleaned[i];
-
-    if (escapeNext) {
-      escapeNext = false;
-      continue;
-    }
-    if (ch === '\\' && inString) {
-      escapeNext = true;
-      continue;
-    }
-    if (ch === '"') {
-      inString = !inString;
-      continue;
-    }
+    if (escapeNext) { escapeNext = false; continue; }
+    if (ch === '\\' && inString) { escapeNext = true; continue; }
+    if (ch === '"') { inString = !inString; continue; }
     if (inString) continue;
-
     if (ch === '{') depth++;
     if (ch === '}') {
       depth--;
-      if (depth === 0) {
-        lastBalancedBrace = i;
-        break;
-      }
+      if (depth === 0) { lastBalancedBrace = i; break; }
     }
   }
 
   if (lastBalancedBrace > 0) {
     const extracted = cleaned.slice(firstBrace, lastBalancedBrace + 1);
-    const wasTruncated = cleaned.length > lastBalancedBrace + 10;
-    return { json: extracted, wasTruncated };
+    return { json: extracted, wasTruncated: cleaned.length > lastBalancedBrace + 10 };
   }
 
-  // Balanced brace not found — JSON is truncated. Use last brace as fallback.
   const lastBrace = cleaned.lastIndexOf('}');
   if (lastBrace > firstBrace) {
     return { json: cleaned.slice(firstBrace, lastBrace + 1), wasTruncated: true };
@@ -909,12 +879,10 @@ function extractJSON(text: string): { json: string; wasTruncated: boolean } {
 }
 
 /**
- * Attempt to repair truncated JSON by closing unclosed structures.
+ * Attempt to repair truncated JSON.
  */
 function repairTruncatedJSON(json: string): string {
   let repaired = json;
-
-  // Count unclosed brackets/braces/strings
   let openBraces = 0;
   let openBrackets = 0;
   let inString = false;
@@ -932,210 +900,114 @@ function repairTruncatedJSON(json: string): string {
     if (ch === ']') openBrackets--;
   }
 
-  // If we're in a string, close it
   if (inString) repaired += '"';
-
-  // Remove trailing comma before closing
   repaired = repaired.replace(/,\s*$/, '');
-  // Close open arrays and objects (reverse order — innermost first)
   while (openBrackets > 0) { repaired += ']'; openBrackets--; }
   while (openBraces > 0) { repaired += '}'; openBraces--; }
-
   return repaired;
 }
 
 /**
- * Call Groq API directly for weekly planner with JSON mode.
- * Uses 70b model with temperature 0.1 for maximum JSON reliability.
+ * Generate weekly plan using the shared Groq service.
+ * Uses generateText() which has built-in rate limiting, retries, and model fallback.
  */
-async function callGroqForPlanner(
-  systemPrompt: string,
-  userPrompt: string,
- model: string = PLANNER_MODEL,
-  maxTokens: number = 12288,
-  jsonMode: boolean = true,
-): Promise<{ text: string; model: string; finishReason: string }> {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), PLANNER_TIMEOUT_MS);
-
-  try {
-    const requestBody: Record<string, unknown> = {
-      model,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userPrompt },
-      ],
-      temperature: 0.1,           // Low temp for deterministic JSON
-      max_tokens: maxTokens,
-    };
-
-    // Only add json_object mode if model supports it
-    if (jsonMode) {
-      requestBody.response_format = { type: 'json_object' };
-    }
-
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-      },
-      body: JSON.stringify(requestBody),
-      signal: controller.signal,
-    });
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      throw new Error(`API ${response.status}: ${errorBody.slice(0, 200)}`);
-    }
-
-    const result = await response.json();
-    const content = result.choices?.[0]?.message?.content;
-    const finishReason = result.choices?.[0]?.finish_reason || 'unknown';
-
-    if (!content) throw new Error('Empty response from AI');
-
-    return { text: content, model, finishReason };
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-/**
- * Extract retry-after delay from error message
- */
-function extractRetryDelayMs(errorMsg: string): number {
-  const retryMatch = errorMsg.match(/retry.in (\d+(?:\.\d+)?)/i);
-  if (retryMatch) return Math.ceil(parseFloat(retryMatch[1]) * 1000);
-  return 5000; // Default 5s
-}
-
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
   const errors: AIErrorDetail[] = [];
 
-  // Strategy: try each model in order, 1 attempt each to stay within 60s maxDuration
-  // 3 models × 25s timeout = 75s worst case, but most will succeed or fail fast
-  for (const modelConfig of PLANNER_MODELS) {
-    const { model, maxTokens, jsonMode } = modelConfig;
+  try {
+    console.log('[weekly-planner] Calling Groq via shared groq-service.ts...');
+    const fullPrompt = `${userPrompt}\n\nRemember: Return ONLY valid JSON. No markdown code fences. No explanations.`;
+    const responseText = await generateText(fullPrompt, systemPrompt, 16384);
 
-    // Single attempt per model (no retry delay) to minimize total time
-    const modelAttempts = [
-      { delay: 0, label: `${model} attempt 1` },
-    ];
-
-    for (const attempt of modelAttempts) {
-      if (attempt.delay > 0) {
-        console.log(`[weekly-planner] ${attempt.label}: waiting ${attempt.delay / 1000}s...`);
-        await sleep(attempt.delay);
-      }
-
-      try {
-        console.log(`[weekly-planner] ${attempt.label}: calling Groq API...`);
-        const { text: responseText, model: usedModel, finishReason } = await callGroqForPlanner(systemPrompt, userPrompt, model, maxTokens, jsonMode);
-        console.log(`[weekly-planner] ${attempt.label}: got response (${responseText.length} chars, finish: ${finishReason})`);
-
-      // Step 1: Extract JSON using balanced brace counting
-      const { json: extracted, wasTruncated } = extractJSON(responseText);
-
-      // Step 2: If truncated, try to repair
-      let jsonToParse = extracted;
-      if (wasTruncated || finishReason === 'length') {
-        console.warn(`[weekly-planner] ${attempt.label}: Response truncated (finish: ${finishReason}), repairing...`);
-        jsonToParse = repairTruncatedJSON(extracted);
-        errors.push({
-          attempt: attempt.label,
-          stage: 'truncated',
-          model,
-          error: `Response truncated at ${responseText.length} chars (finish_reason: ${finishReason}). Auto-repair attempted.`,
-          timestamp: new Date().toISOString(),
-        });
-      }
-
-      // Step 3: Try parsing
-      try {
-        const parsed = JSON.parse(jsonToParse);
-        if (parsed.daily_plan?.length === 7) {
-          console.log(`[weekly-planner] ${attempt.label}: SUCCESS — 7 days (${usedModel})`);
-          return { plan: parsed, success: true, errors };
-        }
-        if (parsed.daily_plan?.length > 0) {
-          console.warn(`[weekly-planner] ${attempt.label}: Got ${parsed.daily_plan.length}/7 days, accepting`);
-          return { plan: parsed, success: true, errors };
-        }
-        errors.push({
-          attempt: attempt.label,
-          stage: 'invalid_structure',
-          model: usedModel,
-          error: `Valid JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
-          timestamp: new Date().toISOString(),
-        });
-      } catch (parseErr) {
-        const errSnippet = jsonToParse.substring(0, 200);
-        errors.push({
-          attempt: attempt.label,
-          stage: 'json_parse',
-          model: usedModel,
-          error: `JSON parse failed. Snippet: ${errSnippet}`,
-          timestamp: new Date().toISOString(),
-        });
-
-        // Aggressive repair
-        try {
-          let repaired = jsonToParse
-            .replace(/[\x00-\x1F\x7F]/g, '')
-            .replace(/,\s*([}\]])/g, '$1')
-            .replace(/'/g, '"')
-            .replace(/\n/g, ' ')
-            .replace(/\s{2,}/g, ' ')
-            .trim();
-
-          repaired = repairTruncatedJSON(repaired);
-
-          const parsed = JSON.parse(repaired);
-          if (parsed.daily_plan?.length > 0) {
-            console.log(`[weekly-planner] ${attempt.label}: SUCCESS after aggressive repair`);
-            return { plan: parsed, success: true, errors };
-          }
-          errors.push({
-            attempt: attempt.label,
-            stage: 'invalid_structure',
-            model,
-            error: `Repaired JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
-            timestamp: new Date().toISOString(),
-          });
-        } catch {
-          errors.push({
-            attempt: attempt.label,
-            stage: 'json_repair',
-            model,
-            error: `JSON repair failed. Last 100 chars: ${jsonToParse.slice(-100)}`,
-            timestamp: new Date().toISOString(),
-          });
-        }
-      }
-    } catch (err) {
-      const errMsg = err instanceof Error ? err.message : String(err);
+    if (!responseText) {
       errors.push({
-        attempt: attempt.label,
+        attempt: 'groq-service',
         stage: 'api_call',
-        model,
-        error: errMsg,
+        model: 'shared',
+        error: 'Empty response from AI service',
         timestamp: new Date().toISOString(),
       });
-      console.error(`[weekly-planner] ${attempt.label}: AI API error — ${errMsg}`);
+      return { plan: null, success: false, errors };
+    }
 
-      // If rate limited or overloaded, skip remaining attempts for this model
-      // and move to the next model in PLANNER_MODELS
-      if (errMsg.includes('429') || errMsg.includes('rate limit') || errMsg.includes('overloaded') || errMsg.includes('503')) {
-        console.log(`[weekly-planner] ${model} overloaded/rate-limited, moving to next model...`);
-        break; // Break inner loop, continue to next model in PLANNER_MODELS
+    console.log(`[weekly-planner] Got response (${responseText.length} chars)`);
+
+    const { json: extracted, wasTruncated } = extractJSON(responseText);
+    let jsonToParse = extracted;
+    if (wasTruncated) {
+      console.warn('[weekly-planner] Response truncated, repairing...');
+      jsonToParse = repairTruncatedJSON(extracted);
+      errors.push({
+        attempt: 'groq-service',
+        stage: 'truncated',
+        model: 'shared',
+        error: `Response truncated at ${responseText.length} chars. Auto-repair attempted.`,
+        timestamp: new Date().toISOString(),
+      });
+    }
+
+    try {
+      const parsed = JSON.parse(jsonToParse);
+      if (parsed.daily_plan?.length > 0) {
+        console.log(`[weekly-planner] SUCCESS — ${parsed.daily_plan.length} days via groq-service`);
+        return { plan: parsed, success: true, errors };
+      }
+      errors.push({
+        attempt: 'groq-service',
+        stage: 'invalid_structure',
+        model: 'shared',
+        error: `Valid JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (parseErr) {
+      errors.push({
+        attempt: 'groq-service',
+        stage: 'json_parse',
+        model: 'shared',
+        error: `JSON parse failed: ${parseErr instanceof Error ? parseErr.message : String(parseErr)}`,
+        timestamp: new Date().toISOString(),
+      });
+
+      // Try aggressive repair
+      try {
+        let repaired = jsonToParse
+          .replace(/[\x00-\x1F\x7F]/g, '')
+          .replace(/,\s*([}\]])/g, '$1')
+          .replace(/'/g, '"')
+          .replace(/\n/g, ' ')
+          .replace(/\s{2,}/g, ' ')
+          .trim();
+        repaired = repairTruncatedJSON(repaired);
+
+        const parsed = JSON.parse(repaired);
+        if (parsed.daily_plan?.length > 0) {
+          console.log('[weekly-planner] SUCCESS after aggressive repair');
+          return { plan: parsed, success: true, errors };
+        }
+      } catch {
+        errors.push({
+          attempt: 'groq-service',
+          stage: 'json_repair',
+          model: 'shared',
+          error: 'JSON repair failed',
+          timestamp: new Date().toISOString(),
+        });
       }
     }
-    }
+  } catch (err) {
+    const errMsg = err instanceof Error ? err.message : String(err);
+    console.error(`[weekly-planner] Groq service error: ${errMsg}`);
+    errors.push({
+      attempt: 'groq-service',
+      stage: 'api_call',
+      model: 'shared',
+      error: errMsg,
+      timestamp: new Date().toISOString(),
+    });
   }
 
-  console.error(`[weekly-planner] ALL AI ATTEMPTS FAILED:`);
-  errors.forEach(e => console.error(`  [${e.attempt}] ${e.model} ${e.stage}: ${e.error}`));
+  console.error('[weekly-planner] AI generation failed');
+  errors.forEach(e => console.error(`  [${e.stage}] ${e.error}`));
   return { plan: null, success: false, errors };
 }
 
@@ -1940,8 +1812,9 @@ export async function POST(request: NextRequest) {
     let generationSource: 'ai';
     let aiErrors: AIErrorDetail[] = [];
 
-    // Pre-check: is GROQ_API_KEY configured?
-    if (!GROQ_API_KEY) {
+    // Pre-check: is AI service available? (uses shared groq-service check)
+    const { isAIAvailable } = await import('@/lib/ai/groq-service');
+    if (!isAIAvailable()) {
       console.error('[weekly-planner] GROQ_API_KEY not set in environment variables');
       return NextResponse.json({
         success: false,
@@ -1951,7 +1824,7 @@ export async function POST(request: NextRequest) {
       }, { status: 503 });
     }
 
-    console.log('[weekly-planner] Starting AI plan generation (Groq API, multi-model fallback)...');
+    console.log('[weekly-planner] Starting AI plan generation via shared groq-service...');
     const aiResult = await generatePlanWithAI(systemPrompt, userPrompt);
     aiErrors = aiResult.errors;
     
