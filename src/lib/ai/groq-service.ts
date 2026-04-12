@@ -25,7 +25,7 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const MODEL_NAME = 'llama-3.3-70b-versatile';
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 // Fallback text models — tried in order if primary is overloaded
-const FALLBACK_TEXT_MODELS = ['llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
+const FALLBACK_TEXT_MODELS = ['llama-3.1-8b-instant'];
 // EMBEDDING_MODEL removed — Groq does not offer embeddings
 
 if (GROQ_API_KEY) {
