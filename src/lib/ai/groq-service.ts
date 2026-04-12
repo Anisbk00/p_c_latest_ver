@@ -476,16 +476,17 @@ export async function analyzeBase64Image(
 
 /**
  * Generate text from a simple prompt (with fallback models)
+ * @param model - Optional specific model to use (skips primary/fallback chain)
  */
-export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 768): Promise<string> {
+export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 768, preferredModel?: string): Promise<string> {
   const messages: GroqMessage[] = [];
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
   }
   messages.push({ role: 'user', content: prompt });
 
-  // Try primary model first, then fallbacks
-  const modelsToTry = [MODEL_NAME, ...FALLBACK_TEXT_MODELS];
+  // If a specific model is requested, use it directly (no fallback chain)
+  const modelsToTry = preferredModel ? [preferredModel] : [MODEL_NAME, ...FALLBACK_TEXT_MODELS];
 
   for (const model of modelsToTry) {
     try {
