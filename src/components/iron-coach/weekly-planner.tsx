@@ -501,6 +501,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       setIsLoading(true);
     }
     setError(null);
+    setPlan(null); // Force re-render even if new plan is identical
     
     try {
       const response = await apiFetch(`/api/iron-coach/weekly-planner?week_start=${weekStartStr}`, {
@@ -549,7 +550,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       setIsLoading(false);
       setIsRegenerating(false);
     }
-  }, []);
+  }, [currentWeekStart]);
 
   const handleRegenerate = useCallback(() => {
     loadPlan(true);

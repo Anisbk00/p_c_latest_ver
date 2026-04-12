@@ -2126,32 +2126,36 @@ export async function POST(request: NextRequest) {
       aiErrors.forEach(e => console.error(`  [${e.attempt}] ${e.model} ${e.stage}: ${e.error}`));
 
       plan = generateFallbackPlan(userData, weekStartStr, weekEndStr);
-      generationSource = 'ai' as any; // Mark as 'ai' so UI treats it normally
+      generationSource = 'template'; // Mark as template — don't save to DB cache
       console.log('[weekly-planner] Template fallback plan generated successfully');
     }
 
     // Try to store plan in database (optional, may fail if table doesn't exist)
-    try {
-      await sb
-        .from('weekly_plans')
-        .upsert({
-          user_id: user.id,
-          week_start_date: weekStartStr,
-          week_end_date: weekEndStr,
-          status: 'active',
-          generation_source: forceRegenerate ? 'regenerate' : 'auto',
-          regenerations_used: forceRegenerate ? (2 - regenerationsRemaining + 1) : 0,
-          plan_data: plan,
-          confidence_score: plan.plan_confidence || 0.85,
-          model_version: 'ai-v1',
-          generation_reasoning: plan.generation_reasoning,
-          user_context_snapshot: userData,
-        }, {
-          onConflict: 'user_id,week_start_date',
-        });
-    } catch (dbError) {
-      console.log('[weekly-planner] Could not save to weekly_plans table:', dbError);
-      // Continue without saving - the plan is still valid
+    // NEVER cache template fallback — so regenerate can retry AI next time
+    if (generationSource !== 'template') {
+      try {
+        await sb
+          .from('weekly_plans')
+          .upsert({
+            user_id: user.id,
+            week_start_date: weekStartStr,
+            week_end_date: weekEndStr,
+            status: 'active',
+            generation_source: forceRegenerate ? 'regenerate' : 'auto',
+            regenerations_used: forceRegenerate ? (2 - regenerationsRemaining + 1) : 0,
+            plan_data: plan,
+            confidence_score: plan.plan_confidence || 0.85,
+            model_version: 'ai-v1',
+            generation_reasoning: plan.generation_reasoning,
+            user_context_snapshot: userData,
+          }, {
+            onConflict: 'user_id,week_start_date',
+          });
+      } catch (dbError) {
+        console.log('[weekly-planner] Could not save to weekly_plans table:', dbError);
+      }
+    } else {
+      console.log('[weekly-planner] Skipping DB save for template fallback (will retry AI on next request)');
     }
 
     return NextResponse.json({
