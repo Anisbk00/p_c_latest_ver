@@ -380,7 +380,15 @@ export async function* generateStreamingChatCompletion(
 export type PhotoAnalysisType = 'body-composition' | 'meal' | 'food-label' | 'progress-photo';
 
 const PHOTO_ANALYSIS_PROMPTS: Record<PhotoAnalysisType, string> = {
-  'body-composition': `Estimate body composition from this photo. Be realistic: average person 15-30%, athlete 8-15%, bodybuilder 4-8%. Return ONLY valid JSON:{"bodyFatEstimate":{"value":0,"confidence":0,"rationale":""},"muscleMassEstimate":{"value":0,"confidence":0,"rationale":""},"weightEstimate":{"value":0,"confidence":0,"rationale":""},"overallConfidence":0,"analysisNotes":"","recommendations":[]}`,
+  'body-composition': `You are a PRECISE body composition analyst. Estimate body fat % and muscle mass from this photo.
+
+CRITICAL RULES:
+- Body fat: average 15-25%, athlete 8-15%, bodybuilder 4-8%. Be CONSERVATIVE — most people overestimate leanness.
+- Muscle mass: ~35-50% of lean body mass. If you estimate 80kg at 20% BF, lean mass = 64kg, muscle ≈ 25-32kg. Stay in range.
+- Do NOT return impossible combinations (e.g., 5% BF with 15kg muscle on a 80kg person).
+- Confidence should reflect uncertainty: poor lighting = lower confidence, heavy clothing = lower confidence.
+
+Return ONLY valid JSON:{"bodyFatEstimate":{"value":0,"confidence":0,"rationale":""},"muscleMassEstimate":{"value":0,"confidence":0,"rationale":""},"weightEstimate":{"value":0,"confidence":0,"rationale":""},"overallConfidence":0,"analysisNotes":"","recommendations":[]}`,
 
   'meal': `Identify all foods in this meal photo. Return JSON only:{"foods":[{"name":"","estimatedPortion":"","calories":0,"protein":0,"carbs":0,"fat":0,"confidence":0}],"totalCalories":0,"totalProtein":0,"totalCarbs":0,"totalFat":0,"mealType":"breakfast|lunch|dinner|snack","healthScore":0,"recommendations":[]}`,
 
@@ -417,7 +425,7 @@ export async function analyzePhoto(
 
       const messages: GroqMessage[] = [
         // System message enforces strict JSON output
-        { role: 'system', content: 'You are a body composition AI. Return ONLY valid JSON. No explanations, no disclaimers, no markdown. Use provided profile data. Never say you lack data.' },
+        { role: 'system', content: 'You are a precise body composition analyst. Return ONLY valid JSON. No explanations, no disclaimers, no markdown. Muscle mass and body fat MUST be physically consistent: Lean Mass = Weight × (1 - BF%/100), Muscle ≈ 40-50% of lean mass. Never return impossible combinations.' },
         { role: 'user', content: [
           { type: 'text', text: prompt },
           imageContent,

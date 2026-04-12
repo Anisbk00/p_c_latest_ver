@@ -317,9 +317,53 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    const enhancedPrompt = `Estimate body comp from this photo. Use profile data above. Photo: lighting=${lighting}, clothing=${clothing}.
-Cross-reference: caloric deficit + high protein + training = more lean mass. Use prev BF as anchor.
-Realistic ranges: avg 15-30%, athlete 8-15%, bodybuilder 4-8%.
+    // ── Build mathematically-anchored prompt ────────────────────
+    // Pre-calculate realistic body fat & muscle mass ranges from known data
+    // so the AI has HARD constraints, not vague guidelines.
+    const bmi = heightCm && weightKg ? Math.round(weightKg / ((heightCm / 100) ** 2) * 10) / 10 : null;
+    const leanBodyMassEst = weightKg ? Math.round(weightKg * 0.72 * 10) / 10 : null; // ~72% lean for avg male
+    const fatMassEst = weightKg ? Math.round(weightKg * 0.18 * 10) / 10 : null; // ~18% fat for avg
+    
+    // Body fat range based on BMI (rough estimate)
+    let bfLowEstimate = 8, bfHighEstimate = 35;
+    if (bmi) {
+      if (bmi < 20) { bfLowEstimate = 6; bfHighEstimate = 18; }
+      else if (bmi < 25) { bfLowEstimate = 10; bfHighEstimate = 25; }
+      else if (bmi < 30) { bfLowEstimate = 18; bfHighEstimate = 32; }
+      else { bfLowEstimate = 25; bfHighEstimate = 40; }
+    }
+    // Narrow by fitness level
+    if (fitnessLevel === 'advanced' || fitnessLevel === 'athlete') {
+      bfLowEstimate = Math.max(4, bfLowEstimate - 5);
+      bfHighEstimate = Math.max(bfLowEstimate + 5, bfHighEstimate - 5);
+    }
+    // Narrow by activity level
+    if (activityLevel === 'very_active' || activityLevel === 'extra_active') {
+      bfHighEstimate = Math.max(bfLowEstimate + 5, bfHighEstimate - 3);
+    }
+    
+    // Muscle mass range: typically 35-50% of lean body mass
+    let mmLow = weightKg ? Math.round(weightKg * 0.30 * 10) / 10 : 20;
+    let mmHigh = weightKg ? Math.round(weightKg * 0.52 * 10) / 10 : 60;
+    if (sex === 'female') { mmLow = weightKg ? Math.round(weightKg * 0.25 * 10) / 10 : 15; mmHigh = weightKg ? Math.round(weightKg * 0.42 * 10) / 10 : 45; }
+    
+    const clothingBias = clothing === 'heavy' ? 3 : clothing === 'light' ? 1 : 0;
+
+    const enhancedPrompt = `You are a PRECISE body composition analyst. Analyze this photo with MATHEMATICAL RIGOR.
+
+HARD CONSTRAINTS (violating these = wrong answer):
+1. Weight: ${weightKg ? weightKg + 'kg' : 'unknown'}${heightCm ? ' | Height: ' + heightCm + 'cm' : ''}${bmi ? ' | BMI: ' + bmi : ''}
+2. Body fat MUST be between ${bfLowEstimate}%-${bfHighEstimate}% (derived from BMI, fitness, activity)
+3. Muscle mass MUST be between ${mmLow}-${mmHigh}kg (${sex === 'female' ? 'female' : 'male'} range)
+4. PHYSICS CHECK: Lean Mass = Weight × (1 - BF%/100). Muscle ≈ 40-50% of lean mass.
+   Example: ${weightKg || 75}kg at 20% BF → ${weightKg ? Math.round(weightKg * 0.8) : 60}kg lean → muscle ≈ ${weightKg ? Math.round(weightKg * 0.8 * 0.45) : 27}kg
+5. Previous scan: BF=${prevBodyFat !== null ? prevBodyFat + '%' : 'N/A'}, Muscle=${prevMuscleMass !== null ? prevMuscleMass + 'kg' : 'N/A'}${prevBodyFat !== null ? ' — new estimate should be WITHIN ±3% of previous' : ''}
+6. Photo conditions: lighting=${lighting} (adds ±${clothingBias + 1}% uncertainty), clothing=${clothing} (adds ±${clothingBias}% uncertainty)
+
+Do NOT invent numbers. Do NOT guess wildly. Use the constraints above.
+${clothing === 'heavy' ? 'HEAVY CLOTHING WARNING: Body fat is likely LOWER than visual estimate. Subtract 2-4% from visual impression.\n' : ''}${lighting === 'poor' ? 'POOR LIGHTING WARNING: Increase uncertainty, rely more on user profile data than visual.\n' : ''}
+Training context: ${totalProtein}g protein, ${workoutsThisWeek} workouts, ${caloriesBurned}cal burned this week.
+${primaryGoal === 'muscle_gain' ? 'Goal is MUSCLE GAIN — muscle mass should be on the higher end of the range.\n' : ''}${primaryGoal === 'fat_loss' ? 'Goal is FAT LOSS — body fat should be trending down from previous scan.\n' : ''}
 Return ONLY JSON:{"bodyFatEstimate":{"value":0,"confidence":0,"rationale":""},"muscleMassEstimate":{"value":0,"confidence":0,"rationale":""},"weightEstimate":{"value":0,"confidence":0,"rationale":""},"overallConfidence":0,"analysisNotes":"","recommendations":[]}
 No disclaimers. No text outside JSON.`
 
@@ -351,12 +395,86 @@ ${enhancedPrompt}`
     const confidence = Math.max(0.3, Math.min(0.95, rawConfidence))
     const rawMuscleMass = muscleMassEstimate?.value ? Number(muscleMassEstimate.value) : null
 
-    // Build min/max range (±3 around center estimate)
+    // ═══════════════════════════════════════════════════════════
+    // CROSS-VALIDATION: Ensure AI results are physically possible
+    // ═══════════════════════════════════════════════════════════
+    let validatedBodyFat = rawBodyFat;
+    let validatedMuscleMass = rawMuscleMass;
+
+    if (weightKg && validatedBodyFat !== null && Number.isFinite(validatedBodyFat)) {
+      // Clamp body fat to physically possible range for this BMI
+      validatedBodyFat = Math.max(3, Math.min(55, validatedBodyFat));
+      
+      // If previous body fat exists, new estimate should be within ±5%
+      // (body comp doesn't change drastically between scans)
+      if (prevBodyFat !== null && Number.isFinite(prevBodyFat)) {
+        const maxChange = 5;
+        if (validatedBodyFat > prevBodyFat + maxChange) {
+          console.log(`[body-composition] BF clamped: ${validatedBodyFat}% → ${prevBodyFat + maxChange}% (prev was ${prevBodyFat}%)`);
+          validatedBodyFat = prevBodyFat + maxChange;
+        }
+        if (validatedBodyFat < prevBodyFat - maxChange) {
+          console.log(`[body-composition] BF clamped: ${validatedBodyFat}% → ${Math.max(3, prevBodyFat - maxChange)}% (prev was ${prevBodyFat}%)`);
+          validatedBodyFat = Math.max(3, prevBodyFat - maxChange);
+        }
+      }
+      
+      // Calculate what muscle mass SHOULD be based on body fat and weight
+      // Lean Body Mass = Weight × (1 - BF/100)
+      // Skeletal Muscle ≈ 40-50% of Lean Body Mass (use 45% as midpoint)
+      const leanMass = weightKg * (1 - validatedBodyFat / 100);
+      const expectedMuscleMass = Math.round(leanMass * 0.45 * 10) / 10;
+      const mmLowExpected = Math.round(leanMass * 0.35 * 10) / 10;
+      const mmHighExpected = Math.round(leanMass * 0.55 * 10) / 10;
+      
+      console.log(`[body-composition] Physics check: ${weightKg}kg at ${validatedBodyFat}% BF → ${Math.round(leanMass)}kg lean → muscle should be ${mmLowExpected}-${mmHighExpected}kg (AI said ${validatedMuscleMass}kg)`);
+      
+      // If AI muscle mass is wildly off, override it with calculated value
+      if (validatedMuscleMass !== null && Number.isFinite(validatedMuscleMass)) {
+        if (validatedMuscleMass < mmLowExpected || validatedMuscleMass > mmHighExpected) {
+          console.log(`[body-composition] Muscle mass overridden: ${validatedMuscleMass}kg → ${expectedMuscleMass}kg (physically impossible for ${weightKg}kg at ${validatedBodyFat}% BF)`);
+          validatedMuscleMass = expectedMuscleMass;
+        }
+      } else {
+        // AI didn't return muscle mass — calculate it from body fat
+        console.log(`[body-composition] Muscle mass calculated from BF: ${expectedMuscleMass}kg`);
+        validatedMuscleMass = expectedMuscleMass;
+      }
+    } else if (weightKg && rawBodyFat === null) {
+      // No body fat from AI — try to derive from previous scan or calculate
+      if (prevBodyFat !== null) {
+        validatedBodyFat = prevBodyFat; // Use previous as anchor
+        console.log(`[body-composition] No BF from AI, using previous: ${prevBodyFat}%`);
+      } else if (bmi) {
+        // Rough BMI-based estimate (Deurenberg formula)
+        const ageFactor = age || 25;
+        const sexFactor = sex === 'female' ? 0 : 1;
+        validatedBodyFat = Math.round((1.20 * bmi + 0.23 * ageFactor - 10.8 * sexFactor - 5.4) * 10) / 10;
+        validatedBodyFat = Math.max(5, Math.min(45, validatedBodyFat));
+        console.log(`[body-composition] No BF from AI, BMI estimate: ${validatedBodyFat}%`);
+      }
+      
+      // Calculate muscle mass from body fat
+      if (validatedBodyFat !== null) {
+        const leanMass = weightKg * (1 - validatedBodyFat / 100);
+        validatedMuscleMass = Math.round(leanMass * 0.45 * 10) / 10;
+      }
+    }
+
+    // Final clamp on muscle mass
+    if (validatedMuscleMass !== null && weightKg) {
+      // Muscle mass can't exceed 55% of body weight
+      const maxMuscle = Math.round(weightKg * 0.55 * 10) / 10;
+      const minMuscle = Math.round(weightKg * 0.20 * 10) / 10;
+      validatedMuscleMass = Math.max(minMuscle, Math.min(maxMuscle, validatedMuscleMass));
+    }
+
+    // Build min/max range (±2 around validated center for tighter estimates)
     let bodyFatMin: number
     let bodyFatMax: number
-    if (rawBodyFat !== null && Number.isFinite(rawBodyFat)) {
-      bodyFatMin = Math.max(3, Math.min(55, rawBodyFat - 3))
-      bodyFatMax = Math.max(bodyFatMin + 1, Math.min(55, rawBodyFat + 3))
+    if (validatedBodyFat !== null && Number.isFinite(validatedBodyFat)) {
+      bodyFatMin = Math.max(3, Math.min(55, validatedBodyFat - 2))
+      bodyFatMax = Math.max(bodyFatMin + 1, Math.min(55, validatedBodyFat + 2))
     } else {
       bodyFatMin = 15
       bodyFatMax = 25
@@ -385,11 +503,11 @@ ${enhancedPrompt}`
     }
 
     // Insert muscle_mass metric if we have a valid estimate
-    if (rawMuscleMass !== null && Number.isFinite(rawMuscleMass) && rawMuscleMass > 0) {
+    if (validatedMuscleMass !== null && Number.isFinite(validatedMuscleMass) && validatedMuscleMass > 0) {
       const { error: mmError } = await supabase.from('body_metrics').insert({
         user_id: user.id,
         metric_type: 'muscle_mass',
-        value: rawMuscleMass,
+        value: validatedMuscleMass,
         unit: 'kg',
         source: 'model',
         captured_at: capturedAt,
@@ -454,11 +572,11 @@ ${enhancedPrompt}`
       bodyFatMin: Math.round(bodyFatMin * 10) / 10,
       bodyFatMax: Math.round(bodyFatMax * 10) / 10,
       bodyFatConfidence: Math.round(confidence * 100) / 100,
-      leanMassMin: rawMuscleMass !== null && Number.isFinite(rawMuscleMass)
-        ? Math.round((rawMuscleMass - 2) * 10) / 10
+      leanMassMin: validatedMuscleMass !== null && Number.isFinite(validatedMuscleMass)
+        ? Math.round((validatedMuscleMass - 2) * 10) / 10
         : null,
-      leanMassMax: rawMuscleMass !== null && Number.isFinite(rawMuscleMass)
-        ? Math.round((rawMuscleMass + 2) * 10) / 10
+      leanMassMax: validatedMuscleMass !== null && Number.isFinite(validatedMuscleMass)
+        ? Math.round((validatedMuscleMass + 2) * 10) / 10
         : null,
       bodyFatChange,
       changeDirection,
