@@ -906,60 +906,137 @@ function repairTruncatedJSON(json: string): string {
 
 /**
  * Fast Groq API call — bypasses the shared groq-service to stay within Vercel Hobby 10s limit.
- * Uses llama-3.1-8b-instant (fastest model) with a 7s timeout and 4096 max_tokens.
- * No retry loop — one shot to stay within budget.
+ * Supports model fallback chain: if one model returns 429 (rate limit), tries the next.
+ * Each call has a per-attempt timeout. Total budget must stay under Vercel Hobby's 10s cap.
  */
-async function generateTextFast(systemPrompt: string, userPrompt: string): Promise<string> {
+const GROQ_MODELS = [
+  'llama-3.1-8b-instant',   // Fastest, preferred
+  'gemma2-9b-it',            // Google Gemma 9B — good JSON quality, separate rate limit pool
+  'llama3-8b-8192',          // Llama 3 8B — reliable fallback
+];
+
+async function generateTextFast(
+  systemPrompt: string,
+  userPrompt: string,
+  errors: AIErrorDetail[],
+): Promise<string | null> {
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 7000); // 7s hard timeout
+  for (let i = 0; i < GROQ_MODELS.length; i++) {
+    const model = GROQ_MODELS[i];
+    // Each attempt gets a progressively shorter timeout to stay within 10s total
+    const attemptTimeout = 5000 - i * 500; // 5s, 4.5s, 4s
 
-  try {
-    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${GROQ_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: 'llama-3.1-8b-instant',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.3,
-        max_tokens: 4096,
-      }),
-      signal: controller.signal,
-    });
+    console.log(`[weekly-planner] attempt ${i + 1}/${GROQ_MODELS.length}: calling Groq API (${model})...`);
 
-    if (!response.ok) {
-      const errText = await response.text().catch(() => '');
-      throw new Error(`Groq ${response.status}: ${errText.substring(0, 200)}`);
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), attemptTimeout);
+
+    try {
+      const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${GROQ_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model,
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          temperature: 0.3,
+          max_tokens: 4096,
+        }),
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text().catch(() => '');
+        const isRateLimit = response.status === 429;
+        console.error(`[weekly-planner] attempt ${i + 1}: AI API error — API ${response.status}: ${errText.substring(0, 200)}`);
+
+        errors.push({
+          attempt: `attempt ${i + 1} (${isRateLimit ? 'rate limited' : 'error'})`,
+          stage: 'api_call',
+          model,
+          error: `API ${response.status}: ${errText.substring(0, 200)}`,
+          timestamp: new Date().toISOString(),
+        });
+
+        // On 429, try next model immediately (don't waste time waiting)
+        if (isRateLimit && i < GROQ_MODELS.length - 1) {
+          console.log(`[weekly-planner] attempt ${i + 1}: rate limited, trying next model...`);
+          continue;
+        }
+        // On non-429 error, also try next model
+        if (i < GROQ_MODELS.length - 1) continue;
+
+        throw new Error(`All models failed. Last: ${model} — ${response.status}`);
+      }
+
+      const result = await response.json();
+      const content = result.choices?.[0]?.message?.content;
+      if (!content) {
+        errors.push({
+          attempt: `attempt ${i + 1}`,
+          stage: 'api_call',
+          model,
+          error: 'Empty response from Groq',
+          timestamp: new Date().toISOString(),
+        });
+        if (i < GROQ_MODELS.length - 1) continue;
+        throw new Error('Empty response from all models');
+      }
+
+      console.log(`[weekly-planner] attempt ${i + 1}: success with ${model} (${content.length} chars)`);
+      return content;
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        console.error(`[weekly-planner] attempt ${i + 1}: timeout after ${attemptTimeout}ms for ${model}`);
+        errors.push({
+          attempt: `attempt ${i + 1}`,
+          stage: 'api_call',
+          model,
+          error: `Timeout after ${attemptTimeout}ms`,
+          timestamp: new Date().toISOString(),
+        });
+        if (i < GROQ_MODELS.length - 1) continue;
+        throw new Error('All models timed out');
+      }
+      // Re-throw if it's our aggregate error
+      if (err instanceof Error && err.message.startsWith('All ')) throw err;
+      // Otherwise try next model
+      errors.push({
+        attempt: `attempt ${i + 1}`,
+        stage: 'api_call',
+        model,
+        error: err instanceof Error ? err.message : String(err),
+        timestamp: new Date().toISOString(),
+      });
+      if (i < GROQ_MODELS.length - 1) continue;
+      throw err;
+    } finally {
+      clearTimeout(timeout);
     }
-
-    const result = await response.json();
-    const content = result.choices?.[0]?.message?.content;
-    if (!content) throw new Error('Empty response from Groq');
-    return content;
-  } finally {
-    clearTimeout(timeout);
   }
+
+  return null; // Should not reach here
 }
 
 /**
- * Generate weekly plan using fast Groq call (llama-3.1-8b-instant, 7s timeout).
+ * Generate weekly plan using fast Groq calls with model fallback chain.
  * Designed to complete within Vercel Hobby plan's 10s function limit.
+ * Tries llama-3.1-8b-instant → gemma2-9b-it → llama3-8b-8192
  */
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
   const errors: AIErrorDetail[] = [];
 
   try {
-    console.log('[weekly-planner] Calling Groq fast path (llama-3.1-8b-instant, 7s timeout)...');
+    console.log('[weekly-planner] Starting AI generation (model fallback chain)...');
     const fullPrompt = `${userPrompt}\n\nRemember: Return ONLY valid JSON. No markdown code fences. No explanations.`;
-    const responseText = await generateTextFast(systemPrompt, fullPrompt);
+    const responseText = await generateTextFast(systemPrompt, fullPrompt, errors);
 
     if (!responseText) {
       errors.push({
@@ -1866,7 +1943,7 @@ export async function POST(request: NextRequest) {
       }, { status: 503 });
     }
 
-    console.log('[weekly-planner] Starting AI plan generation (fast path)...');
+    console.log('[weekly-planner] Starting AI plan generation (model fallback chain)...');
     const aiResult = await generatePlanWithAI(systemPrompt, userPrompt);
     aiErrors = aiResult.errors;
     
@@ -1875,11 +1952,17 @@ export async function POST(request: NextRequest) {
       generationSource = 'ai';
       console.log('[weekly-planner] AI plan generated successfully');
     } else {
+      // Check if the failure was due to rate limits
+      const allRateLimited = aiErrors.length > 0 && aiErrors.every(e => e.error.includes('429'));
       console.error('[weekly-planner] AI generation failed — no fallback');
+      console.error('[weekly-planner] ALL AI ATTEMPTS FAILED:');
+      aiErrors.forEach(e => console.error(`  [${e.attempt}] ${e.model} ${e.stage}: ${e.error}`));
       return NextResponse.json({
         success: false,
         error: 'ai_generation_failed',
-        message: 'Iron Coach AI is currently unavailable. Please try again later.',
+        message: allRateLimited
+          ? 'Groq API daily rate limit reached across all models. Plans will generate automatically tomorrow when limits reset.'
+          : 'Iron Coach AI is currently unavailable. Please try again later.',
         ai_errors: aiErrors,
         regenerations_remaining: regenerationsRemaining,
       }, { status: 503 });
