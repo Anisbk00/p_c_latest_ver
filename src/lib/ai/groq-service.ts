@@ -220,7 +220,7 @@ export interface ChatCompletionOptions {
  */
 export async function generateChatCompletion(options: ChatCompletionOptions): Promise<string> {
   return withRateLimitRetry(async () => {
-    const { messages, temperature = 0.35, maxTokens = 768, locale = 'en', systemPrompt } = options;
+    const { messages, temperature = 0.35, maxTokens = 384, locale = 'en', systemPrompt } = options;
 
     const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
 
@@ -256,7 +256,7 @@ export async function* generateStreamingChatCompletion(
 ): AsyncGenerator<string, void, unknown> {
   // Don't pre-check isRateLimited() — let the retry loop handle it.
 
-  const { messages, temperature = 0.35, maxTokens = 768, locale = 'en', systemPrompt } = options;
+  const { messages, temperature = 0.35, maxTokens = 384, locale = 'en', systemPrompt } = options;
   const systemContent = systemPrompt || getIronCoachSystemPrompt(locale);
 
   const groqMessages: GroqMessage[] = [
@@ -477,7 +477,7 @@ export async function analyzeBase64Image(
 /**
  * Generate text from a simple prompt (with fallback models)
  */
-export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 1024): Promise<string> {
+export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 768): Promise<string> {
   const messages: GroqMessage[] = [];
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
@@ -530,7 +530,7 @@ export async function generateText(prompt: string, systemPrompt?: string, maxTok
 /**
  * Stream text from a simple prompt (with fallback models)
  */
-export async function* streamText(prompt: string, systemPrompt?: string, maxTokens: number = 1024): AsyncGenerator<string, void, unknown> {
+export async function* streamText(prompt: string, systemPrompt?: string, maxTokens: number = 512): AsyncGenerator<string, void, unknown> {
   const messages: GroqMessage[] = [];
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
