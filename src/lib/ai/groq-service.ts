@@ -28,8 +28,8 @@ const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 // Each model has a SEPARATE rate limit pool on Groq, so if one is at daily limit,
 // the others likely still have quota.
 const FALLBACK_TEXT_MODELS = [
-  'gemma2-9b-it',            // Google Gemma 9B — good quality, separate rate pool
   'llama-3.1-8b-instant',    // Llama 3.1 8B — fastest
+  'mixtral-8x7b-32768',      // Mixtral 8x7B — good quality, separate rate pool
   'llama3-8b-8192',           // Llama 3 8B — reliable
 ];
 // EMBEDDING_MODEL removed — Groq does not offer embeddings

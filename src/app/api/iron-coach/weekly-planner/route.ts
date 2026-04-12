@@ -912,7 +912,7 @@ function repairTruncatedJSON(json: string): string {
  */
 const GROQ_MODELS = [
   'llama-3.1-8b-instant',   // Fastest, preferred
-  'gemma2-9b-it',            // Google Gemma 9B — good JSON quality, separate rate limit pool
+  'mixtral-8x7b-32768',      // Mixtral 8x7B — good JSON quality, separate rate limit pool
   'llama3-8b-8192',          // Llama 3 8B — reliable fallback
 ];
 
@@ -1029,7 +1029,7 @@ async function generateTextFast(
 /**
  * Generate weekly plan using fast Groq calls with model fallback chain.
  * Designed to complete within Vercel Hobby plan's 10s function limit.
- * Tries llama-3.1-8b-instant → gemma2-9b-it → llama3-8b-8192
+ * Tries llama-3.1-8b-instant → mixtral-8x7b-32768 → llama3-8b-8192
  */
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
   const errors: AIErrorDetail[] = [];
