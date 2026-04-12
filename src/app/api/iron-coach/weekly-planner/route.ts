@@ -751,22 +751,42 @@ function buildPrecisionWeeklyPlanPrompt(
     : 0;
   const recentDaysPerWeek = data.workoutPatterns.total_workouts_7d;
   
-  // COMPACT PROMPT — must fit in ~1000 tokens so 8B model can generate JSON in 5-9s
-  const systemPrompt = `You are Iron Coach 💀 — a no-nonsense personal fitness coach. You roast laziness, celebrate discipline, and always use emojis 🔥💪. Output ONLY valid JSON, no markdown.`;
+  const systemPrompt = `You are Iron Coach 💀 — an elite personal trainer and nutritionist with 20+ years of experience. You create detailed, science-based weekly plans tailored to each client's data, goals, and habits. You roast laziness, celebrate discipline, and always use emojis 🔥💪.
 
-  const userPrompt = `Create a 7-day fitness plan for ${p.name} (${p.fitness_level || 'intermediate'}, goal: ${p.primary_goal || 'get fit'}).
+CRITICAL RULES:
+1. You MUST complete ALL 7 days. NEVER cut off mid-plan. Every single day from Monday to Sunday must be present.
+2. Each workout must have 4-6 exercises with specific sets, reps, and rest times.
+3. Each meal must list real foods the user actually eats (from their data). Use food names only — NO calorie/macro numbers per food (you don't have that data).
+4. Be PERSONAL — reference their name (${p.name}), their stats, their streak, their habits. Generic plans are unacceptable.
+5. Output ONLY valid JSON. No markdown, no code fences, no explanations outside JSON.
+6. On rest days, set is_workout_day:false and include active recovery suggestions in coach_message.`;
 
-KEY DATA:
-• ${p.current_weight_kg || '?'}kg → ${p.target_weight_kg || '?'}kg target | ${data.targets.daily_calories}cal/day | ${data.targets.daily_protein}g protein
-• Trains ~${actualDaysPerWeek}x/week | Types: ${data.workoutPatterns.favorite_workout_types.slice(0, 3).join(', ') || 'strength/cardio'} | Best days: ${data.workoutPatterns.best_performing_days.slice(0, 3).join(', ') || 'Mon/Wed/Fri'}
-• Streak: ${data.momentum.current_stretch || data.momentum.current_streak}d | Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}% | Weight trend: ${data.bodyMetrics.weight_trend}
-• Foods they eat: ${data.nutritionPatterns.most_common_foods.slice(0, 5).join(', ') || 'chicken, rice, eggs'}
-${data.nutritionPatterns.protein_adherence_percent < 70 ? '• ⚠️ SLACKING on protein — call them out!' : data.momentum.current_streak > 5 ? '• 🔥 ON FIRE — hype them up!' : ''}
+  const userPrompt = `Create a COMPLETE 7-day fitness plan for ${p.name}.
 
-RULES: Match their real training frequency. Use their foods. Reference their name, streak, and stats. Use emojis everywhere. Be personal — not generic.
+👤 PROFILE:
+• Name: ${p.name} | Level: ${p.fitness_level || 'intermediate'} | Goal: ${p.primary_goal || 'get fit'}
+• Weight: ${p.current_weight_kg || '?'}kg → Target: ${p.target_weight_kg || '?'}kg
+• Daily targets: ${data.targets.daily_calories}cal | ${data.targets.daily_protein}g protein | ${data.targets.daily_carbs}g carbs | ${data.targets.daily_fat}g fat
 
-Return JSON:
-{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"<2 sentences: your strategy for ${p.name}>","weekly_overview":{"total_workout_days":${actualDaysPerWeek},"total_rest_days":${7 - actualDaysPerWeek},"weekly_calorie_target":${data.targets.daily_calories * 7},"weekly_protein_target":${data.targets.daily_protein * 7},"focus_areas":["<muscles>"],"weekly_strategy":"<2 sentences motivational plan for ${p.name}>"},"daily_plan":[{"date":"<YYYY-MM-DD>","day_name":"<Monday>","is_workout_day":true,"workout":{"focus":"<muscles>","duration_minutes":50,"estimated_calories_burned":350,"intensity":"moderate","exercises":[{"name":"<exercise>","type":"compound","muscle_groups":["<muscles>"],"sets":4,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":"<tip 💪>"}],"warm_up":"<with emojis 🏃>","cool_down":"<with emojis 🧘>","coach_notes":"<personal note for ${p.name} with stats reference 🔥>"},"nutrition":{"target_calories":${data.targets.daily_calories},"target_protein":${data.targets.daily_protein},"target_carbs":${data.targets.daily_carbs},"target_fat":${data.targets.daily_fat},"meals":[{"meal_type":"breakfast","time":"07:00","foods":[{"name":"<their food>","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0},{"meal_type":"lunch","time":"12:30","foods":[{"name":"<their food>","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0},{"meal_type":"dinner","time":"19:00","foods":[{"name":"<their food>","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0},{"meal_type":"snack","time":"16:00","foods":[{"name":"<their food>","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0}],"hydration_ml":2500},"sleep":{"target_bedtime":"22:30","target_wake_time":"06:30","target_duration_hours":8},"supplements":[],"coach_message":"<personal emoji message for ${p.name} 💪🔥>","confidence":0.85}],"recommendations":[{"category":"Nutrition","priority":"high","recommendation":"<specific tip for ${p.name}>","reasoning":"<why>"}]}`;
+📊 BEHAVIOR DATA:
+• Workout frequency: ~${actualDaysPerWeek}x/week | Recent week: ${recentDaysPerWeek} workouts
+• Preferred types: ${data.workoutPatterns.favorite_workout_types.slice(0, 4).join(', ') || 'strength/cardio'}
+• Best training days: ${data.workoutPatterns.best_performing_days.slice(0, 3).join(', ') || 'Mon/Wed/Fri'}
+• Avg workout duration: ${data.workoutPatterns.avg_duration_minutes}min | Avg calories burned: ${data.workoutPatterns.avg_calories_burned}
+• Streak: ${data.momentum.current_streak} days | Momentum: ${data.momentum.momentum_score}/100
+
+🍽️ NUTRITION DATA:
+• Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}% | Calorie adherence: ${data.nutritionPatterns.calorie_adherence_percent}%
+• Weight trend: ${data.bodyMetrics.weight_trend} | 7d change: ${data.bodyMetrics.weight_change_7d}kg
+• Foods they actually eat: ${data.nutritionPatterns.most_common_foods.slice(0, 8).join(', ') || 'chicken, rice, eggs, tuna'}
+• Macro split: P${data.nutritionPatterns.macro_distribution.protein_percent}% C${data.nutritionPatterns.macro_distribution.carbs_percent}% F${data.nutritionPatterns.macro_distribution.fat_percent}%
+• Avg daily intake: ${data.nutritionPatterns.avg_daily_calories_7d}cal | ${data.nutritionPatterns.avg_daily_protein_7d}g protein
+${data.nutritionPatterns.protein_adherence_percent < 70 ? '⚠️ CRITICAL: They are SLACKING on protein. Call them out hard!' : data.momentum.current_streak > 5 ? '🔥 They have a ${data.momentum.current_streak} day streak — hype them up!' : ''}
+
+OUTPUT THIS EXACT JSON STRUCTURE (fill in ALL fields, ALL 7 days):
+{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"<your strategy for ${p.name} in 2 sentences>","weekly_overview":{"total_workout_days":${Math.max(3, Math.min(6, Math.round(actualDaysPerWeek)))},"total_rest_days":${7 - Math.max(3, Math.min(6, Math.round(actualDaysPerWeek)))},"weekly_calorie_target":${data.targets.daily_calories * 7},"weekly_protein_target":${data.targets.daily_protein * 7},"focus_areas":["primary muscle group"],"weekly_strategy":"<personal 2-sentence strategy for ${p.name}>"},"daily_plan":[{"date":"YYYY-MM-DD","day_name":"Monday","is_workout_day":true,"workout":{"focus":"muscle group","duration_minutes":50,"estimated_calories_burned":350,"intensity":"moderate","exercises":[{"name":"Exercise Name","type":"compound","muscle_groups":["target"],"sets":4,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":"coaching tip 💪"}],"warm_up":"5min dynamic stretch 🏃","cool_down":"5min static stretch 🧘","coach_notes":"personal note referencing ${p.name}'s data 🔥"},"nutrition":{"target_calories":${data.targets.daily_calories},"target_protein":${data.targets.daily_protein},"target_carbs":${data.targets.daily_carbs},"target_fat":${data.targets.daily_fat},"meals":[{"meal_type":"breakfast","time":"07:00","description":"Meal description with real foods","foods":["food 1","food 2","food 3"]},{"meal_type":"lunch","time":"12:30","description":"Meal description","foods":["food 1","food 2"]},{"meal_type":"dinner","time":"19:00","description":"Meal description","foods":["food 1","food 2","food 3"]},{"meal_type":"snack","time":"16:00","description":"Snack description","foods":["food 1"]}],"hydration_ml":2500},"sleep":{"target_bedtime":"22:30","target_wake_time":"06:30","target_duration_hours":8},"supplements":["supplement if applicable"],"coach_message":"personal emoji message for ${p.name} 💪🔥","confidence":0.85}],"recommendations":[{"category":"Nutrition","priority":"high","recommendation":"specific actionable tip for ${p.name}","reasoning":"why this matters for them"},{"category":"Training","priority":"medium","recommendation":"training tip","reasoning":"why"}]}
+
+REMEMBER: Complete ALL 7 days. Use their real foods. Reference their name and stats. Be a real coach, not a template generator.`;
 
   return { systemPrompt, userPrompt };
 }
@@ -1059,7 +1079,7 @@ async function generateTextFast(
               { role: 'user', content: userPrompt },
             ],
             temperature: 0.3,
-            max_tokens: 4000,
+            max_tokens: 16000,
           }),
         });
 
@@ -1168,15 +1188,16 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
 
     try {
       const parsed = JSON.parse(jsonToParse);
-      if (parsed.daily_plan?.length > 0) {
-        console.log(`[weekly-planner] SUCCESS — ${parsed.daily_plan.length} days via groq-service`);
+      if (parsed.daily_plan?.length === 7) {
+        console.log(`[weekly-planner] ✅ SUCCESS — ${parsed.daily_plan.length} days via direct Groq`);
         return { plan: parsed, success: true, errors };
       }
+      console.warn(`[weekly-planner] ⚠️ Incomplete plan: ${parsed.daily_plan?.length || 0}/7 days — rejecting`);
       errors.push({
         attempt: 'groq-service',
         stage: 'invalid_structure',
         model: 'shared',
-        error: `Valid JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
+        error: `Incomplete plan: ${parsed.daily_plan?.length || 0}/7 days.`,
         timestamp: new Date().toISOString(),
       });
     } catch (parseErr) {
@@ -1200,10 +1221,11 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
         repaired = repairTruncatedJSON(repaired);
 
         const parsed = JSON.parse(repaired);
-        if (parsed.daily_plan?.length > 0) {
-          console.log('[weekly-planner] SUCCESS after aggressive repair');
+        if (parsed.daily_plan?.length === 7) {
+          console.log('[weekly-planner] ✅ SUCCESS after aggressive repair');
           return { plan: parsed, success: true, errors };
         }
+        console.warn(`[weekly-planner] Repaired plan still only ${parsed.daily_plan?.length || 0}/7 days`);
       } catch {
         errors.push({
           attempt: 'groq-service',
@@ -1925,14 +1947,17 @@ function parsePlanFromText(responseText: string): { plan: any; errors: AIErrorDe
   
   try {
     const parsed = JSON.parse(jsonToParse);
-    if (parsed.daily_plan?.length > 0) {
+    if (parsed.daily_plan?.length === 7) {
+      console.log(`[weekly-planner] ✅ Valid plan: ${parsed.daily_plan.length} days`);
       return { plan: parsed, errors };
     }
+    // Reject incomplete plans (less than 7 days)
+    console.warn(`[weekly-planner] ⚠️ Plan has only ${parsed.daily_plan?.length || 0}/7 days — rejecting as truncated`);
     errors.push({
       attempt: 'stream',
       stage: 'invalid_structure',
       model: 'groq-stream',
-      error: `Valid JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
+      error: `Incomplete plan: ${parsed.daily_plan?.length || 0}/7 days. AI likely got cut off.`,
       timestamp: new Date().toISOString(),
     });
   } catch (parseErr) {
@@ -1956,10 +1981,11 @@ function parsePlanFromText(responseText: string): { plan: any; errors: AIErrorDe
       repaired = repairTruncatedJSON(repaired);
       
       const parsed = JSON.parse(repaired);
-      if (parsed.daily_plan?.length > 0) {
-        console.log('[weekly-planner] SUCCESS after aggressive repair (streaming)');
+      if (parsed.daily_plan?.length === 7) {
+        console.log(`[weekly-planner] ✅ Valid plan after repair: ${parsed.daily_plan.length} days`);
         return { plan: parsed, errors };
       }
+      console.warn(`[weekly-planner] Repaired plan still only ${parsed.daily_plan?.length || 0}/7 days`);
     } catch {
       errors.push({
         attempt: 'stream',
@@ -2002,7 +2028,7 @@ async function streamGroqPlan(
             { role: 'user', content: userPrompt + '\n\nRemember: Return ONLY valid JSON. No markdown code fences. No explanations.' },
           ],
           temperature: 0.3,
-          max_tokens: 4000,
+          max_tokens: 16000,
           stream: true,
         }),
       });
