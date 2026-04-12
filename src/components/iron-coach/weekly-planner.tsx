@@ -495,6 +495,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   const loadPlan = useCallback(async (forceRegenerate = false, weekStartOverride?: Date) => {
     const targetWeek = weekStartOverride || currentWeekStart;
     const weekStartStr = format(targetWeek, 'yyyy-MM-dd');
+    console.log('[WeeklyPlanner] loadPlan called, forceRegenerate:', forceRegenerate, 'week:', weekStartStr);
     
     if (forceRegenerate) {
       setIsRegenerating(true);
@@ -502,21 +503,15 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       setIsLoading(true);
     }
     setError(null);
-    
-    // Save current plan so we can restore it if regenerate returns same template
-    const previousPlan = plan;
-    if (forceRegenerate) {
-      // Don't null the plan on regenerate — keep showing current plan until new one arrives
-      // This prevents the flash-to-loading-and-back-to-same-plan issue
-    } else {
-      setPlan(null);
-    }
+    setToastMessage(null);
     
     try {
       const response = await apiFetch(`/api/iron-coach/weekly-planner?week_start=${weekStartStr}`, {
         method: 'POST',
         body: JSON.stringify({ force_regenerate: forceRegenerate }),
       });
+
+      console.log('[WeeklyPlanner] API response status:', response.status);
 
       // Guard: if response is not ok, parse error body safely
       let data: any;
@@ -526,6 +521,8 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
         // Vercel sometimes returns HTML on 503 — treat as generic error
         throw new Error('Service temporarily unavailable (503)');
       }
+
+      console.log('[WeeklyPlanner] API data:', { success: data.success, source: data.generation_source, cached: data.cached, remaining: data.regenerations_remaining });
 
       if (!response.ok) {
         // Rate limit hit
@@ -540,16 +537,12 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       }
 
       if (data.success && data.plan) {
-        // If regenerate returned a template fallback, keep the existing plan
-        // and let the user know AI is busy (don't silently replace with same-looking plan)
-        if (forceRegenerate && data.generation_source === 'template' && previousPlan) {
-          console.log('[WeeklyPlanner] AI unavailable, keeping existing plan');
-          setRegenerationsRemaining(data.regenerations_remaining ?? regenerationsRemaining); // Don't consume regeneration
-          setAiErrors(data.ai_errors || null);
-          setError(null); // Clear error — plan is still valid
-          setToastMessage('⚡ AI is busy right now — your plan stays! Try again in a minute.');
+        // If regenerate returned a template fallback, show toast (don't silently swap same plan)
+        if (forceRegenerate && data.generation_source === 'template') {
+          console.log('[WeeklyPlanner] AI returned template fallback, showing toast');
+          setToastMessage('⚡ AI is busy right now — try again in a minute!');
           setTimeout(() => setToastMessage(null), 4000);
-          return;
+          // Still update the plan — template has real data from user profile
         }
         setPlan(data.plan);
         setGenerationSource(data.generation_source || (data.cached ? 'cached' : null));
@@ -564,13 +557,19 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
     } catch (err) {
       // Log full error details to console, show generic message to user
       console.error('[WeeklyPlanner] Error:', err);
-      setError('ai_unavailable');
-      setErrorMessage('AI temporarily unavailable. Try again in a moment.');
+      if (!plan) {
+        setError('ai_unavailable');
+        setErrorMessage('AI temporarily unavailable. Try again in a moment.');
+      } else {
+        // Plan exists — show toast instead of replacing plan with error
+        setToastMessage('⚠️ Something went wrong. Try again!');
+        setTimeout(() => setToastMessage(null), 3000);
+      }
     } finally {
       setIsLoading(false);
       setIsRegenerating(false);
     }
-  }, [currentWeekStart]);
+  }, [currentWeekStart, plan, regenerationsRemaining]);
 
   const handleRegenerate = useCallback(() => {
     console.log('[WeeklyPlanner] handleRegenerate clicked, remaining:', regenerationsRemaining, 'isRegenerating:', isRegenerating);
@@ -685,7 +684,12 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
     <div className={cn("flex flex-col h-full min-h-0 relative", styles.container)}>
       {/* Toast notification */}
       {toastMessage && (
-        <div className="absolute top-2 left-2 right-2 z-50 px-3 py-2 rounded-lg bg-amber-500/90 text-white text-xs font-medium shadow-lg animate-in fade-in slide-in-from-top-1">
+        <div style={{
+          position: 'absolute', top: '8px', left: '8px', right: '8px', zIndex: 50,
+          padding: '8px 12px', borderRadius: '8px',
+          backgroundColor: 'rgba(245, 158, 11, 0.95)', color: 'white',
+          fontSize: '12px', fontWeight: 600, boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+        }}>
           {toastMessage}
         </div>
       )}
