@@ -1181,7 +1181,9 @@ async function generateTextFast(
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (GROQ_API_KEY) {
     console.log('[weekly-planner] Attempting direct Groq API...');
-    const modelsToTry = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'];
+    // Each model has its own rate limit pool on Groq. Order: best quality first, then fallbacks.
+    // llama-3.1-70b-versatile was decommissioned — do NOT add it back.
+    const modelsToTry = ['llama-3.3-70b-versatile', 'gemma2-9b-it', 'mixtral-8x7b-32768', 'llama-3.1-8b-instant'];
 
     for (let i = 0; i < modelsToTry.length; i++) {
       const model = modelsToTry[i];
@@ -1201,7 +1203,7 @@ async function generateTextFast(
               { role: 'user', content: userPrompt },
             ],
             temperature: 0.3,
-            max_tokens: 16000,
+            max_tokens: 8192,
           }),
         });
 
@@ -2229,14 +2231,16 @@ function parsePlanFromText(responseText: string): { plan: any; errors: AIErrorDe
 
 /**
  * Stream a plan generation from Groq API. Returns accumulated text.
- * Model fallback chain: llama-3.3-70b-versatile → llama-3.1-70b-versatile → llama-3.1-8b-instant
+ * Model fallback chain: llama-3.3-70b-versatile → gemma2-9b-it → mixtral-8x7b-32768 → llama-3.1-8b-instant
+ * Each model has its own rate limit pool on Groq, so if one is at daily limit, others likely still have quota.
+ * llama-3.1-70b-versatile was decommissioned — do NOT add it back.
  */
 async function streamGroqPlan(
   systemPrompt: string, 
   userPrompt: string, 
   apiKey: string
 ): Promise<{ text: string; errors: AIErrorDetail[] } | null> {
-  const models = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'];
+  const models = ['llama-3.3-70b-versatile', 'gemma2-9b-it', 'mixtral-8x7b-32768', 'llama-3.1-8b-instant'];
   const allErrors: AIErrorDetail[] = [];
   
   for (const model of models) {
@@ -2256,7 +2260,7 @@ async function streamGroqPlan(
             { role: 'user', content: userPrompt + '\n\nRemember: Return ONLY valid JSON. No markdown code fences. No explanations.' },
           ],
           temperature: 0.3,
-          max_tokens: 16000,
+          max_tokens: 8192,
           stream: true,
         }),
       });
