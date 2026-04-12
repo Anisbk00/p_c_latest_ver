@@ -912,7 +912,7 @@ function repairTruncatedJSON(json: string): string {
  */
 const GROQ_MODELS = [
   'llama-3.1-8b-instant',   // Fastest, preferred
-  'mixtral-8x7b-32768',      // Mixtral 8x7B — good JSON quality, separate rate limit pool
+  'qwen-qwq-32b',             // Qwen QwQ 32B — good JSON quality, separate rate limit pool
   'llama3-8b-8192',          // Llama 3 8B — reliable fallback
 ];
 

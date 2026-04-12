@@ -29,7 +29,7 @@ const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 // the others likely still have quota.
 const FALLBACK_TEXT_MODELS = [
   'llama-3.1-8b-instant',    // Llama 3.1 8B — fastest
-  'mixtral-8x7b-32768',      // Mixtral 8x7B — good quality, separate rate pool
+  'qwen-qwq-32b',             // Qwen QwQ 32B — good reasoning, separate rate pool
   'llama3-8b-8192',           // Llama 3 8B — reliable
 ];
 // EMBEDDING_MODEL removed — Groq does not offer embeddings
@@ -262,17 +262,19 @@ export async function generateChatCompletion(options: ChatCompletionOptions): Pr
       return content;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      const isOverloaded = errMsg.includes('429') || errMsg.includes('rate limit') ||
+      const isRetryable = errMsg.includes('429') || errMsg.includes('rate limit') ||
                            errMsg.includes('high demand') || errMsg.includes('503') ||
-                           errMsg.includes('overloaded') || errMsg.includes('Too Many');
+                           errMsg.includes('overloaded') || errMsg.includes('Too Many') ||
+                           errMsg.includes('400') || errMsg.includes('decommissioned') ||
+                           errMsg.includes('no longer supported');
 
-      if (isOverloaded && model !== modelsToTry[modelsToTry.length - 1]) {
+      if (isRetryable && model !== modelsToTry[modelsToTry.length - 1]) {
         console.log(`[Groq] Model ${model} rate-limited for chat, trying fallback...`);
         continue;
       }
 
       // Non-rate-limit error or last model failed
-      if (isOverloaded) {
+      if (isRetryable) {
         handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
       }
       throw error;
@@ -352,16 +354,18 @@ export async function* generateStreamingChatCompletion(
       }
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      const isOverloaded = errMsg.includes('429') || errMsg.includes('rate limit') ||
+      const isRetryable = errMsg.includes('429') || errMsg.includes('rate limit') ||
                            errMsg.includes('high demand') || errMsg.includes('503') ||
-                           errMsg.includes('overloaded') || errMsg.includes('Too Many');
+                           errMsg.includes('overloaded') || errMsg.includes('Too Many') ||
+                           errMsg.includes('400') || errMsg.includes('decommissioned') ||
+                           errMsg.includes('no longer supported');
 
-      if (isOverloaded && model !== modelsToTry[modelsToTry.length - 1]) {
+      if (isRetryable && model !== modelsToTry[modelsToTry.length - 1]) {
         console.log(`[Groq] Model ${model} rate-limited for stream, trying fallback...`);
         continue;
       }
 
-      if (isOverloaded) {
+      if (isRetryable) {
         handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
         throw new Error('AI service is experiencing high demand. Please try again.');
       }
@@ -561,17 +565,17 @@ export async function generateText(prompt: string, systemPrompt?: string, maxTok
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       const isEmpty = errMsg === 'Empty response from AI';
-      const isOverloaded = errMsg.includes('429') || errMsg.includes('high demand') || 
+      const isRetryable = errMsg.includes('429') || errMsg.includes('high demand') || 
                            errMsg.includes('rate limit') || errMsg.includes('busy') ||
                            errMsg.includes('503');
 
-      if (isOverloaded && model !== modelsToTry[modelsToTry.length - 1]) {
+      if (isRetryable && model !== modelsToTry[modelsToTry.length - 1]) {
         console.log(`[Groq] Model ${model} overloaded for generateText, trying fallback...`);
         continue;
       }
 
       // Non-retryable error or last model failed
-      if (isOverloaded) {
+      if (isRetryable) {
         handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
       }
       throw error;
@@ -645,17 +649,17 @@ export async function* streamText(prompt: string, systemPrompt?: string, maxToke
       }
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      const isOverloaded = errMsg.includes('429') || errMsg.includes('high demand') || 
+      const isRetryable = errMsg.includes('429') || errMsg.includes('high demand') || 
                            errMsg.includes('rate limit') || errMsg.includes('busy') ||
                            errMsg.includes('503');
       
-      if (isOverloaded && model !== modelsToTry[modelsToTry.length - 1]) {
+      if (isRetryable && model !== modelsToTry[modelsToTry.length - 1]) {
         console.log(`[Groq] Model ${model} overloaded, trying fallback...`);
         continue; // Try next fallback model
       }
       
       // Non-rate-limit error or last model failed
-      if (isOverloaded) {
+      if (isRetryable) {
         handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
         throw new Error(`AI service is experiencing high demand. Please try again.`);
       }

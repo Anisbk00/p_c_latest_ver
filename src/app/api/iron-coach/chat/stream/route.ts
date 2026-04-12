@@ -218,9 +218,8 @@ export async function POST(request: NextRequest) {
             })
           } catch (streamError) {
             console.error('[iron-coach/stream] streamCloudPrompt error:', streamError);
-            // Send error as tokens so user sees it
-            const errorMsg = streamError instanceof Error ? streamError.message : 'AI temporarily unavailable';
-            const fallback = `⚠️ ${errorMsg}. Please try again in a moment.`;
+            // Show a friendly message to the user, not raw API errors
+            const fallback = "💪 Iron Coach is experiencing heavy traffic right now. Give me a sec and try again!";
             for (const ch of fallback) {
               controller.enqueue(encodeChunk({ type: 'token', token: ch }));
             }
