@@ -682,13 +682,13 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
 
   return (
     <div className={cn("flex flex-col h-full min-h-0 relative", styles.container)}>
-      {/* Toast notification */}
+      {/* Toast notification — inline flow, not absolute (parent clips overflow) */}
       {toastMessage && (
         <div style={{
-          position: 'absolute', top: '8px', left: '8px', right: '8px', zIndex: 50,
-          padding: '8px 12px', borderRadius: '8px',
+          margin: '8px', padding: '8px 12px', borderRadius: '8px', flexShrink: 0,
           backgroundColor: 'rgba(245, 158, 11, 0.95)', color: 'white',
           fontSize: '12px', fontWeight: 600, boxShadow: '0 4px 12px rgba(0,0,0,0.2)',
+          textAlign: 'center',
         }}>
           {toastMessage}
         </div>
