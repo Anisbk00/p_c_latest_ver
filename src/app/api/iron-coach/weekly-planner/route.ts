@@ -1039,7 +1039,7 @@ async function generateTextFast(
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (GROQ_API_KEY) {
     console.log('[weekly-planner] Attempting direct Groq API...');
-    const modelsToTry = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'llama3-8b-8192'];
+    const modelsToTry = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'llama-3.1-8b-instant', 'llama3-8b-8192'];
 
     for (let i = 0; i < modelsToTry.length; i++) {
       const model = modelsToTry[i];
@@ -1971,7 +1971,7 @@ async function streamGroqPlan(
   userPrompt: string, 
   apiKey: string
 ): Promise<string | null> {
-  const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+  const models = ['llama-3.3-70b-versatile', 'llama3-70b-8192', 'llama-3.1-8b-instant', 'llama3-8b-8192'];
   
   for (const model of models) {
     try {
