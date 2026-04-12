@@ -852,43 +852,79 @@ export async function POST(request: NextRequest) {
       weekEndStr
     );
 
-    // Generate plan with AI
+    // Generate plan with AI (with retry for rate limits)
     let plan;
-    try {
-      let responseText = await generateText(userPrompt, systemPrompt, 2048);
+    let lastAiError: string | null = null;
+    const MAX_RETRIES = 3;
+    const RETRY_DELAYS = [10000, 20000, 30000]; // 10s, 20s, 30s — Groq per-minute limit needs time to reset
 
-      // Clean up response
-      responseText = responseText
-        .replace(/```json\n?/g, '')
-        .replace(/```\n?/g, '')
-        .trim();
-
-      // Extract JSON from response (handle cases where LLM adds surrounding text)
-      const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-      const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
-
-      // Parse JSON
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       try {
-        plan = JSON.parse(jsonToParse);
-      } catch (parseError) {
-        console.error('[weekly-planner] JSON parse error:', parseError);
-        console.error('[weekly-planner] Response text:', responseText?.slice(0, 500));
+        let responseText = await generateText(userPrompt, systemPrompt, 2048);
+
+        // Clean up response
+        responseText = responseText
+          .replace(/```json\n?/g, '')
+          .replace(/```\n?/g, '')
+          .trim();
+
+        // Extract JSON from response
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        const jsonToParse = jsonMatch ? jsonMatch[0] : responseText;
+
+        try {
+          plan = JSON.parse(jsonToParse);
+        } catch (parseError) {
+          console.error('[weekly-planner] JSON parse error on attempt', attempt + 1);
+          if (attempt < MAX_RETRIES) {
+            console.log('[weekly-planner] Retrying in', RETRY_DELAYS[attempt] / 1000, 's...');
+            await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+            continue;
+          }
+          return NextResponse.json({
+            success: false,
+            error: 'Failed to generate plan. Please try again.',
+            details: 'AI response could not be parsed as JSON',
+          }, { status: 500 });
+        }
+
+        // Success — break out of retry loop
+        break;
+      } catch (aiError) {
+        const msg = aiError instanceof Error ? aiError.message : 'Unknown error';
+        lastAiError = msg;
+        console.error('[weekly-planner] AI error on attempt', attempt + 1 + '/' + (MAX_RETRIES + 1) + ':', msg);
+
+        const isRateLimit = msg.includes('rate limit') || msg.includes('high demand') || msg.includes('busy') || msg.includes('quota') || msg.includes('429');
+
+        if (isRateLimit && attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAYS[attempt];
+          console.log('[weekly-planner] Rate limited, retrying in', delay / 1000, 's...');
+          await new Promise(r => setTimeout(r, delay));
+          continue;
+        }
+
+        if (isRateLimit) {
+          return NextResponse.json({
+            success: false,
+            error: 'AI is busy. Wait a full minute (Groq per-minute limit) and try again.',
+            details: msg,
+          }, { status: 503 });
+        }
+
         return NextResponse.json({
           success: false,
           error: 'Failed to generate plan. Please try again.',
-          details: 'AI response could not be parsed as JSON',
+          details: msg,
         }, { status: 500 });
       }
-    } catch (aiError) {
-      console.error('[weekly-planner] AI error:', aiError);
-      const msg = aiError instanceof Error ? aiError.message : 'Unknown error';
-      const isRateLimit = msg.includes('rate limit') || msg.includes('high demand') || msg.includes('busy') || msg.includes('quota') || msg.includes('429');
+    }
+
+    if (!plan) {
       return NextResponse.json({
         success: false,
-        error: isRateLimit 
-          ? 'AI is busy right now. Wait 30 seconds and try updating your plan again.' 
-          : 'Failed to generate plan. Please try again.',
-        details: msg,
+        error: 'Failed to generate plan after retries.',
+        details: lastAiError || 'Unknown error',
       }, { status: 503 });
     }
 

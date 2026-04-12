@@ -56,7 +56,7 @@ function sleep(ms: number): Promise<void> {
 let rateLimitedUntil = 0;
 let consecutiveRateLimits = 0;
 const MAX_RETRIES = 3;
-const BASE_RETRY_DELAY_MS = 3000;
+const BASE_RETRY_DELAY_MS = 8000;
 
 function isRateLimited(): boolean {
   return Date.now() < rateLimitedUntil;
