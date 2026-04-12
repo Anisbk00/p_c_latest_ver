@@ -13,8 +13,10 @@ import {
   Dumbbell, Utensils, Moon, Pill, 
   Flame, Loader2, Target, Droplets, Brain,
   AlertCircle, Coffee, Sun, Sunset, Info, ChevronDown, ChevronUp,
-  Zap, Activity, RefreshCw, Shield, TrendingUp, Clock
+  Zap, Activity, RefreshCw, Shield, TrendingUp, Clock,
+  ChevronLeft, ChevronRight
 } from 'lucide-react';
+import { subWeeks, addWeeks, startOfWeek, endOfWeek, getISOWeek, getYear, format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/mobile-api';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -473,7 +475,24 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   const [generationSource, setGenerationSource] = useState<'ai' | 'fallback' | null>(null);
   const [aiErrors, setAiErrors] = useState<Array<{ attempt: string; stage: string; error: string }> | null>(null);
 
-  const loadPlan = useCallback(async (forceRegenerate = false) => {
+  // Week navigation state — same pattern as WeightProgressTracker
+  const [currentWeekStart, setCurrentWeekStart] = useState(() => startOfWeek(new Date(), { weekStartsOn: 1 }));
+  const currentWeek = getISOWeek(currentWeekStart);
+  const currentYear = getYear(currentWeekStart);
+  const isCurrentWeek = currentWeek === getISOWeek(new Date()) && currentYear === getYear(new Date());
+  const weekLabel = `${format(currentWeekStart, 'MMM d')} – ${format(endOfWeek(currentWeekStart, { weekStartsOn: 1 }), 'MMM d')}`;
+
+  const goPrevWeek = useCallback(() => setCurrentWeekStart(d => subWeeks(d, 1)), []);
+  const goNextWeek = useCallback(() => setCurrentWeekStart(d => addWeeks(d, 1)), []);
+  const goToday = useCallback(() => setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 })), []);
+
+  // Ref to track week so we can skip loadPlan if week didn't change
+  const weekStartRef = useRef(currentWeekStart);
+
+  const loadPlan = useCallback(async (forceRegenerate = false, weekStartOverride?: Date) => {
+    const targetWeek = weekStartOverride || currentWeekStart;
+    const weekStartStr = format(targetWeek, 'yyyy-MM-dd');
+    
     if (forceRegenerate) {
       setIsRegenerating(true);
     } else {
@@ -482,7 +501,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
     setError(null);
     
     try {
-      const response = await apiFetch('/api/iron-coach/weekly-planner', {
+      const response = await apiFetch(`/api/iron-coach/weekly-planner?week_start=${weekStartStr}`, {
         method: 'POST',
         body: JSON.stringify({ force_regenerate: forceRegenerate }),
       });
@@ -515,11 +534,24 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
 
   const handleRegenerate = useCallback(() => {
     loadPlan(true);
-  }, [loadPlan]);
+  }, [loadPlan, currentWeekStart]);
 
+  // Load plan when week changes
   useEffect(() => {
-    loadPlan();
-  }, [loadPlan]);
+    const prevWeek = weekStartRef.current;
+    const weekStartStr = format(currentWeekStart, 'yyyy-MM-dd');
+    const prevWeekStr = format(prevWeek, 'yyyy-MM-dd');
+    
+    if (weekStartStr !== prevWeekStr) {
+      weekStartRef.current = currentWeekStart;
+      loadPlan(false, currentWeekStart);
+    }
+  }, [currentWeekStart, loadPlan]);
+
+  // Initial load
+  useEffect(() => {
+    loadPlan(false, currentWeekStart);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const currentDay = plan?.daily_plan[selectedDayIndex];
 
@@ -625,15 +657,41 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
         </div>
       )}
 
-      {/* Compact Header with Regenerate */}
+      {/* Week Navigator + Plan info */}
       <div className={cn("shrink-0 px-4 py-3 border-b", styles.header)}>
+        <div className="flex items-center gap-2 mb-2">
+          <button onClick={goPrevWeek} className="p-1.5 rounded-lg active:scale-95 transition-all" style={{ backgroundColor: 'rgba(128,128,128,0.15)' }}>
+            <ChevronLeft className={cn("w-4 h-4", styles.textMuted)} />
+          </button>
+          <div className="flex-1 text-center">
+            <p className={cn("text-sm font-semibold", styles.text)}>
+              Week {currentWeek} <span className={cn("font-normal", styles.textMuted)}>({currentYear})</span>
+            </p>
+            <p className={cn("text-[11px]", styles.textMuted)}>{weekLabel}</p>
+          </div>
+          <button onClick={goNextWeek} className={cn("p-1.5 rounded-lg active:scale-95 transition-all", isCurrentWeek && "opacity-30 pointer-events-none")} style={{ backgroundColor: 'rgba(128,128,128,0.15)' }} disabled={isCurrentWeek}>
+            <ChevronRight className={cn("w-4 h-4", styles.textMuted)} />
+          </button>
+          {!isCurrentWeek && (
+            <button onClick={goToday} className="px-2 py-1 text-[10px] font-medium rounded-lg active:scale-95 transition-all" style={{ backgroundColor: 'rgba(128,128,128,0.15)' }}>
+              Today
+            </button>
+          )}
+        </div>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Flame className={cn("w-5 h-5", styles.icon)} />
-            <span className={cn("font-bold", styles.text)}>Weekly Plan</span>
+            <Flame className={cn("w-4 h-4", styles.icon)} />
             <Badge variant="outline" className={cn("text-xs", styles.card)}>
               {Math.round((plan.plan_confidence || 0.7) * 100)}% match
             </Badge>
+            <span className={cn("flex items-center gap-1 text-xs", styles.textMuted)}>
+              <Dumbbell className="w-3 h-3" />
+              {overview.total_workout_days} workouts
+            </span>
+            <span className={cn("flex items-center gap-1 text-xs", styles.textMuted)}>
+              <Moon className="w-3 h-3" />
+              {overview.total_rest_days} rest
+            </span>
           </div>
           <button
             onClick={handleRegenerate}
@@ -647,19 +705,6 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
             <RefreshCw className={cn("w-3.5 h-3.5", isRegenerating && "animate-spin")} />
             {isRegenerating ? 'Updating...' : 'Regenerate'}
           </button>
-        </div>
-        <div className={cn("text-xs mt-1.5 flex items-center gap-3", styles.textMuted)}>
-          <span>
-            {new Date(plan.week_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(plan.week_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-          </span>
-          <span className="flex items-center gap-1">
-            <Dumbbell className="w-3 h-3" />
-            {overview.total_workout_days} workouts
-          </span>
-          <span className="flex items-center gap-1">
-            <Moon className="w-3 h-3" />
-            {overview.total_rest_days} rest
-          </span>
         </div>
       </div>
 

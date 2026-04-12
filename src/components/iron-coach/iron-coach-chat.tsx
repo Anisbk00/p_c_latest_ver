@@ -1109,53 +1109,7 @@ export function IronCoach({ className }: IronCoachProps) {
                     <span className={cn("text-xs", styles.subtitle)}>{activeTab === 'progress' ? 'Track your strength gains' : 'Your weekly training plan'}</span>
                   </div>
 
-                  {/* Menu button — planner: update plan */}
-                  {activeTab === 'planner' && (
-                    <div ref={menuButtonRef} className="relative">
-                      <button 
-                        onClick={() => setShowMenu(!showMenu)} 
-                        className={cn("w-10 h-10 rounded-full flex items-center justify-center active:scale-95 transition-all", styles.closeButton)} 
-                        aria-label="Menu"
-                      >
-                        <MoreVertical className="w-5 h-5" />
-                      </button>
-                      {showMenu && typeof document !== 'undefined' && createPortal(
-                        <motion.div
-                          ref={dropdownRef}
-                          initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                          animate={{ opacity: 1, scale: 1, y: 0 }}
-                          exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                          className={cn("fixed w-48 rounded-xl border shadow-lg overflow-hidden z-[9999]",
-                            theme === 'gymgirl' ? 'bg-white border-pink-200' : 
-                            theme === 'light' ? 'bg-white border-zinc-200' : 
-                            'bg-zinc-900 border-zinc-700'
-                          )}
-                          style={{
-                            top: menuPosition.top,
-                            right: menuPosition.right,
-                          }}
-                        >
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              requestUpdatePlan();
-                            }}
-                            disabled={isClearing}
-                            className={cn(
-                              "w-full flex items-center gap-3 px-4 py-3 text-left transition-colors",
-                              theme === 'gymgirl' ? 'hover:bg-pink-50 text-[#4A1A2C]' :
-                              theme === 'light' ? 'hover:bg-zinc-50 text-zinc-900' :
-                              'hover:bg-zinc-800 text-zinc-100'
-                            )}
-                          >
-                            <RefreshCw className={cn("w-4 h-4 text-amber-500", isClearing && confirmModalType === 'update' && "animate-spin")} />
-                            <span>{isClearing && confirmModalType === 'update' ? 'Updating...' : 'Update Plan'}</span>
-                          </button>
-                        </motion.div>,
-                        document.body
-                      )}
-                    </div>
-                  )}
+                  {/* No menu on planner — regenerate button is inside the planner component */}
                 </>
               )}
 
