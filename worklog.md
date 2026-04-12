@@ -139,3 +139,27 @@ Stage Summary:
 - Auto-generation: cron job runs every Monday, plus auto-generates on first open of each week
 - Clear error handling: shows "AI Unavailable" with retry button when AI is down
 - `GROQ_API_KEY` must be set in Vercel env for AI to work in production
+---
+Task ID: 1
+Agent: Main Agent
+Task: Fix weekly planner 503 error — AI generation failing
+
+Work Log:
+- Investigated planner files: `/src/app/api/iron-coach/weekly-planner/route.ts`, `/src/components/iron-coach/weekly-planner.tsx`
+- Identified 3 root causes for 503 error:
+  1. No fallback models — planner only tried `llama-3.3-70b-versatile` once, returned 503 if overloaded
+  2. Timeout too tight — 25s for a massive 7-day JSON plan with `max_tokens: 16384`
+  3. Cron schedule wrong — `0 5 1 * *` (monthly) instead of `0 5 * * 1` (weekly Monday)
+- Added multi-model fallback chain: `llama-3.3-70b-versatile` → `llama-3.1-70b-versatile` → `llama-3.1-8b-instant`
+- Increased timeout from 25s to 45s (Vercel allows 60s)
+- Added 2 attempts per model with smart rate-limit detection
+- Modified `callGroqForPlanner()` to accept model/maxTokens/jsonMode parameters
+- Added `GROQ_API_KEY` pre-check with helpful error message
+- Fixed cron schedule in `vercel.json` to run every Monday at 5 AM
+- Verified 0 lint errors
+
+Stage Summary:
+- Planner now tries 3 models with up to 6 total attempts before failing
+- Timeout increased to 45s for reliable 7-day JSON generation
+- Cron auto-generates weekly plans every Monday at 5 AM (Africa/Tunis)
+- Rate limit detection skips to next model instead of wasting retries

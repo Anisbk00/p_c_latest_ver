@@ -6,7 +6,12 @@ import { calculatePersonalizedTargets } from '@/lib/personalized-targets';
 // Uses llama-3.3-70b-versatile with JSON mode for reliable structured output
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const PLANNER_MODEL = 'llama-3.3-70b-versatile';
-const PLANNER_TIMEOUT_MS = 25000; // 25s per attempt — fits within Vercel 60s maxDuration with data fetch
+const PLANNER_TIMEOUT_MS = 45000; // 45s per attempt — fits within Vercel 60s maxDuration
+const PLANNER_MODELS = [
+  { model: 'llama-3.3-70b-versatile', maxTokens: 12288, jsonMode: true },
+  { model: 'llama-3.1-70b-versatile', maxTokens: 12288, jsonMode: true },
+  { model: 'llama-3.1-8b-instant', maxTokens: 8192, jsonMode: false },
+];
 
 /**
  * PRECISION WEEKLY PLANNER API
@@ -943,27 +948,36 @@ function repairTruncatedJSON(json: string): string {
 async function callGroqForPlanner(
   systemPrompt: string,
   userPrompt: string,
+ model: string = PLANNER_MODEL,
+  maxTokens: number = 12288,
+  jsonMode: boolean = true,
 ): Promise<{ text: string; model: string; finishReason: string }> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), PLANNER_TIMEOUT_MS);
 
   try {
+    const requestBody: Record<string, unknown> = {
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userPrompt },
+      ],
+      temperature: 0.1,           // Low temp for deterministic JSON
+      max_tokens: maxTokens,
+    };
+
+    // Only add json_object mode if model supports it
+    if (jsonMode) {
+      requestBody.response_format = { type: 'json_object' };
+    }
+
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${GROQ_API_KEY}`,
       },
-      body: JSON.stringify({
-        model: PLANNER_MODEL,
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt },
-        ],
-        temperature: 0.1,           // Low temp for deterministic JSON
-        max_tokens: 16384,          // Large output — 7-day plan is massive
-        response_format: { type: 'json_object' }, // Force JSON mode
-      }),
+      body: JSON.stringify(requestBody),
       signal: controller.signal,
     });
 
@@ -978,7 +992,7 @@ async function callGroqForPlanner(
 
     if (!content) throw new Error('Empty response from AI');
 
-    return { text: content, model: PLANNER_MODEL, finishReason };
+    return { text: content, model, finishReason };
   } finally {
     clearTimeout(timeoutId);
   }
@@ -996,21 +1010,26 @@ function extractRetryDelayMs(errorMsg: string): number {
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
   const errors: AIErrorDetail[] = [];
 
-  const attempts = [
-    { delay: 0, label: 'attempt 1 (immediate)' },
-    { delay: 5000, label: 'attempt 2 (5s delay)' },
-  ];
+  // Strategy: try each model in order, with retries for rate limits
+  for (const modelConfig of PLANNER_MODELS) {
+    const { model, maxTokens, jsonMode } = modelConfig;
 
-  for (const attempt of attempts) {
-    if (attempt.delay > 0) {
-      console.log(`[weekly-planner] ${attempt.label}: waiting ${attempt.delay / 1000}s...`);
-      await sleep(attempt.delay);
-    }
+    // Up to 2 attempts per model
+    const modelAttempts = [
+      { delay: 0, label: `${model} attempt 1` },
+      { delay: 3000, label: `${model} attempt 2 (3s delay)` },
+    ];
 
-    try {
-      console.log(`[weekly-planner] ${attempt.label}: calling Groq API (${PLANNER_MODEL})...`);
-      const { text: responseText, model, finishReason } = await callGroqForPlanner(systemPrompt, userPrompt);
-      console.log(`[weekly-planner] ${attempt.label}: got response (${responseText.length} chars, finish: ${finishReason})`);
+    for (const attempt of modelAttempts) {
+      if (attempt.delay > 0) {
+        console.log(`[weekly-planner] ${attempt.label}: waiting ${attempt.delay / 1000}s...`);
+        await sleep(attempt.delay);
+      }
+
+      try {
+        console.log(`[weekly-planner] ${attempt.label}: calling Groq API...`);
+        const { text: responseText, model: usedModel, finishReason } = await callGroqForPlanner(systemPrompt, userPrompt, model, maxTokens, jsonMode);
+        console.log(`[weekly-planner] ${attempt.label}: got response (${responseText.length} chars, finish: ${finishReason})`);
 
       // Step 1: Extract JSON using balanced brace counting
       const { json: extracted, wasTruncated } = extractJSON(responseText);
@@ -1033,7 +1052,7 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
       try {
         const parsed = JSON.parse(jsonToParse);
         if (parsed.daily_plan?.length === 7) {
-          console.log(`[weekly-planner] ${attempt.label}: SUCCESS — 7 days (${model})`);
+          console.log(`[weekly-planner] ${attempt.label}: SUCCESS — 7 days (${usedModel})`);
           return { plan: parsed, success: true, errors };
         }
         if (parsed.daily_plan?.length > 0) {
@@ -1043,7 +1062,7 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
         errors.push({
           attempt: attempt.label,
           stage: 'invalid_structure',
-          model,
+          model: usedModel,
           error: `Valid JSON but missing daily_plan. Keys: ${Object.keys(parsed).join(', ')}`,
           timestamp: new Date().toISOString(),
         });
@@ -1052,7 +1071,7 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
         errors.push({
           attempt: attempt.label,
           stage: 'json_parse',
-          model,
+          model: usedModel,
           error: `JSON parse failed. Snippet: ${errSnippet}`,
           timestamp: new Date().toISOString(),
         });
@@ -1096,20 +1115,19 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
       errors.push({
         attempt: attempt.label,
         stage: 'api_call',
-        model: PLANNER_MODEL,
+        model,
         error: errMsg,
         timestamp: new Date().toISOString(),
       });
       console.error(`[weekly-planner] ${attempt.label}: AI API error — ${errMsg}`);
 
-      // Adaptive delay for rate limits
-      if (errMsg.includes('429') || errMsg.includes('rate limit')) {
-        const retryMs = extractRetryDelayMs(errMsg);
-        const nextIdx = attempts.indexOf(attempt) + 1;
-        if (nextIdx < attempts.length && retryMs > attempts[nextIdx].delay) {
-          attempts[nextIdx].delay = retryMs;
-        }
+      // If rate limited or overloaded, skip remaining attempts for this model
+      // and move to the next model in PLANNER_MODELS
+      if (errMsg.includes('429') || errMsg.includes('rate limit') || errMsg.includes('overloaded') || errMsg.includes('503')) {
+        console.log(`[weekly-planner] ${model} overloaded/rate-limited, moving to next model...`);
+        break; // Break inner loop, continue to next model in PLANNER_MODELS
       }
+    }
     }
   }
 
@@ -1919,7 +1937,18 @@ export async function POST(request: NextRequest) {
     let generationSource: 'ai';
     let aiErrors: AIErrorDetail[] = [];
 
-    console.log('[weekly-planner] Starting AI plan generation (direct Groq API, JSON mode, 70b)...');
+    // Pre-check: is GROQ_API_KEY configured?
+    if (!GROQ_API_KEY) {
+      console.error('[weekly-planner] GROQ_API_KEY not set in environment variables');
+      return NextResponse.json({
+        success: false,
+        error: 'ai_generation_failed',
+        message: 'AI service is not configured. Please set GROQ_API_KEY in Vercel environment variables.',
+        regenerations_remaining: regenerationsRemaining,
+      }, { status: 503 });
+    }
+
+    console.log('[weekly-planner] Starting AI plan generation (Groq API, multi-model fallback)...');
     const aiResult = await generatePlanWithAI(systemPrompt, userPrompt);
     aiErrors = aiResult.errors;
     

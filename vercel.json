@@ -30,7 +30,7 @@
     },
     {
       "path": "/api/cron/weekly-plan",
-      "schedule": "0 5 1 * *"
+      "schedule": "0 5 * * 1"
     }
   ],
   "headers": [
