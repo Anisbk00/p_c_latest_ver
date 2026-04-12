@@ -13,7 +13,7 @@ import {
   Dumbbell, Utensils, Moon, Pill, 
   Flame, Loader2, Target, Droplets, Brain,
   AlertCircle, Coffee, Sun, Sunset, Info, ChevronDown, ChevronUp,
-  Zap, Activity
+  Zap, Activity, RefreshCw, Shield, TrendingUp, Clock
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { apiFetch } from '@/lib/mobile-api';
@@ -465,13 +465,19 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   
   const [plan, setPlan] = useState<WeeklyPlan | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedDayIndex, setSelectedDayIndex] = useState(0);
   const [generationSource, setGenerationSource] = useState<'ai' | 'fallback' | null>(null);
   const [aiErrors, setAiErrors] = useState<Array<{ attempt: string; stage: string; error: string }> | null>(null);
+  const [showAIDetails, setShowAIDetails] = useState(false);
 
   const loadPlan = useCallback(async (forceRegenerate = false) => {
-    setIsLoading(true);
+    if (forceRegenerate) {
+      setIsRegenerating(true);
+    } else {
+      setIsLoading(true);
+    }
     setError(null);
     
     try {
@@ -482,15 +488,16 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
 
       if (!response.ok) {
         const errBody = await response.json().catch(() => ({}));
-        throw new Error(errBody.error || 'Failed to generate plan');
+        throw new Error(errBody.error || errBody.details || 'Failed to generate plan');
       }
 
       const data = await response.json();
       
       if (data.success && data.plan) {
         setPlan(data.plan);
-        setGenerationSource(data.generation_source || null);
+        setGenerationSource(data.generation_source || (data.cached ? 'cached' : null));
         setAiErrors(data.ai_errors || null);
+        setShowAIDetails(false);
         const today = new Date().toISOString().split('T')[0];
         const todayIndex = data.plan.daily_plan?.findIndex((d: DailyPlan) => d.date === today);
         if (todayIndex >= 0) setSelectedDayIndex(todayIndex);
@@ -502,8 +509,13 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       setError(err instanceof Error ? err.message : 'Failed to load plan');
     } finally {
       setIsLoading(false);
+      setIsRegenerating(false);
     }
   }, []);
+
+  const handleRegenerate = useCallback(() => {
+    loadPlan(true);
+  }, [loadPlan]);
 
   useEffect(() => {
     loadPlan();
@@ -560,7 +572,18 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       <div className={cn("flex flex-col items-center justify-center h-full p-8", styles.container)}>
         <AlertCircle className="w-10 h-10 mb-4 text-red-400" />
         <div className={cn("text-lg font-semibold mb-2", styles.text)}>Unable to Load Plan</div>
-        <div className={cn("text-sm mb-4 text-center", styles.textMuted)}>{error}</div>
+        <div className={cn("text-sm mb-4 text-center max-w-xs", styles.textMuted)}>{error}</div>
+        <button
+          onClick={() => loadPlan(true)}
+          className={cn(
+            "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white",
+            "hover:opacity-80 transition-all",
+            styles.button
+          )}
+        >
+          <RefreshCw className="w-4 h-4" />
+          Try Again
+        </button>
       </div>
     );
   }
@@ -569,39 +592,58 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
 
   return (
     <div className={cn("flex flex-col h-full min-h-0", styles.container)}>
-      {/* Fallback Banner — shown when AI was unavailable */}
-      {generationSource === 'fallback' && aiErrorSummary && (
-        <div className={cn("shrink-0 px-4 py-2.5 border-b", styles.border, "bg-amber-500/10")}>
+      {/* Data-Driven Banner — shown when using data-based plan */}
+      {generationSource === 'fallback' && (
+        <div className={cn("shrink-0 px-4 py-2.5 border-b", styles.border, "bg-emerald-500/5")}>
           <div className="flex items-start gap-2">
-            <AlertCircle className={cn("w-4 h-4 shrink-0 mt-0.5 text-amber-500")} />
+            <Shield className={cn("w-4 h-4 shrink-0 mt-0.5 text-emerald-500")} />
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 mb-1">
-                <span className={cn("text-xs font-semibold text-amber-600 dark:text-amber-400")}>
-                  Smart Fallback Plan
+                <span className={cn("text-xs font-semibold text-emerald-600 dark:text-emerald-400")}>
+                  Personalized Plan
                 </span>
-                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-amber-500/30 text-amber-600 dark:text-amber-400">
-                  not AI-generated
+                <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-emerald-500/30 text-emerald-600 dark:text-emerald-400">
+                  based on your data
                 </Badge>
               </div>
               <p className={cn("text-xs", styles.textMuted)}>
-                AI is currently unavailable. This plan was built from your profile data.
+                Built from your actual meals, workouts, and nutrition logs.
               </p>
-              {/* Collapsible error details */}
-              <details className="mt-1.5">
-                <summary className={cn("text-[10px] cursor-pointer hover:underline", styles.textSub)}>
-                  Technical details ({aiErrors?.length || 0} errors)
-                </summary>
-                <div className={cn("mt-1 p-2 rounded text-[10px] font-mono overflow-x-auto max-h-24 overflow-y-auto", styles.card)}>
-                  <div className="mb-1 font-semibold">Problem: {aiErrorSummary.detail}</div>
-                  {aiErrors?.map((e, i) => (
-                    <div key={i} className="opacity-70">
-                      [{e.attempt}] {e.stage}: {e.error.length > 120 ? e.error.slice(0, 120) + '...' : e.error}
-                    </div>
-                  ))}
-                </div>
-              </details>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* AI Error Banner — shown when AI failed but we have diagnostic info */}
+      {generationSource === 'fallback' && aiErrors && aiErrors.length > 0 && (
+        <div className={cn("shrink-0 px-4 py-2 border-b", styles.border, "bg-amber-500/5")}>
+          <button 
+            onClick={() => setShowAIDetails(!showAIDetails)}
+            className="w-full flex items-center justify-between"
+          >
+            <div className="flex items-center gap-2">
+              <AlertCircle className={cn("w-3.5 h-3.5 text-amber-500")} />
+              <span className={cn("text-[11px] font-medium text-amber-600 dark:text-amber-400")}>
+                AI unavailable — {aiErrorSummary?.type === 'rate_limit' ? 'rate limited' : aiErrorSummary?.type === 'timeout' ? 'timed out' : 'models busy'}
+              </span>
+            </div>
+            <div className="flex items-center gap-1">
+              <ChevronDown className={cn("w-3 h-3", styles.textMuted, showAIDetails && "rotate-180 transition-transform")} />
+            </div>
+          </button>
+          {showAIDetails && (
+            <div className={cn("mt-2 p-2 rounded text-[10px] font-mono overflow-x-auto max-h-32 overflow-y-auto", styles.card)}>
+              <div className="mb-1 font-semibold text-amber-600 dark:text-amber-400">Problem: {aiErrorSummary?.detail}</div>
+              {aiErrors?.map((e, i) => (
+                <div key={i} className="opacity-70">
+                  [{e.attempt}] {e.stage}: {e.error.length > 120 ? e.error.slice(0, 120) + '...' : e.error}
+                </div>
+              ))}
+              <div className="mt-1.5 text-emerald-600 dark:text-emerald-400">
+                → Fallback: Plan built from your actual nutrition & workout data instead.
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -617,19 +659,53 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
         </div>
       )}
 
-      {/* Compact Header */}
-      <div className={cn("shrink-0 px-4 py-3 border-b", styles.header)}>
-        <div className="flex items-center gap-2">
-          <Flame className={cn("w-5 h-5", styles.icon)} />
-          <span className={cn("font-bold", styles.text)}>Weekly Plan</span>
-          <Badge variant="outline" className={cn("text-xs", styles.card)}>
-            {Math.round((plan.plan_confidence || 0.7) * 100)}% match
-          </Badge>
+      {/* Cached Plan Badge */}
+      {generationSource === 'cached' && (
+        <div className={cn("shrink-0 px-4 py-1.5 border-b", styles.border)}>
+          <div className="flex items-center gap-1.5">
+            <Clock className={cn("w-3.5 h-3.5", styles.textMuted)} />
+            <span className={cn("text-[11px] font-medium", styles.textMuted)}>
+              Cached Plan
+            </span>
+          </div>
         </div>
-        <div className={cn("text-xs mt-1", styles.textMuted)}>
-          {new Date(plan.week_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(plan.week_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
-          <span className="mx-2">•</span>
-          {overview.total_workout_days} workouts / {overview.total_rest_days} rest
+      )}
+
+      {/* Compact Header with Regenerate */}
+      <div className={cn("shrink-0 px-4 py-3 border-b", styles.header)}>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Flame className={cn("w-5 h-5", styles.icon)} />
+            <span className={cn("font-bold", styles.text)}>Weekly Plan</span>
+            <Badge variant="outline" className={cn("text-xs", styles.card)}>
+              {Math.round((plan.plan_confidence || 0.7) * 100)}% match
+            </Badge>
+          </div>
+          <button
+            onClick={handleRegenerate}
+            disabled={isRegenerating}
+            className={cn(
+              "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+              "hover:opacity-80 disabled:opacity-50",
+              styles.button
+            )}
+          >
+            <RefreshCw className={cn("w-3.5 h-3.5", isRegenerating && "animate-spin")} />
+            {isRegenerating ? 'Updating...' : 'Regenerate'}
+          </button>
+        </div>
+        <div className={cn("text-xs mt-1.5 flex items-center gap-3", styles.textMuted)}>
+          <span>
+            {new Date(plan.week_start).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - {new Date(plan.week_end).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+          </span>
+          <span className="flex items-center gap-1">
+            <Dumbbell className="w-3 h-3" />
+            {overview.total_workout_days} workouts
+          </span>
+          <span className="flex items-center gap-1">
+            <Moon className="w-3 h-3" />
+            {overview.total_rest_days} rest
+          </span>
         </div>
       </div>
 

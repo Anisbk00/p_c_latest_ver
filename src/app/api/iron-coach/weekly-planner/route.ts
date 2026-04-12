@@ -911,70 +911,103 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
 }
 
 // ═══════════════════════════════════════════════════════════════
-// DETERMINISTIC FALLBACK — last resort, uses ACTUAL user behavior
+// DETERMINISTIC FALLBACK — fully data-driven from user's actual behavior
 // ═══════════════════════════════════════════════════════════════
 
-const WORKOUT_TEMPLATES: Record<string, Array<{ focus: string; exercises: Array<{ name: string; type: string; sets: number; reps: string }> }>> = {
+const WORKOUT_TEMPLATES: Record<string, Array<{ focus: string; exercises: Array<{ name: string; type: string; sets: number; reps: string; muscle_groups: string[] }> }>> = {
   push: [{ focus: 'Push (Chest/Shoulders/Triceps)', exercises: [
-    { name: 'Bench Press', type: 'compound', sets: 4, reps: '8-10' },
-    { name: 'Overhead Press', type: 'compound', sets: 3, reps: '8-10' },
-    { name: 'Dumbbell Flyes', type: 'isolation', sets: 3, reps: '12-15' },
-    { name: 'Tricep Dips', type: 'compound', sets: 3, reps: '10-12' },
+    { name: 'Bench Press', type: 'compound', sets: 4, reps: '8-10', muscle_groups: ['chest', 'shoulders', 'triceps'] },
+    { name: 'Overhead Press', type: 'compound', sets: 3, reps: '8-10', muscle_groups: ['shoulders', 'triceps'] },
+    { name: 'Dumbbell Flyes', type: 'isolation', sets: 3, reps: '12-15', muscle_groups: ['chest'] },
+    { name: 'Tricep Dips', type: 'compound', sets: 3, reps: '10-12', muscle_groups: ['triceps', 'chest'] },
   ]}],
   pull: [{ focus: 'Pull (Back/Biceps)', exercises: [
-    { name: 'Pull-ups', type: 'compound', sets: 4, reps: '6-10' },
-    { name: 'Barbell Row', type: 'compound', sets: 4, reps: '8-10' },
-    { name: 'Face Pulls', type: 'isolation', sets: 3, reps: '15' },
-    { name: 'Bicep Curls', type: 'isolation', sets: 3, reps: '12' },
+    { name: 'Pull-ups', type: 'compound', sets: 4, reps: '6-10', muscle_groups: ['back', 'biceps'] },
+    { name: 'Barbell Row', type: 'compound', sets: 4, reps: '8-10', muscle_groups: ['back', 'biceps'] },
+    { name: 'Face Pulls', type: 'isolation', sets: 3, reps: '15', muscle_groups: ['rear_delts', 'upper_back'] },
+    { name: 'Bicep Curls', type: 'isolation', sets: 3, reps: '12', muscle_groups: ['biceps'] },
   ]}],
   legs: [{ focus: 'Legs (Quads/Hams/Glutes)', exercises: [
-    { name: 'Barbell Squat', type: 'compound', sets: 4, reps: '8-10' },
-    { name: 'Romanian Deadlift', type: 'compound', sets: 4, reps: '8-10' },
-    { name: 'Leg Press', type: 'compound', sets: 3, reps: '10-12' },
-    { name: 'Calf Raises', type: 'isolation', sets: 3, reps: '15' },
+    { name: 'Barbell Squat', type: 'compound', sets: 4, reps: '8-10', muscle_groups: ['quads', 'glutes'] },
+    { name: 'Romanian Deadlift', type: 'compound', sets: 4, reps: '8-10', muscle_groups: ['hamstrings', 'glutes'] },
+    { name: 'Leg Press', type: 'compound', sets: 3, reps: '10-12', muscle_groups: ['quads'] },
+    { name: 'Calf Raises', type: 'isolation', sets: 3, reps: '15', muscle_groups: ['calves'] },
   ]}],
   upper: [{ focus: 'Upper Body', exercises: [
-    { name: 'Bench Press', type: 'compound', sets: 3, reps: '8-10' },
-    { name: 'Barbell Row', type: 'compound', sets: 3, reps: '8-10' },
-    { name: 'Overhead Press', type: 'compound', sets: 3, reps: '10' },
-    { name: 'Pull-ups', type: 'compound', sets: 3, reps: '8' },
+    { name: 'Bench Press', type: 'compound', sets: 3, reps: '8-10', muscle_groups: ['chest', 'shoulders', 'triceps'] },
+    { name: 'Barbell Row', type: 'compound', sets: 3, reps: '8-10', muscle_groups: ['back', 'biceps'] },
+    { name: 'Overhead Press', type: 'compound', sets: 3, reps: '10', muscle_groups: ['shoulders'] },
+    { name: 'Pull-ups', type: 'compound', sets: 3, reps: '8', muscle_groups: ['back', 'biceps'] },
   ]}],
   lower: [{ focus: 'Lower Body', exercises: [
-    { name: 'Barbell Squat', type: 'compound', sets: 3, reps: '8-10' },
-    { name: 'Romanian Deadlift', type: 'compound', sets: 3, reps: '8-10' },
-    { name: 'Lunges', type: 'compound', sets: 3, reps: '10 each' },
-    { name: 'Leg Curls', type: 'isolation', sets: 3, reps: '12' },
+    { name: 'Barbell Squat', type: 'compound', sets: 3, reps: '8-10', muscle_groups: ['quads', 'glutes'] },
+    { name: 'Romanian Deadlift', type: 'compound', sets: 3, reps: '8-10', muscle_groups: ['hamstrings', 'glutes'] },
+    { name: 'Lunges', type: 'compound', sets: 3, reps: '10 each', muscle_groups: ['quads', 'glutes'] },
+    { name: 'Leg Curls', type: 'isolation', sets: 3, reps: '12', muscle_groups: ['hamstrings'] },
   ]}],
   full_body: [{ focus: 'Full Body', exercises: [
-    { name: 'Squat', type: 'compound', sets: 3, reps: '8-10' },
-    { name: 'Bench Press', type: 'compound', sets: 3, reps: '8-10' },
-    { name: 'Barbell Row', type: 'compound', sets: 3, reps: '8-10' },
-    { name: 'Overhead Press', type: 'compound', sets: 3, reps: '10' },
+    { name: 'Squat', type: 'compound', sets: 3, reps: '8-10', muscle_groups: ['quads', 'glutes'] },
+    { name: 'Bench Press', type: 'compound', sets: 3, reps: '8-10', muscle_groups: ['chest', 'shoulders', 'triceps'] },
+    { name: 'Barbell Row', type: 'compound', sets: 3, reps: '8-10', muscle_groups: ['back', 'biceps'] },
+    { name: 'Overhead Press', type: 'compound', sets: 3, reps: '10', muscle_groups: ['shoulders'] },
   ]}],
   hiit: [{ focus: 'HIIT Cardio', exercises: [
-    { name: 'Burpees', type: 'cardio', sets: 4, reps: '30s on/15s off' },
-    { name: 'Mountain Climbers', type: 'cardio', sets: 4, reps: '30s on/15s off' },
-    { name: 'Jump Squats', type: 'cardio', sets: 4, reps: '30s on/15s off' },
-    { name: 'High Knees', type: 'cardio', sets: 4, reps: '30s on/15s off' },
+    { name: 'Burpees', type: 'cardio', sets: 4, reps: '30s on/15s off', muscle_groups: ['full_body'] },
+    { name: 'Mountain Climbers', type: 'cardio', sets: 4, reps: '30s on/15s off', muscle_groups: ['core', 'legs'] },
+    { name: 'Jump Squats', type: 'cardio', sets: 4, reps: '30s on/15s off', muscle_groups: ['quads', 'glutes'] },
+    { name: 'High Knees', type: 'cardio', sets: 4, reps: '30s on/15s off', muscle_groups: ['legs', 'core'] },
+  ]}],
+  cardio: [{ focus: 'Steady-State Cardio', exercises: [
+    { name: 'Treadmill Jog', type: 'cardio', sets: 1, reps: '20-30 min', muscle_groups: ['legs'] },
+    { name: 'Cycling', type: 'cardio', sets: 1, reps: '20-30 min', muscle_groups: ['legs'] },
+    { name: 'Rowing Machine', type: 'cardio', sets: 1, reps: '15-20 min', muscle_groups: ['back', 'legs'] },
+    { name: 'Jump Rope', type: 'cardio', sets: 3, reps: '3 min on/1 min off', muscle_groups: ['full_body'] },
   ]}],
 };
 
 const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 
 const MEAL_TEMPLATES = [
-  { meal_type: 'breakfast', time: '07:00' },
-  { meal_type: 'snack', time: '10:00' },
-  { meal_type: 'lunch', time: '12:30' },
-  { meal_type: 'snack', time: '15:30' },
-  { meal_type: 'dinner', time: '19:00' },
+  { meal_type: 'breakfast', time: '07:00', calorie_ratio: 0.25 },
+  { meal_type: 'snack', time: '10:00', calorie_ratio: 0.075 },
+  { meal_type: 'lunch', time: '12:30', calorie_ratio: 0.30 },
+  { meal_type: 'snack', time: '15:30', calorie_ratio: 0.075 },
+  { meal_type: 'dinner', time: '19:00', calorie_ratio: 0.30 },
 ];
+
+// Fallback food database (used only when user has no food log history)
+const FALLBACK_FOODS = {
+  breakfast: [
+    { name: 'Oatmeal with Banana', calories: 280, protein: 8, carbs: 52, fat: 6 },
+    { name: 'Scrambled Eggs (2) + Toast', calories: 320, protein: 18, carbs: 28, fat: 16 },
+    { name: 'Greek Yogurt + Granola', calories: 260, protein: 16, carbs: 34, fat: 8 },
+  ],
+  lunch: [
+    { name: 'Grilled Chicken Breast + Rice', calories: 420, protein: 38, carbs: 48, fat: 6 },
+    { name: 'Turkey Sandwich + Salad', calories: 380, protein: 28, carbs: 40, fat: 12 },
+    { name: 'Tuna Pasta Bowl', calories: 400, protein: 32, carbs: 46, fat: 8 },
+  ],
+  dinner: [
+    { name: 'Salmon + Sweet Potato + Broccoli', calories: 480, protein: 36, carbs: 42, fat: 16 },
+    { name: 'Lean Beef Stir-Fry + Rice', calories: 450, protein: 34, carbs: 44, fat: 14 },
+    { name: 'Chicken Thighs + Quinoa + Vegetables', calories: 440, protein: 36, carbs: 38, fat: 16 },
+  ],
+  snack: [
+    { name: 'Protein Bar', calories: 180, protein: 20, carbs: 18, fat: 6 },
+    { name: 'Apple + Almond Butter', calories: 200, protein: 5, carbs: 26, fat: 10 },
+    { name: 'Cottage Cheese + Berries', calories: 160, protein: 14, carbs: 16, fat: 4 },
+  ],
+};
 
 function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, weekEnd: string): any {
   const goal = data.profile.primary_goal?.toLowerCase() || 'general_fitness';
   const isBeginner = data.profile.fitness_level === 'beginner';
   const isAdvanced = data.profile.fitness_level === 'advanced' || data.profile.fitness_level === 'intermediate';
+  const userName = data.profile.name || 'there';
 
-  // Calculate workout days from ACTUAL user behavior, not theory
+  // ═══════════════════════════════════════════════════════════
+  // 1. WORKOUT FREQUENCY — from actual user behavior
+  // ═══════════════════════════════════════════════════════════
   let workoutDays: number;
   const weeklyFreq = data.workoutPatterns.total_workouts_30d > 0
     ? data.workoutPatterns.total_workouts_30d / 4
@@ -982,41 +1015,62 @@ function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, 
   const recentFreq = data.workoutPatterns.total_workouts_7d;
 
   if (recentFreq >= 3) {
-    // Active user — match their current frequency or push slightly
     workoutDays = Math.min(6, Math.max(recentFreq, Math.round(weeklyFreq)));
   } else if (weeklyFreq >= 2) {
-    // Moderate — use their 30d average rounded up
     workoutDays = Math.ceil(weeklyFreq);
   } else if (weeklyFreq >= 1) {
-    // Getting started — 3 days to build habit
     workoutDays = 3;
   } else {
-    // No data — use activity level
     workoutDays = data.profile.activity_level === 'very_active' ? 5
       : data.profile.activity_level === 'active' ? 4
       : data.profile.activity_level === 'moderate' ? 3 : 2;
   }
 
-  // Goal adjustments
   if (goal.includes('fat_loss') && workoutDays < 4) workoutDays = Math.min(workoutDays + 1, 5);
   if (goal.includes('endurance')) workoutDays = Math.max(workoutDays, 5);
   if (isBeginner && workoutDays > 4) workoutDays = 4;
 
   const restDays = 7 - workoutDays;
 
-  // Pick training split
-  let split: string[];
-  if (workoutDays <= 3) {
-    split = ['full_body', 'rest', 'full_body', 'rest', 'full_body', 'rest', 'rest'];
-  } else if (workoutDays <= 4) {
-    split = ['upper', 'rest', 'lower', 'rest', 'upper', 'lower', 'rest'];
+  // ═══════════════════════════════════════════════════════════
+  // 2. TRAINING SPLIT — detected from user's actual workout types
+  // ═══════════════════════════════════════════════════════════
+  const faves = data.workoutPatterns.favorite_workout_types.map(t => t.toLowerCase());
+  const favesJoined = faves.join(' ');
+
+  let detectedSplit: 'ppl' | 'upper_lower' | 'full_body' | 'cardio_focus';
+  if (favesJoined.includes('push') && favesJoined.includes('pull') && favesJoined.includes('leg')) {
+    detectedSplit = 'ppl';
+  } else if (favesJoined.includes('upper') && favesJoined.includes('lower')) {
+    detectedSplit = 'upper_lower';
+  } else if (favesJoined.includes('full') || favesJoined.includes('total')) {
+    detectedSplit = 'full_body';
+  } else if (faves.some(t => t.includes('cardio')) || faves.some(t => t.includes('hiit')) || faves.some(t => t.includes('run'))) {
+    detectedSplit = 'cardio_focus';
   } else {
-    split = ['push', 'pull', 'legs', 'rest', 'push', 'pull', 'legs'];
+    detectedSplit = 'full_body';
   }
 
-  // Adjust for goal
+  // Build split array based on detected preference and workout days
+  let split: string[];
+  if (detectedSplit === 'ppl' && workoutDays >= 5) {
+    split = ['push', 'pull', 'legs', 'rest', 'push', 'pull', 'legs'];
+  } else if (detectedSplit === 'ppl' && workoutDays >= 3) {
+    split = ['push', 'rest', 'pull', 'legs', 'rest', 'push', 'rest'];
+  } else if (detectedSplit === 'upper_lower' && workoutDays >= 4) {
+    split = ['upper', 'rest', 'lower', 'rest', 'upper', 'lower', 'rest'];
+  } else if (detectedSplit === 'upper_lower' && workoutDays >= 2) {
+    split = ['upper', 'rest', 'lower', 'rest', 'upper', 'rest', 'rest'];
+  } else if (detectedSplit === 'cardio_focus') {
+    split = ['cardio', 'rest', 'hiit', 'rest', 'cardio', 'rest', 'cardio'];
+  } else if (workoutDays <= 3) {
+    split = ['full_body', 'rest', 'full_body', 'rest', 'full_body', 'rest', 'rest'];
+  } else {
+    split = ['full_body', 'rest', 'full_body', 'full_body', 'rest', 'full_body', 'rest'];
+  }
+
+  // Insert cardio for fat loss goals
   if (goal.includes('fat_loss') || goal.includes('weight')) {
-    // Insert cardio on a rest day
     for (let i = 0; i < split.length; i++) {
       if (split[i] === 'rest' && i < 5) { split[i] = 'hiit'; break; }
     }
@@ -1025,17 +1079,12 @@ function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, 
   // Schedule workouts on user's BEST training days
   const bestDays = data.workoutPatterns.best_performing_days.map(d => d.toLowerCase());
   if (bestDays.length > 0) {
-    // Count workouts currently scheduled on best days
     const dayMap: Record<string, number> = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
     const workoutIndices = split.map((s, i) => s !== 'rest' ? i : -1).filter(i => i >= 0);
-    
-    // If most workouts are NOT on best days, try to reschedule
-    let onBestDays = workoutIndices.filter(i => bestDays.includes(DAY_NAMES[i].toLowerCase())).length;
+    const onBestDays = workoutIndices.filter(i => bestDays.includes(DAY_NAMES[i].toLowerCase())).length;
     if (onBestDays < Math.floor(workoutDays / 2) && workoutIndices.length === workoutDays) {
-      // Simple reschedule: put workouts on best days first
-      const newSplit = Array(7).fill('rest');
+      const newSplit = Array(7).fill('rest') as string[];
       let assigned = 0;
-      // First pass: assign to best days
       for (const dayName of bestDays) {
         const idx = dayMap[dayName];
         if (idx !== undefined && assigned < workoutDays) {
@@ -1043,7 +1092,6 @@ function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, 
           assigned++;
         }
       }
-      // Second pass: fill remaining
       if (assigned < workoutDays) {
         for (let i = 0; i < 7 && assigned < workoutDays; i++) {
           if (newSplit[i] === 'rest') {
@@ -1056,13 +1104,225 @@ function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, 
     }
   }
 
-  // Distribute calories: higher on training days, lower on rest
-  const baseCal = data.targets.daily_calories;
-  const baseProtein = data.targets.daily_protein;
-  const baseCarbs = data.targets.daily_carbs;
-  const baseFat = data.targets.daily_fat;
+  // ═══════════════════════════════════════════════════════════
+  // 3. NUTRITION TARGETS — from actual user intake (not theory)
+  // ═══════════════════════════════════════════════════════════
+  // Use the user's ACTUAL 7-day average as the target.
+  // If they eat 2000cal/day, plan for 2000cal — not a theoretical number.
+  const baseCal = data.nutritionPatterns.avg_daily_calories_7d > 0
+    ? data.nutritionPatterns.avg_daily_calories_7d
+    : data.targets.daily_calories;
+  const baseProtein = data.nutritionPatterns.avg_daily_protein_7d > 0
+    ? data.nutritionPatterns.avg_daily_protein_7d
+    : data.targets.daily_protein;
+  const baseCarbs = data.nutritionPatterns.avg_daily_carbs_7d > 0
+    ? data.nutritionPatterns.avg_daily_carbs_7d
+    : data.targets.daily_carbs;
+  const baseFat = data.nutritionPatterns.avg_daily_fat_7d > 0
+    ? data.nutritionPatterns.avg_daily_fat_7d
+    : data.targets.daily_fat;
+  const waterTarget = data.targets.water_ml || 2500;
 
-  const dailyPlans = [];
+  // ═══════════════════════════════════════════════════════════
+  // 4. FOOD DATA — group user's actual meals by type
+  // ═══════════════════════════════════════════════════════════
+  const mealsByType: Record<string, typeof data.nutritionPatterns.recent_meals> = {
+    breakfast: [], lunch: [], dinner: [], snack: [], other: [],
+  };
+  for (const meal of data.nutritionPatterns.recent_meals) {
+    const type = (meal.meal_type || 'other').toLowerCase().trim();
+    const bucket = mealsByType[type] || mealsByType.other;
+    bucket.push(meal);
+  }
+
+  // Build a flat list of unique food names from recent meals + common foods
+  const allUserFoodNames = new Set<string>();
+  for (const meal of data.nutritionPatterns.recent_meals) {
+    for (const fn of meal.foods) {
+      if (fn) allUserFoodNames.add(fn);
+    }
+  }
+  for (const fn of data.nutritionPatterns.most_common_foods) {
+    if (fn) allUserFoodNames.add(fn);
+  }
+  const userFoodPool = Array.from(allUserFoodNames);
+
+  // Helper: deterministically pick items from a pool based on day+meal indices
+  function pickFoods(pool: string[], count: number, dayIdx: number, mealIdx: number): string[] {
+    if (pool.length === 0) return [];
+    const result: string[] = [];
+    for (let k = 0; k < count; k++) {
+      result.push(pool[(dayIdx * 7 + mealIdx * 3 + k) % pool.length]);
+    }
+    return result;
+  }
+
+  // Helper: estimate macros for a food item given its calories and protein,
+  // using the user's actual macro distribution as a guide
+  function estimateMacros(calories: number, protein: number): { carbs: number; fat: number } {
+    const proteinCal = protein * 4;
+    const remaining = Math.max(0, calories - proteinCal);
+    const macroDist = data.nutritionPatterns.macro_distribution;
+    const totalNonP = macroDist.carbs_percent + macroDist.fat_percent || 100;
+    const carbPct = (macroDist.carbs_percent / totalNonP);
+    const fatPct = (macroDist.fat_percent / totalNonP);
+    // Carbs = 4 cal/g, Fat = 9 cal/g
+    const carbCal = remaining * carbPct;
+    const fatCal = remaining * fatPct;
+    return {
+      carbs: Math.round(carbCal / 4),
+      fat: Math.round(fatCal / 9),
+    };
+  }
+
+  // Helper: build a meal from the user's actual logged foods for that meal type
+  function buildMealFromUser(
+    mealType: string,
+    targetCalories: number,
+    targetProtein: number,
+    dayIdx: number,
+    mealIdx: number,
+  ): Array<{ name: string; quantity: number; unit: string; calories: number; protein: number; carbs: number; fat: number }> {
+    const typeKey = (mealType || 'other').toLowerCase().trim();
+    const typeMeals = mealsByType[typeKey] || mealsByType.other;
+
+    if (typeMeals.length > 0) {
+      // Use actual foods the user logs for this meal type
+      const numItems = mealType === 'snack' ? 1 : Math.min(3, typeMeals.length);
+      const pickedMeals = pickFoods(
+        typeMeals.map(m => m.foods[0] || m.foods.join(', ')),
+        numItems, dayIdx, mealIdx,
+      );
+
+      // Calculate total actual calories/protein from picked items (average per entry)
+      const avgCalPerItem = typeMeals.reduce((s, m) => s + (m.calories || 0), 0) / typeMeals.length;
+      const avgProPerItem = typeMeals.reduce((s, m) => s + (m.protein || 0), 0) / typeMeals.length;
+
+      // Scale factor to hit target calories
+      const totalActualCal = avgCalPerItem * numItems;
+      const scaleFactor = totalActualCal > 0 ? targetCalories / totalActualCal : 1;
+
+      return pickedMeals.map(name => {
+        const scaledCal = Math.round(avgCalPerItem * scaleFactor);
+        const scaledPro = Math.round(avgProPerItem * scaleFactor);
+        const { carbs, fat } = estimateMacros(scaledCal, scaledPro);
+        return {
+          name: name || 'Meal',
+          quantity: Math.round(scaleFactor * 10) / 10,
+          unit: 'serving',
+          calories: scaledCal,
+          protein: scaledPro,
+          carbs,
+          fat,
+        };
+      });
+    }
+
+    // Fallback: use user's most common foods, distributed across meal types
+    if (userFoodPool.length > 0) {
+      const numItems = mealType === 'snack' ? 1 : 2;
+      const items = pickFoods(userFoodPool, numItems, dayIdx, mealIdx);
+      const calPerItem = Math.round(targetCalories / numItems);
+      const proPerItem = Math.round(targetProtein / numItems);
+      return items.map(name => {
+        const { carbs, fat } = estimateMacros(calPerItem, proPerItem);
+        return { name, quantity: 1, unit: 'serving', calories: calPerItem, protein: proPerItem, carbs, fat };
+      });
+    }
+
+    // Last resort: generic fallback database
+    const fallbacks = FALLBACK_FOODS[typeKey] || FALLBACK_FOODS.lunch;
+    const item = fallbacks[(dayIdx + mealIdx) % fallbacks.length];
+    const scaleFactor = targetCalories / (item.calories || 1);
+    return [{
+      name: item.name,
+      quantity: Math.round(scaleFactor * 10) / 10,
+      unit: 'serving',
+      calories: Math.round(item.calories * scaleFactor),
+      protein: Math.round(item.protein * scaleFactor),
+      carbs: Math.round(item.carbs * scaleFactor),
+      fat: Math.round(item.fat * scaleFactor),
+    }];
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 5. BUILD COACH MESSAGES — rotating, data-driven
+  // ═══════════════════════════════════════════════════════════
+  const proteinPct = data.nutritionPatterns.protein_adherence_percent;
+  const caloriePct = data.nutritionPatterns.calorie_adherence_percent;
+  const streak = data.momentum.current_streak;
+  const weightTrend = data.bodyMetrics.weight_trend;
+  const weightChange7d = data.bodyMetrics.weight_change_7d;
+  const sleepHrs = data.sleepPatterns.avg_duration_hours;
+  const sleepDebt = data.sleepPatterns.sleep_debt_hours;
+  const workouts7d = data.workoutPatterns.total_workouts_7d;
+  const workouts30d = data.workoutPatterns.total_workouts_30d;
+
+  // Build a pool of coach messages from actual data, then rotate them
+  const coachMessagePool: string[] = [];
+
+  // Protein messages
+  if (proteinPct < 50) {
+    coachMessagePool.push(`Your protein has been ${data.nutritionPatterns.avg_daily_protein_7d}g/day — only ${proteinPct}% of your ${data.targets.daily_protein}g target. Priority: add a protein source to every meal.`);
+  } else if (proteinPct < 70) {
+    coachMessagePool.push(`Protein at ${data.nutritionPatterns.avg_daily_protein_7d}g/day (${proteinPct}% of target). You're getting closer — add one more high-protein meal today.`);
+  } else if (proteinPct < 90) {
+    coachMessagePool.push(`Protein adherence is ${proteinPct}% — solid work! ${data.nutritionPatterns.avg_daily_protein_7d}g/day. Push for 100% this week.`);
+  } else {
+    coachMessagePool.push(`Great protein discipline — ${data.nutritionPatterns.avg_daily_protein_7d}g/day at ${proteinPct}% adherence. Keep it locked in.`);
+  }
+
+  // Streak messages
+  if (streak >= 14) {
+    coachMessagePool.push(`${streak}-day streak! You're building real momentum. This consistency is what separates results from wishes.`);
+  } else if (streak >= 7) {
+    coachMessagePool.push(`One week strong — ${streak} days and counting. Don't let the weekend break your rhythm.`);
+  } else if (streak >= 3) {
+    coachMessagePool.push(`${streak}-day streak active. You're building the habit. Stay focused today.`);
+  }
+
+  // Training frequency messages
+  if (workouts7d >= 5) {
+    coachMessagePool.push(`You've been training ${workouts7d}x this week — elite consistency. Make sure you're recovering enough.`);
+  } else if (workouts7d >= 3) {
+    coachMessagePool.push(`${workouts7d} workouts last week — solid routine. You're on track for ${Math.round(workouts30d / 4)} sessions/week average.`);
+  } else if (workouts7d >= 1) {
+    coachMessagePool.push(`${workouts7d} workout${workouts7d > 1 ? 's' : ''} last week. Let's aim for ${workoutDays} this week to build momentum.`);
+  } else {
+    coachMessagePool.push(`No workouts logged last week. Time to get back in the game — even one session counts.`);
+  }
+
+  // Weight trend messages
+  if (weightTrend === 'down' && Math.abs(weightChange7d) >= 0.3) {
+    coachMessagePool.push(`Weight trending down — ${weightChange7d.toFixed(1)}kg this week. ${goal.includes('fat_loss') || goal.includes('weight') ? 'On track for your goal.' : 'Make sure you\'re eating enough to support performance.'}`);
+  } else if (weightTrend === 'up' && Math.abs(weightChange7d) >= 0.3) {
+    coachMessagePool.push(`Weight up ${weightChange7d.toFixed(1)}kg this week. ${goal.includes('muscle') || goal.includes('gain') ? 'Could be muscle gain — track your body fat to confirm.' : 'Keep an eye on your calorie intake.'}`);
+  } else if (weightTrend === 'stable') {
+    coachMessagePool.push(`Weight stable this week at ${data.profile.current_weight_kg || '?'}kg. ${goal.includes('fat_loss') ? 'A small calorie adjustment could break the plateau.' : 'Consistency is the foundation of progress.'}`);
+  }
+
+  // Sleep messages
+  if (sleepDebt > 2) {
+    coachMessagePool.push(`Sleep debt is ${sleepDebt.toFixed(1)}h — you're averaging ${sleepHrs}h/night. Recovery suffers. Aim for 7.5-8h tonight.`);
+  } else if (sleepHrs < 6.5) {
+    coachMessagePool.push(`Averaging ${sleepHrs}h of sleep — that's not enough for optimal recovery. Even 30 min more makes a difference.`);
+  }
+
+  // Calorie messages
+  if (caloriePct > 0 && caloriePct < 70) {
+    coachMessagePool.push(`Calorie tracking shows ${data.nutritionPatterns.avg_daily_calories_7d}cal/day — ${caloriePct}% of your target. Consistent tracking helps you stay on course.`);
+  }
+
+  // Ensure we always have at least a few messages
+  if (coachMessagePool.length < 3) {
+    coachMessagePool.push('Discipline today, results tomorrow. Every meal and every rep matters.');
+    coachMessagePool.push(`Your ${goal.replace(/_/g, ' ')} goal is within reach — stay consistent this week.`);
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 6. BUILD THE 7-DAY PLAN
+  // ═══════════════════════════════════════════════════════════
+  const dailyPlans: any[] = [];
   const weekDates: string[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(weekStart);
@@ -1075,63 +1335,52 @@ function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, 
     const isWorkout = dayType !== 'rest';
     const template = isWorkout ? WORKOUT_TEMPLATES[dayType] || WORKOUT_TEMPLATES.full_body : null;
 
-    // Adjust macros for training vs rest
+    // Adjust macros for training vs rest days
     const calMult = isWorkout ? 1.1 : 0.9;
     const dayCal = Math.round(baseCal * calMult);
     const dayProtein = isWorkout ? Math.round(baseProtein * 1.05) : baseProtein;
     const dayCarbs = Math.round(baseCarbs * calMult);
     const dayFat = Math.round(baseFat * (isWorkout ? 1.0 : 0.95));
 
-    // Build meals from user's common foods + fallbacks
-    const userFoods = data.nutritionPatterns.most_common_foods.slice(0, 5);
-    const fallbackFoods = [
-      { name: 'Chicken Breast', calories: 165, protein: 31, carbs: 0, fat: 3.6 },
-      { name: 'Eggs', calories: 78, protein: 6, carbs: 1, fat: 5 },
-      { name: 'Rice', calories: 130, protein: 2.7, carbs: 28, fat: 0.3 },
-      { name: 'Oats', calories: 150, protein: 5, carbs: 27, fat: 2.5 },
-      { name: 'Tuna', calories: 130, protein: 29, carbs: 0, fat: 0.6 },
-    ];
-
-    const meals = MEAL_TEMPLATES.map(mt => {
-      // Pick food: user food or fallback
-      const foodSource = userFoods.length > 0 ? userFoods : fallbackFoods.map(f => f.name);
-      const foodName = foodSource[Math.floor(Math.random() * foodSource.length)] || 'Chicken Breast';
-      const portion = mt.meal_type === 'snack' ? 0.5 : 1;
-      const cal = Math.round((dayCal / 5) * portion);
-      const pro = Math.round((dayProtein / 5) * portion);
-      const carbs = Math.round((dayCarbs / 5) * portion);
-      const fat = Math.round((dayFat / 5) * portion);
-
+    // Build meals from user's actual food data
+    const meals = MEAL_TEMPLATES.map((mt, mealIdx) => {
+      const mealCal = Math.round(dayCal * mt.calorie_ratio);
+      const mealPro = Math.round(dayProtein * mt.calorie_ratio);
+      const foods = buildMealFromUser(mt.meal_type, mealCal, mealPro, i, mealIdx);
       return {
         meal_type: mt.meal_type,
         time: mt.time,
-        foods: [{ name: foodName, quantity: portion === 0.5 ? 1 : 1, unit: 'serving', calories: cal, protein: pro, carbs, fat }],
-        total_calories: cal,
-        total_protein: pro,
+        foods,
+        total_calories: foods.reduce((s, f) => s + f.calories, 0),
+        total_protein: foods.reduce((s, f) => s + f.protein, 0),
       };
     });
 
-    const workoutBlock = isWorkout ? {
-      focus: template![0].focus,
-      duration_minutes: isBeginner ? 45 : 60,
-      estimated_calories_burned: isBeginner ? 250 : 350,
-      intensity: isBeginner ? 'moderate' : 'high',
-      exercises: template![0].exercises.map(ex => ({
-        name: ex.name, type: ex.type, muscle_groups: [ex.type === 'compound' ? ex.name.split(' ')[0].toLowerCase() : 'general'],
-        sets: ex.sets, reps: ex.reps, weight_kg: 0, rest_seconds: isBeginner ? 90 : 60, notes: '',
+    // Build workout block
+    const avgDuration = data.workoutPatterns.avg_duration_minutes || (isBeginner ? 45 : 60);
+    const avgCalBurned = data.workoutPatterns.avg_calories_burned || (isBeginner ? 250 : 350);
+    const workoutBlock = isWorkout && template ? {
+      focus: template[0].focus,
+      duration_minutes: avgDuration,
+      estimated_calories_burned: avgCalBurned,
+      intensity: isBeginner ? 'moderate' : (isAdvanced ? 'high' : 'moderate-high'),
+      exercises: template[0].exercises.map(ex => ({
+        name: ex.name,
+        type: ex.type,
+        muscle_groups: ex.muscle_groups || (ex.type === 'compound' ? [ex.name.split(' ')[0].toLowerCase()] : ['general']),
+        sets: isBeginner ? Math.min(ex.sets, 3) : ex.sets,
+        reps: ex.reps,
+        weight_kg: 0,
+        rest_seconds: isBeginner ? 90 : (isAdvanced ? 60 : 75),
+        notes: '',
       })),
       warm_up: '5min light cardio + dynamic stretching',
-      cool_down: '5min stretching',
-      coach_notes: isWorkout && dayType === 'hiit' ? 'Burn that fat. No excuses.' : 'Progressive overload. Every rep counts.',
+      cool_down: '5min stretching + foam rolling',
+      coach_notes: '',
     } : null;
 
-    // Coach messages based on actual data
-    const pAdh = data.nutritionPatterns.protein_adherence_percent;
-    let coachMsg = 'Discipline is everything. Execute.';
-    if (pAdh < 50) coachMsg = `You're hitting only ${pAdh}% protein adherence. Fix your diet NOW.`;
-    else if (pAdh < 75) coachMsg = `${pAdh}% protein adherence is weak. Step up.`;
-    else if (data.momentum.current_streak > 7) coachMsg = `${data.momentum.current_streak} day streak! Don't you dare break it.`;
-    else if (isWorkout) coachMsg = 'Time to work. Leave nothing in the tank.';
+    // Rotate coach messages deterministically across the week
+    const coachMsg = coachMessagePool[i % coachMessagePool.length];
 
     dailyPlans.push({
       date: weekDates[i],
@@ -1144,35 +1393,174 @@ function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, 
         target_carbs: dayCarbs,
         target_fat: dayFat,
         meals,
-        hydration_ml: data.targets.water_ml || 2500,
+        hydration_ml: waterTarget,
       },
-      sleep: { target_bedtime: '22:30', target_wake_time: '06:30', target_duration_hours: 8 },
-      supplements: data.supplementUsage.active_supplements.map(s => ({ name: s, dose: 'as directed', timing: 'daily' })),
+      sleep: {
+        target_bedtime: data.sleepPatterns.sleep_schedule.avg_bedtime || '22:30',
+        target_wake_time: data.sleepPatterns.sleep_schedule.avg_wake_time || '06:30',
+        target_duration_hours: Math.min(8.5, Math.max(7, sleepHrs + 0.5)),
+      },
+      supplements: data.supplementUsage.active_supplements.length > 0
+        ? data.supplementUsage.active_supplements.map(s => ({ name: s, dose: 'as directed', timing: 'with meal' }))
+        : [],
       coach_message: coachMsg,
-      confidence: 0.7,
+      confidence: 0.75,
     });
   }
 
-  // Build recommendations from actual data
-  const proteinPct = data.nutritionPatterns.protein_adherence_percent;
-  const recs = [];
-  if (proteinPct < 70) recs.push({ category: 'nutrition', priority: 'high', recommendation: `Hit your ${baseProtein}g daily protein target`, reasoning: `Current adherence is ${proteinPct}%` });
-  if (data.workoutPatterns.total_workouts_7d < 2) recs.push({ category: 'training', priority: 'high', recommendation: `Train at least ${workoutDays}x this week`, reasoning: `Only ${data.workoutPatterns.total_workouts_7d} workouts last week` });
-  if (data.sleepPatterns.avg_duration_hours < 7) recs.push({ category: 'recovery', priority: 'medium', recommendation: 'Sleep at least 7.5 hours', reasoning: `Current avg: ${data.sleepPatterns.avg_duration_hours}h` });
-  if (recs.length === 0) recs.push({ category: 'general', priority: 'low', recommendation: 'Keep the streak alive', reasoning: 'Consistency is key to progress' });
+  // ═══════════════════════════════════════════════════════════
+  // 7. RECOMMENDATIONS — data-driven, threshold-based
+  // ═══════════════════════════════════════════════════════════
+  const recs: Array<{ category: string; priority: string; recommendation: string; reasoning: string }> = [];
+
+  // Nutrition adherence
+  if (proteinPct < 50) {
+    recs.push({
+      category: 'nutrition', priority: 'high',
+      recommendation: `Increase protein significantly — currently at ${proteinPct}% of target`,
+      reasoning: `You're averaging ${data.nutritionPatterns.avg_daily_protein_7d}g/day vs ${data.targets.daily_protein}g target. Add protein to every meal.`,
+    });
+  } else if (proteinPct < 70) {
+    recs.push({
+      category: 'nutrition', priority: 'medium',
+      recommendation: `Increase protein — currently at ${proteinPct}% adherence`,
+      reasoning: `At ${data.nutritionPatterns.avg_daily_protein_7d}g/day, you're falling short of your ${data.targets.daily_protein}g target. Consider adding eggs, chicken, or Greek yogurt.`,
+    });
+  }
+
+  if (caloriePct > 0 && caloriePct < 80) {
+    recs.push({
+      category: 'nutrition', priority: 'medium',
+      recommendation: 'Track calories more carefully',
+      reasoning: `Your actual intake (${data.nutritionPatterns.avg_daily_calories_7d}cal) is ${caloriePct}% of your target (${data.targets.daily_calories}cal). Consistent logging helps close the gap.`,
+    });
+  }
+
+  // Calorie surplus check for muscle building goals
+  if ((goal.includes('muscle') || goal.includes('gain') || goal.includes('hypertrophy')) && caloriePct > 0 && caloriePct < 90) {
+    recs.push({
+      category: 'nutrition', priority: 'high',
+      recommendation: 'Eat more to support muscle growth',
+      reasoning: `For muscle building, you need a slight surplus. You're at ${caloriePct}% of ${data.targets.daily_calories}cal target.`,
+    });
+  }
+
+  // Training
+  if (workouts7d === 0) {
+    recs.push({
+      category: 'training', priority: 'high',
+      recommendation: 'Get back to training — even one session this week counts',
+      reasoning: `No workouts logged in the last 7 days. Your ${Math.round(workouts30d / 4)} sessions/week average is at risk.`,
+    });
+  } else if (workouts7d < 2 && workoutDays >= 3) {
+    recs.push({
+      category: 'training', priority: 'medium',
+      recommendation: `Aim for at least ${workoutDays} sessions this week`,
+      reasoning: `Only ${workouts7d} workout${workouts7d > 1 ? 's' : ''} last week vs your typical ${Math.round(workouts30d / 4)}/week frequency.`,
+    });
+  }
+
+  // Sleep
+  if (sleepHrs < 7) {
+    recs.push({
+      category: 'recovery', priority: 'medium',
+      recommendation: `Get more sleep — target at least 7.5 hours`,
+      reasoning: `Averaging ${sleepHrs}h/night with ${sleepDebt.toFixed(1)}h sleep debt. Poor sleep hurts recovery and muscle growth.`,
+    });
+  } else if (sleepDebt > 1.5) {
+    recs.push({
+      category: 'recovery', priority: 'low',
+      recommendation: 'Catch up on sleep this week',
+      reasoning: `${sleepDebt.toFixed(1)}h sleep debt accumulated. An extra 30-60 min per night will help you recover.`,
+    });
+  }
+
+  // Weight trend specific to goal
+  if (goal.includes('fat_loss') || goal.includes('weight_loss') || goal.includes('lose')) {
+    if (weightTrend === 'stable' && data.profile.current_weight_kg && data.profile.target_weight_kg) {
+      const remaining = Math.abs(data.profile.current_weight_kg - data.profile.target_weight_kg).toFixed(1);
+      recs.push({
+        category: 'progress', priority: 'medium',
+        recommendation: `Create a small calorie deficit to break the plateau`,
+        reasoning: `Weight is stable at ${data.profile.current_weight_kg}kg, ${remaining}kg from target. Try reducing 200-300cal/day.`,
+      });
+    }
+  } else if (goal.includes('muscle') || goal.includes('gain') || goal.includes('hypertrophy')) {
+    if (weightTrend === 'down' || weightTrend === 'stable') {
+      recs.push({
+        category: 'nutrition', priority: 'medium',
+        recommendation: 'Slight calorie surplus needed for muscle growth',
+        reasoning: `Weight trend is ${weightTrend} — for muscle gain you need a small surplus (200-300cal above maintenance).`,
+      });
+    }
+  }
+
+  // Supplement consistency
+  if (data.supplementUsage.active_supplements.length > 0 && data.supplementUsage.consistency_percent < 50) {
+    recs.push({
+      category: 'supplements', priority: 'low',
+      recommendation: 'Take your supplements consistently',
+      reasoning: `${data.supplementUsage.consistency_percent}% consistency with [${data.supplementUsage.active_supplements.slice(0, 3).join(', ')}]. Set a daily reminder.`,
+    });
+  }
+
+  // Positive reinforcement for good metrics
+  const hasGoodProtein = proteinPct >= 85;
+  const hasGoodTraining = workouts7d >= workoutDays - 1;
+  const hasGoodSleep = sleepHrs >= 7;
+
+  if (hasGoodProtein && hasGoodTraining && hasGoodSleep) {
+    recs.push({
+      category: 'general', priority: 'low',
+      recommendation: 'Great consistency across the board — keep it up!',
+      reasoning: `Protein ${proteinPct}%, ${workouts7d} workouts, ${sleepHrs}h sleep. You're firing on all cylinders.`,
+    });
+  } else if (hasGoodProtein) {
+    recs.push({
+      category: 'nutrition', priority: 'low',
+      recommendation: 'Strong protein adherence — keep this going',
+      reasoning: `${data.nutritionPatterns.avg_daily_protein_7d}g/day at ${proteinPct}% is excellent.`,
+    });
+  }
+
+  if (streak >= 7) {
+    recs.push({
+      category: 'consistency', priority: 'low',
+      recommendation: `${streak}-day streak — protect it!`,
+      reasoning: `You've been consistent for ${streak} days. Your longest streak is ${data.momentum.longest_streak} days.`,
+    });
+  }
+
+  // Fallback if no recommendations generated
+  if (recs.length === 0) {
+    recs.push({
+      category: 'general', priority: 'low',
+      recommendation: 'Keep the momentum going — consistency beats intensity',
+      reasoning: `You're on track. Stay consistent with your ${goal.replace(/_/g, ' ')} plan.`,
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // 8. RETURN THE PLAN
+  // ═══════════════════════════════════════════════════════════
+  const splitTypes = split.filter(s => s !== 'rest');
+  const splitLabel = detectedSplit === 'ppl' ? 'Push/Pull/Legs'
+    : detectedSplit === 'upper_lower' ? 'Upper/Lower'
+    : detectedSplit === 'cardio_focus' ? 'Cardio Focus'
+    : 'Full Body';
 
   return {
     week_start: weekStart,
     week_end: weekEnd,
-    plan_confidence: 0.7,
-    generation_reasoning: 'Deterministic plan based on user profile data and goals (AI unavailable)',
+    plan_confidence: 0.75,
+    generation_reasoning: `Data-driven plan: ${splitLabel} split (${workoutDays} days/week), targeting ${baseCal}cal and ${baseProtein}g protein/day from your actual 7-day averages. Meals built from your logged food history.`,
     weekly_overview: {
       total_workout_days: workoutDays,
       total_rest_days: restDays,
       weekly_calorie_target: baseCal * 7,
       weekly_protein_target: baseProtein * 7,
-      focus_areas: [goal],
-      weekly_strategy: `${goal.replace('_', ' ')} — ${split.filter(s => s !== 'rest')[0]?.toUpperCase()} split`,
+      focus_areas: [goal.replace(/_/g, ' '), ...data.workoutPatterns.muscles_trained_last_7d.slice(0, 3)],
+      weekly_strategy: `${splitLabel} — ${workoutDays} training days based on your ${workouts7d}/week actual frequency. Nutrition: ${baseCal}cal/day from your ${data.nutritionPatterns.avg_daily_calories_7d}cal 7-day average.`,
     },
     daily_plan: dailyPlans,
     recommendations: recs,
@@ -1225,6 +1613,8 @@ export async function POST(request: NextRequest) {
             plan_id: existingPlan.id,
             generated_at: existingPlan.created_at,
             confidence: existingPlan.confidence_score,
+            generation_source: existingPlan.generation_source === 'ai' ? 'ai' : 'cached',
+            ai_errors: undefined,
           });
         }
       } catch (dbError) {

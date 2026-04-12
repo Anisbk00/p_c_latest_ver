@@ -405,3 +405,115 @@ Stage Summary:
 - Green "AI-Generated Plan" badge when AI succeeds
 - Fallback plan continues to work alongside the diagnostic info
 
+---
+Task ID: deterministic-plan-rewrite
+Agent: main
+Task: Rewrite buildDeterministicPlan() to be fully data-driven
+
+Work Log:
+- Read full weekly-planner route.ts (1382 lines) and analyzed the existing buildDeterministicPlan function (lines 972-1180)
+- Identified all issues: generic meal plans using Math.random(), no use of recent_meals data, no training split detection from user preferences, static coach messages, minimal recommendations
+- Rewrote buildDeterministicPlan function (~565 lines) with 8 major sections:
+
+### Changes Made:
+
+1. **WORKOUT_TEMPLATES updated** — added `muscle_groups` array to every exercise, added `cardio` template (steady-state), all exercises now have explicit muscle group tags
+
+2. **MEAL_TEMPLATES updated** — added `calorie_ratio` field (breakfast: 0.25, snack: 0.075, lunch: 0.30, dinner: 0.30) for proportional distribution
+
+3. **New FALLBACK_FOODS constant** — meal-type-specific fallback database (breakfast/lunch/dinner/snack) with realistic macro-complete food entries, only used when user has zero food log history
+
+4. **buildDeterministicPlan() completely rewritten with 8 sections:**
+
+   **Section 1: Workout Frequency** (kept existing logic, already data-driven from 30d/7d workout counts)
+
+   **Section 2: Training Split Detection** (NEW) — analyzes `favorite_workout_types` to auto-detect user's preferred split:
+   - Push+Pull+Legs detected → PPL split
+   - Upper+Lower detected → Upper/Lower split
+   - Full Body detected → Full Body split
+   - Cardio/HIIT/Running → Cardio Focus split
+   - Default → Full Body
+   - Split array built to match detected preference AND workout day count
+
+   **Section 3: Nutrition Targets** (NEW) — uses `avg_daily_calories_7d`, `avg_daily_protein_7d`, `avg_daily_carbs_7d`, `avg_daily_fat_7d` as PRIMARY targets (falls back to calculated targets only if no 7d data). If user eats 2000cal/day, plan targets 2000cal.
+
+   **Section 4: Food Data Pipeline** (NEW) — groups `recent_meals` by meal_type, builds a unique food name pool from recent_meals + most_common_foods. Three helper functions:
+   - `pickFoods()` — deterministic selection (no Math.random), cycles through food pool by day+meal index
+   - `estimateMacros()` — estimates carbs/fat from calories/protein using user's actual macro distribution
+   - `buildMealFromUser()` — three-tier fallback: actual logged meals for that meal type → most_common_foods → FALLBACK_FOODS database
+
+   **Section 5: Coach Messages** (NEW) — builds a pool of 3-8 data-driven messages from actual metrics:
+   - Protein adherence with specific g/day and % of target
+   - Streak info with motivational messaging
+   - Training frequency referencing actual 7d and 30d data
+   - Weight trend with kg change and goal-contextual advice
+   - Sleep debt and duration warnings
+   - Calorie tracking feedback
+   - Messages rotate deterministically across the 7-day plan
+
+   **Section 6: 7-Day Plan Assembly** — uses actual avg workout duration and calories burned, proper proportional meal distribution, sleep targets from user's schedule data, supplement list from actual active supplements
+
+   **Section 7: Recommendations** (NEW) — 12+ threshold-based data-driven rules:
+   - Protein < 50%: high priority, specific g/day gap
+   - Protein < 70%: medium priority with food suggestions
+   - Calorie adherence < 80%: track more carefully
+   - Muscle building + low calories: eat more for surplus
+   - Zero workouts: get back to training
+   - Low workout count: aim higher
+   - Sleep < 7h: get more sleep
+   - Sleep debt > 1.5h: catch up
+   - Fat loss + stable weight: plateau advice
+   - Muscle gain + down/stable: need surplus
+   - Low supplement consistency: set reminders
+   - Good metrics: positive reinforcement
+   - Streak >= 7d: protect it
+
+   **Section 8: Return** — data-rich generation_reasoning and weekly_strategy referencing actual numbers
+
+### What was NOT changed:
+- Function signature: `buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, weekEnd: string): any`
+- Return JSON structure (same shape)
+- All imports
+- All other functions (fetchComprehensiveUserData, getGoalConfiguration, buildPrecisionWeeklyPlanPrompt, generatePlanWithAI)
+- POST and GET handlers
+- Type definitions
+
+### Verification:
+- `bun run lint` passes: 0 errors, 9 pre-existing warnings (unchanged, all in other files)
+- Dev server compiles and runs cleanly
+- File grew from 1382 → 1770 lines (+388 lines of data-driven logic)
+
+---
+Task ID: data-driven-planner
+Agent: main
+Task: Complete rewrite of weekly planner — data-driven fallback + improved UI
+
+Work Log:
+- Rewrote buildDeterministicPlan() to be fully data-driven:
+  - Nutrition: Uses avg_daily_calories_7d and avg_daily_protein_7d as primary targets (actual user intake, not theoretical)
+  - Meals: Builds from recent_meals (last 10 logged meals) grouped by meal type, deterministic selection
+  - Food pipeline: 3-tier fallback — actual logged meals → common foods → generic database
+  - Workouts: Detects split from favorite_workout_types (PPL, Upper/Lower, Full Body, Cardio)
+  - Coach messages: References protein adherence %, streak, training frequency, weight trend, sleep debt
+  - Recommendations: 12+ threshold rules based on real data (protein <50%/70%, calorie <80%, sleep <7h, etc.)
+  - Meal distribution: Proportional (breakfast 25%, snacks 7.5%, lunch 30%, snacks 7.5%, dinner 30%)
+- Updated WORKOUT_TEMPLATES with muscle_groups for every exercise, added cardio template
+- Updated MEAL_TEMPLATES with calorie_ratio for proportional distribution
+- Added FALLBACK_FOODS constant (meal-type-specific, macro-complete)
+- Frontend improvements:
+  - Added Regenerate button in header (tries AI again + forces new plan)
+  - Added isRegenerating state with spinning icon
+  - Green "Personalized Plan" badge when using data-driven fallback
+  - Amber collapsible "AI unavailable" error banner with diagnostic details
+  - Cached plan badge for previously generated plans
+  - "Try Again" button on error state
+  - Error messages now include response.details field
+- Backend: cached plan response now includes generation_source field
+
+Stage Summary:
+- Weekly planner now ALWAYS works — no dependency on AI availability
+- Plans are built from actual user data: meals, workouts, nutrition, sleep, supplements
+- If AI is available, it enhances the plan; if not, data-driven fallback takes over seamlessly
+- Users can regenerate to retry AI or get a fresh plan
+- 0 lint errors, deployed to production
+
