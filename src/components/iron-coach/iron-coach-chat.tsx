@@ -915,6 +915,16 @@ export function IronCoach({ className }: IronCoachProps) {
         }
 
         console.log('[IronCoach] Stream complete. receivedAnyData:', receivedAnyData, 'fullText length:', fullText.length);
+        
+        // Diagnostic: check if we got a fallback message instead of AI response
+        if (fullText.length < 100 && (fullText.includes('slammed') || fullText.includes('breather') || fullText.includes('heavy traffic') || fullText.includes('experiencing'))) {
+          console.error('[IronCoach] ⚠️ Received fallback message instead of AI response!');
+          console.error('[IronCoach] This means the Groq API call failed. Possible causes:');
+          console.error('  1. GROQ_API_KEY not set or invalid in Vercel env vars');
+          console.error('  2. Groq API rate limited (429) — wait a few minutes');
+          console.error('  3. Groq API experiencing outage');
+          console.error('[IronCoach] 💡 Check /api/health endpoint for live diagnostics');
+        }
       }
     } catch (err) {
       const isAbort = err instanceof DOMException && err.name === 'AbortError';

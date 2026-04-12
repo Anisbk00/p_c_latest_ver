@@ -563,6 +563,16 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
                     setToastMessage('⚡ AI is busy right now — try again in a minute!');
                     setTimeout(() => setToastMessage(null), 4000);
                   }
+                  // Log AI errors to browser console for diagnostics
+                  if (msg.ai_errors && msg.ai_errors.length > 0) {
+                    console.error('[WeeklyPlanner] ⚠️ AI errors during generation:');
+                    msg.ai_errors.forEach((e: any, i: number) => {
+                      console.error(`  ${i + 1}. [${e.stage}] ${e.model}: ${e.error}`);
+                    });
+                  }
+                  if (msg.generation_source === 'template') {
+                    console.warn('[WeeklyPlanner] 💡 Showing template plan — AI unavailable. Check /api/health for diagnostics.');
+                  }
                   setPlan(msg.plan);
                   setGenerationSource(msg.generation_source || null);
                   setAiErrors(msg.ai_errors || null);

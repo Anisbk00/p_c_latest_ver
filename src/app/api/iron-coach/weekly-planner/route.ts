@@ -2235,8 +2235,9 @@ async function streamGroqPlan(
   systemPrompt: string, 
   userPrompt: string, 
   apiKey: string
-): Promise<string | null> {
+): Promise<{ text: string; errors: AIErrorDetail[] } | null> {
   const models = ['llama-3.3-70b-versatile', 'llama-3.1-70b-versatile', 'llama-3.1-8b-instant'];
+  const allErrors: AIErrorDetail[] = [];
   
   for (const model of models) {
     try {
@@ -2264,14 +2265,15 @@ async function streamGroqPlan(
         const errText = await groqResp.text().catch(() => '');
         const errStatus = groqResp.status;
         const errCategory = errStatus === 429 ? 'RATE_LIMIT' : errStatus === 401 ? 'AUTH' : errStatus === 400 ? 'BAD_REQUEST' : errStatus >= 500 ? 'SERVER_ERROR' : 'UNKNOWN';
-        console.error(`══════════════════════════════════════════════════`);
-        console.error(`[weekly-planner] ❌ Groq stream ${model} FAILED`);
-        console.error(`[weekly-planner] HTTP ${errStatus} (${errCategory})`);
-        console.error(`[weekly-planner] Response: ${errText.substring(0, 500)}`);
-        console.error(`[weekly-planner] Model: ${model}`);
-        console.error(`[weekly-planner] System prompt: ${systemPrompt.length} chars`);
-        console.error(`[weekly-planner] User prompt: ${userPrompt.length} chars`);
-        console.error(`══════════════════════════════════════════════════`);
+        const errMsg = `HTTP ${errStatus} (${errCategory}): ${errText.substring(0, 300)}`;
+        console.error(`[weekly-planner] ❌ Groq ${model}: ${errMsg}`);
+        allErrors.push({
+          attempt: `stream-${model}`,
+          stage: 'api_call',
+          model,
+          error: errMsg,
+          timestamp: new Date().toISOString(),
+        });
         continue;
       }
       
@@ -2309,23 +2311,27 @@ async function streamGroqPlan(
       console.log(`[weekly-planner] ✅ Stream complete from ${model}: ${fullContent.length} chars`);
         
       if (fullContent.length > 100) {
-        return fullContent;
+        return { text: fullContent, errors: allErrors };
       } else {
-        console.warn(`[weekly-planner] ⚠️ Stream too short (${fullContent.length} chars), response may be incomplete`);
-        console.warn(`[weekly-planner] Content preview: ${fullContent.substring(0, 200)}`);
+        console.warn(`[weekly-planner] ⚠️ Stream too short (${fullContent.length} chars)`);
+        allErrors.push({
+          attempt: `stream-${model}`,
+          stage: 'truncated',
+          model,
+          error: `Response too short: ${fullContent.length} chars`,
+          timestamp: new Date().toISOString(),
+        });
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      const errName = err instanceof Error ? err.constructor.name : typeof err;
-      console.error(`══════════════════════════════════════════════════`);
-      console.error(`[weekly-planner] ❌ Groq streaming ${model} EXCEPTION`);
-      console.error(`[weekly-planner] Type: ${errName}`);
-      console.error(`[weekly-planner] Message: ${errMsg}`);
-      console.error(`[weekly-planner] Model: ${model}`);
-      if (err instanceof Error && err.stack) {
-        console.error(`[weekly-planner] Stack: ${err.stack.split('\n').slice(0, 3).join('\n')}`);
-      }
-      console.error(`══════════════════════════════════════════════════`);
+      console.error(`[weekly-planner] ❌ Groq ${model} exception: ${errMsg}`);
+      allErrors.push({
+        attempt: `stream-${model}`,
+        stage: 'api_call',
+        model,
+        error: errMsg,
+        timestamp: new Date().toISOString(),
+      });
     }
   }
   
@@ -2504,19 +2510,30 @@ export async function POST(request: NextRequest) {
           {
             send(controller, { type: 'status', message: 'AI is crafting your plan... 🔥' });
             
-            const fullContent = await streamGroqPlan(
+            const groqResult = await streamGroqPlan(
               capturedSystemPrompt,
               capturedUserPrompt,
               GROQ_API_KEY!
             );
             
-            if (fullContent) {
-              const result = parsePlanFromText(fullContent);
+            if (groqResult) {
+              const result = parsePlanFromText(groqResult.text);
               if (result.plan) {
                 plan = result.plan;
-                aiErrors = result.errors;
+                aiErrors = [...groqResult.errors, ...result.errors];
                 generationSource = 'auto';
+              } else {
+                aiErrors = [...groqResult.errors, ...result.errors];
               }
+            } else if (aiErrors.length === 0) {
+              // streamGroqPlan returned null without errors — key might be missing
+              aiErrors.push({
+                attempt: 'all-models',
+                stage: 'api_call',
+                model: 'all',
+                error: 'All Groq models failed or returned empty. Check GROQ_API_KEY in Vercel env vars.',
+                timestamp: new Date().toISOString(),
+              });
             }
           }
           
@@ -2566,6 +2583,17 @@ export async function POST(request: NextRequest) {
             generated_at: new Date().toISOString(),
             confidence: plan.plan_confidence || 0.85,
           });
+          
+          // Log diagnostics to console (for Vercel logs)
+          if (generationSource === 'template') {
+            console.error('══════════════════════════════════════════════════');
+            console.error('[weekly-planner] ⚠️ FELL BACK TO TEMPLATE — AI failed');
+            aiErrors.forEach((e, i) => {
+              console.error(`  ${i + 1}. [${e.stage}] ${e.model}: ${e.error}`);
+            });
+            console.error('[weekly-planner] Check GROQ_API_KEY in Vercel env vars');
+            console.error('══════════════════════════════════════════════════');
+          }
           
         } catch (err) {
           console.error('[weekly-planner] Stream error:', err);
