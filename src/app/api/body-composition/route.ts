@@ -227,6 +227,19 @@ export async function POST(request: NextRequest) {
     ])
 
     // ── Resolve user context values ─────────────────────────────────
+    console.log('[body-comp] ═══ RAW DATA FROM SUPABASE ═══');
+    console.log('[body-comp] profile:', JSON.stringify(profile));
+    console.log('[body-comp] userProfile:', JSON.stringify(userProfile));
+    console.log('[body-comp] latestWeightMetric:', JSON.stringify(latestWeightMetric));
+    console.log('[body-comp] prevBodyFatMetric:', JSON.stringify(prevBodyFatMetric));
+    console.log('[body-comp] prevMuscleMassMetric:', JSON.stringify(prevMuscleMassMetric));
+    console.log('[body-comp] recentGoals:', JSON.stringify(recentGoals));
+    console.log('[body-comp] recentFoodLogs count:', (recentFoodLogs ?? []).length);
+    console.log('[body-comp] recentWorkouts count:', (recentWorkouts ?? []).length);
+    console.log('[body-comp] sleepLogs count:', (sleepLogs ?? []).length);
+    console.log('[body-comp] supplements count:', (supplements ?? []).length);
+    console.log('[body-comp] weeklyPlan exists:', !!weeklyPlan);
+
     const heightCm = userProfile?.height_cm ?? (profile as any)?.height_cm ?? null
     const weightKg = latestWeightMetric?.value ? Number(latestWeightMetric.value) : (profile as any)?.weight_kg ?? null
     const birthDate = (userProfile as any)?.birth_date ?? null
@@ -242,6 +255,18 @@ export async function POST(request: NextRequest) {
     const allergies = userProfile?.allergies || profile?.allergies || []
     const prevBodyFat = prevBodyFatMetric?.value ? Number(prevBodyFatMetric.value) : null
     const prevMuscleMass = prevMuscleMassMetric?.value ? Number(prevMuscleMassMetric.value) : null
+
+    console.log('[body-comp] ═══ RESOLVED CONTEXT ═══');
+    console.log('[body-comp] heightCm:', heightCm);
+    console.log('[body-comp] weightKg:', weightKg);
+    console.log('[body-comp] age:', age);
+    console.log('[body-comp] sex:', sex);
+    console.log('[body-comp] activityLevel:', activityLevel);
+    console.log('[body-comp] fitnessLevel:', fitnessLevel);
+    console.log('[body-comp] primaryGoal:', primaryGoal);
+    console.log('[body-comp] targetWeightKg:', targetWeightKg);
+    console.log('[body-comp] prevBodyFat:', prevBodyFat);
+    console.log('[body-comp] prevMuscleMass:', prevMuscleMass);
 
     // ── Calculate weekly nutrition stats ────────────────────────────
     const foodLogs = recentFoodLogs ?? []
@@ -321,6 +346,8 @@ export async function POST(request: NextRequest) {
     // Pre-calculate realistic body fat & muscle mass ranges from known data
     // so the AI has HARD constraints, not vague guidelines.
     const bmi = heightCm && weightKg ? Math.round(weightKg / ((heightCm / 100) ** 2) * 10) / 10 : null;
+    console.log('[body-comp] ═══ MATH ANCHORS ═══');
+    console.log('[body-comp] bmi:', bmi);
     const leanBodyMassEst = weightKg ? Math.round(weightKg * 0.72 * 10) / 10 : null; // ~72% lean for avg male
     const fatMassEst = weightKg ? Math.round(weightKg * 0.18 * 10) / 10 : null; // ~18% fat for avg
     
@@ -349,6 +376,13 @@ export async function POST(request: NextRequest) {
     
     const clothingBias = clothing === 'heavy' ? 3 : clothing === 'light' ? 1 : 0;
 
+    console.log('[body-comp] ═══ CONSTRAINTS SENT TO AI ═══');
+    console.log('[body-comp] bfLowEstimate:', bfLowEstimate, 'bfHighEstimate:', bfHighEstimate);
+    console.log('[body-comp] mmLow:', mmLow, 'mmHigh:', mmHigh);
+    console.log('[body-comp] clothing:', clothing, 'lighting:', lighting, 'clothingBias:', clothingBias);
+    console.log('[body-comp] totalProtein week:', totalProtein, 'workoutsThisWeek:', workoutsThisWeek);
+    console.log('[body-comp] photoUrl (first 80 chars):', frontPhotoUrl?.substring(0, 80));
+
     const enhancedPrompt = `You are a PRECISE body composition analyst. Analyze this photo with MATHEMATICAL RIGOR.
 
 HARD CONSTRAINTS (violating these = wrong answer):
@@ -374,7 +408,12 @@ No disclaimers. No text outside JSON.`
 
 ${enhancedPrompt}`
 
+    console.log('[body-comp] ═══ CALLING AI VISION (llama-4-scout) ═══');
     const aiResult = await analyzePhoto(frontPhotoUrl, 'body-composition', fullPrompt)
+    console.log('[body-comp] AI result success:', aiResult.success);
+    console.log('[body-comp] AI provenance:', JSON.stringify(aiResult.provenance));
+    console.log('[body-comp] AI analysis RAW:', JSON.stringify(aiResult.analysis));
+    if (!aiResult.success) console.log('[body-comp] AI error:', aiResult.error);
 
     if (!aiResult.success || !aiResult.analysis) {
       return NextResponse.json({
@@ -394,6 +433,13 @@ ${enhancedPrompt}`
     const rawConfidence = analysis.overallConfidence ? Number(analysis.overallConfidence) / 100 : 0.5
     const confidence = Math.max(0.3, Math.min(0.95, rawConfidence))
     const rawMuscleMass = muscleMassEstimate?.value ? Number(muscleMassEstimate.value) : null
+
+    console.log('[body-comp] ═══ AI EXTRACTED VALUES ═══');
+    console.log('[body-comp] rawBodyFat (from AI):', rawBodyFat);
+    console.log('[body-comp] rawMuscleMass (from AI):', rawMuscleMass);
+    console.log('[body-comp] rawConfidence (from AI):', rawConfidence, '→ clamped:', confidence);
+    console.log('[body-comp] bodyFatEstimate rationale:', bodyFatEstimate?.rationale);
+    console.log('[body-comp] muscleMassEstimate rationale:', muscleMassEstimate?.rationale);
 
     // ═══════════════════════════════════════════════════════════
     // CROSS-VALIDATION: Ensure AI results are physically possible
@@ -468,6 +514,11 @@ ${enhancedPrompt}`
       const minMuscle = Math.round(weightKg * 0.20 * 10) / 10;
       validatedMuscleMass = Math.max(minMuscle, Math.min(maxMuscle, validatedMuscleMass));
     }
+
+    console.log('[body-comp] ═══ FINAL VALIDATED VALUES ═══');
+    console.log('[body-comp] validatedBodyFat:', validatedBodyFat);
+    console.log('[body-comp] validatedMuscleMass:', validatedMuscleMass);
+    console.log('[body-comp] confidence:', confidence);
 
     // Build min/max range (±2 around validated center for tighter estimates)
     let bodyFatMin: number
@@ -566,6 +617,11 @@ ${enhancedPrompt}`
     const scanId = `scan_${user.id.slice(0, 8)}_${Date.now()}`
 
     // ── Build response ──────────────────────────────────────────────
+    console.log('[body-comp] ═══ RESPONSE TO CLIENT ═══');
+    console.log('[body-comp] bodyFatMin:', bodyFatMin, 'bodyFatMax:', bodyFatMax);
+    console.log('[body-comp] leanMassMin:', validatedMuscleMass !== null ? Math.round((validatedMuscleMass - 2) * 10) / 10 : null);
+    console.log('[body-comp] leanMassMax:', validatedMuscleMass !== null ? Math.round((validatedMuscleMass + 2) * 10) / 10 : null);
+
     const scan = {
       id: scanId,
       capturedAt: capturedAt,
