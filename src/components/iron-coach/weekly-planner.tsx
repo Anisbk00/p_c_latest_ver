@@ -525,7 +525,7 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
       }
     } catch (err) {
       console.error('[WeeklyPlanner] Error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to load plan');
+      setError('AI unavailable');
     } finally {
       setIsLoading(false);
       setIsRegenerating(false);
@@ -578,8 +578,8 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
     return (
       <div className={cn("flex flex-col items-center justify-center h-full p-8", styles.container)}>
         <AlertCircle className="w-10 h-10 mb-4 text-red-400" />
-        <div className={cn("text-lg font-semibold mb-2", styles.text)}>Unable to Load Plan</div>
-        <div className={cn("text-sm mb-4 text-center max-w-xs", styles.textMuted)}>{error}</div>
+        <div className={cn("text-lg font-semibold mb-2", styles.text)}>AI unavailable</div>
+        <div className={cn("text-sm mb-4 text-center max-w-xs", styles.textMuted)}>Please try again later</div>
         <button
           onClick={() => loadPlan(true)}
           className={cn(
