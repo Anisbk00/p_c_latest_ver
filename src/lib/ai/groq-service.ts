@@ -24,6 +24,8 @@ const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 // Model names
 const MODEL_NAME = 'llama-3.3-70b-versatile';
 const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
+// Fallback text models — tried in order if primary is overloaded
+const FALLBACK_TEXT_MODELS = ['llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
 // EMBEDDING_MODEL removed — Groq does not offer embeddings
 
 if (GROQ_API_KEY) {
@@ -473,85 +475,138 @@ export async function analyzeBase64Image(
 // ═══════════════════════════════════════════════════════════════
 
 /**
- * Generate text from a simple prompt
+ * Generate text from a simple prompt (with fallback models)
  */
 export async function generateText(prompt: string, systemPrompt?: string, maxTokens: number = 1024): Promise<string> {
-  return withRateLimitRetry(async () => {
-    const messages: GroqMessage[] = [];
-    if (systemPrompt) {
-      messages.push({ role: 'system', content: systemPrompt });
-    }
-    messages.push({ role: 'user', content: prompt });
-
-    const response = await withTimeout(
-      callGroqAPI(messages, MODEL_NAME, 0.35, maxTokens),
-      AI_TIMEOUT_MS,
-      'AI text generation timed out.'
-    );
-
-    const result: GroqResponse = await response.json();
-    const content = result.choices?.[0]?.message?.content;
-    if (!content) throw new Error('Empty response from AI');
-    return content;
-  }, 'Text generation');
-}
-
-/**
- * Stream text from a simple prompt
- */
-export async function* streamText(prompt: string, systemPrompt?: string): AsyncGenerator<string, void, unknown> {
-  // Don't pre-check isRateLimited() — let the retry loop handle it.
-
   const messages: GroqMessage[] = [];
   if (systemPrompt) {
     messages.push({ role: 'system', content: systemPrompt });
   }
   messages.push({ role: 'user', content: prompt });
 
-  try {
-    const response = await withTimeout(
-      callGroqAPI(messages, MODEL_NAME, 0.35, 1024, true),
-      AI_TIMEOUT_MS,
-      'AI stream timed out.'
-    );
+  // Try primary model first, then fallbacks
+  const modelsToTry = [MODEL_NAME, ...FALLBACK_TEXT_MODELS];
 
-    const reader = response.body?.getReader();
-    if (!reader) throw new Error('No response stream');
+  for (const model of modelsToTry) {
+    try {
+      const response = await withTimeout(
+        callGroqAPI(messages, model, 0.35, maxTokens),
+        AI_TIMEOUT_MS,
+        'AI text generation timed out.'
+      );
 
-    const decoder = new TextDecoder();
-    let buffer = '';
+      const result: GroqResponse = await response.json();
+      const content = result.choices?.[0]?.message?.content;
+      if (!content) throw new Error('Empty response from AI');
+      
+      resetRateLimitState();
+      if (model !== MODEL_NAME) {
+        console.log(`[Groq] Primary model busy, used fallback: ${model}`);
+      }
+      return content;
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const isEmpty = errMsg === 'Empty response from AI';
+      const isOverloaded = errMsg.includes('429') || errMsg.includes('high demand') || 
+                           errMsg.includes('rate limit') || errMsg.includes('busy') ||
+                           errMsg.includes('503');
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+      if (isOverloaded && model !== modelsToTry[modelsToTry.length - 1]) {
+        console.log(`[Groq] Model ${model} overloaded for generateText, trying fallback...`);
+        continue;
+      }
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() || '';
+      // Non-retryable error or last model failed
+      if (isOverloaded) {
+        handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
+      }
+      throw error;
+    }
+  }
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        const data = trimmed.slice(6);
-        if (data === '[DONE]') continue;
+  throw new Error('All AI models unavailable');
+}
 
-        try {
-          const chunk: GroqStreamChunk = JSON.parse(data);
-          const content = chunk.choices?.[0]?.delta?.content;
-          if (content) yield content;
-        } catch {
-          // Skip
+/**
+ * Stream text from a simple prompt (with fallback models)
+ */
+export async function* streamText(prompt: string, systemPrompt?: string, maxTokens: number = 1024): AsyncGenerator<string, void, unknown> {
+  const messages: GroqMessage[] = [];
+  if (systemPrompt) {
+    messages.push({ role: 'system', content: systemPrompt });
+  }
+  messages.push({ role: 'user', content: prompt });
+
+  // Try primary model first, then fallbacks
+  const modelsToTry = [MODEL_NAME, ...FALLBACK_TEXT_MODELS];
+  
+  for (const model of modelsToTry) {
+    try {
+      const response = await withTimeout(
+        callGroqAPI(messages, model, 0.35, maxTokens, true),
+        AI_TIMEOUT_MS,
+        'AI stream timed out.'
+      );
+
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let hasYielded = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+          const data = trimmed.slice(6);
+          if (data === '[DONE]') continue;
+
+          try {
+            const chunk: GroqStreamChunk = JSON.parse(data);
+            const content = chunk.choices?.[0]?.delta?.content;
+            if (content) {
+              hasYielded = true;
+              yield content;
+            }
+          } catch {
+            // Skip
+          }
         }
       }
-    }
 
-    resetRateLimitState();
-  } catch (error) {
-    if (isRateLimitError(error)) {
-      const { waitMs } = handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
-      throw new Error(`AI service is experiencing high demand. Please wait ${Math.ceil(waitMs / 1000)} seconds.`);
+      if (hasYielded) {
+        resetRateLimitState();
+        if (model !== MODEL_NAME) {
+          console.log(`[Groq] Primary model busy, used fallback: ${model}`);
+        }
+        return; // Success
+      }
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      const isOverloaded = errMsg.includes('429') || errMsg.includes('high demand') || 
+                           errMsg.includes('rate limit') || errMsg.includes('busy') ||
+                           errMsg.includes('503');
+      
+      if (isOverloaded && model !== modelsToTry[modelsToTry.length - 1]) {
+        console.log(`[Groq] Model ${model} overloaded, trying fallback...`);
+        continue; // Try next fallback model
+      }
+      
+      // Non-rate-limit error or last model failed
+      if (isOverloaded) {
+        handleRateLimitError(error instanceof Error ? error : new Error(String(error)));
+        throw new Error(`AI service is experiencing high demand. Please try again.`);
+      }
+      throw error;
     }
-    throw error;
   }
 }
 

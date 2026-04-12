@@ -107,39 +107,29 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Stream a prompt completion using Groq with real token streaming
- * Includes retry logic for rate-limit and transient errors
+ * streamText has built-in model fallback (70b → 8b → mixtral)
  */
 export async function streamCloudPrompt(options: CloudStreamOptions & { locale?: string; tone?: CoachingTone }): Promise<string> {
   const { prompt, onToken, signal, locale = 'en', userQuestion } = options;
   
-  // Extract the user's actual question
   const actualQuestion = userQuestion || (typeof prompt === 'string' ? extractUserQuestion(prompt) : 'fitness question') || 'fitness question';
-  
   console.log('[streamCloudPrompt] Starting for question:', actualQuestion?.slice(0, 100));
   
-  // Check if aborted before starting
-  if (signal?.aborted) {
-    console.log('[streamCloudPrompt] Aborted before start');
-    return '';
-  }
+  if (signal?.aborted) return '';
   
   let effectiveSystemPrompt: string | undefined;
   let effectiveUserPrompt: string;
   let hasRichContext = false;
 
   if (typeof prompt === 'object' && prompt.system && prompt.user) {
-    // Rich context from buildContextPrompt — already split into system + user
     hasRichContext = true;
     effectiveSystemPrompt = prompt.system;
     effectiveUserPrompt = prompt.user;
-    console.log('[streamCloudPrompt] Using rich context prompt (pre-split), user part length:', effectiveUserPrompt.length);
   } else {
-    // Plain string prompt (legacy path or simple prompts)
     const promptStr = typeof prompt === 'string' ? prompt : String(prompt);
     hasRichContext = promptStr.length > Math.max((userQuestion?.length || 50) + 100, 200);
     
     if (hasRichContext) {
-      // Legacy rich prompt — split on USER'S QUESTION delimiter
       const questionIdx = promptStr.indexOf("=== USER'S QUESTION ===");
       if (questionIdx > 0) {
         effectiveSystemPrompt = promptStr.slice(0, questionIdx).trim();
@@ -147,98 +137,50 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
       } else {
         effectiveUserPrompt = promptStr;
       }
-      console.log('[streamCloudPrompt] Using legacy rich context prompt, user part length:', effectiveUserPrompt.length);
     } else {
       effectiveSystemPrompt = getDefaultSystemPrompt(locale, 'aggressive');
-      effectiveUserPrompt = `USER QUESTION: ${actualQuestion}
-
-Respond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific question directly.`;
-      console.log('[streamCloudPrompt] Using simple prompt (no context), length:', effectiveUserPrompt.length);
+      effectiveUserPrompt = `USER QUESTION: ${actualQuestion}\n\nRespond as Iron Coach. Be aggressive, helpful, and brief. Answer the specific question directly.`;
     }
   }
 
-  // Only use cache for simple prompts WITHOUT user data context
+  // Cache check for simple prompts
   const cached = !hasRichContext ? getCachedPromptResult(MODEL_NAME, typeof prompt === 'string' ? prompt : JSON.stringify(prompt), locale) : null;
   if (cached) {
-    console.log('[streamCloudPrompt] Using cached response (simple prompt)');
     for (const ch of cached) onToken(ch);
     return cached;
   }
 
-  // ── Retry loop for rate-limit and transient errors ──
-  const MAX_RETRIES = 2;
-  const RETRY_DELAYS = [3000, 10000]; // 3s, 10s — keep total under Vercel timeout
+  // Single attempt — streamText handles model fallback internally
+  try {
+    let fullText = '';
+    const stream = streamText(effectiveUserPrompt, effectiveSystemPrompt);
+    
+    for await (const token of stream) {
+      if (signal?.aborted) return fullText;
+      fullText += token;
+      onToken(token);
+    }
+    
+    console.log('[streamCloudPrompt] AI response length:', fullText?.length || 0);
 
-  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    if (signal?.aborted) {
-      console.log('[streamCloudPrompt] Aborted before attempt', attempt);
-      return '';
+    if (!fullText?.trim()) {
+      const fallback = "Listen up! I'm having a moment here. Try asking me again in a few seconds. 💪";
+      for (const ch of fallback) onToken(ch);
+      return fallback;
     }
 
-    try {
-      let fullText = '';
-      
-      const stream = streamText(effectiveUserPrompt, effectiveSystemPrompt);
-      
-      for await (const token of stream) {
-        if (signal?.aborted) {
-          console.log('[streamCloudPrompt] Aborted during streaming');
-          return fullText;
-        }
-        fullText += token;
-        onToken(token);
-      }
-      
-      console.log('[streamCloudPrompt] AI response length:', fullText?.length || 0, '(attempt', attempt + 1 + ')');
-
-      if (!fullText?.trim()) {
-        console.log('[streamCloudPrompt] Empty AI response on attempt', attempt + 1);
-        if (attempt < MAX_RETRIES) {
-          const delay = RETRY_DELAYS[attempt] || 8000;
-          console.log('[streamCloudPrompt] Retrying in', delay / 1000, 's...');
-          await sleep(delay);
-          continue;
-        }
-        const fallback = "Listen up! I'm having a moment here. Try asking me again in a few seconds. 💪";
-        for (const ch of fallback) onToken(ch);
-        return fallback;
-      }
-
-      // Cache simple prompts only (not context-rich)
-      if (!hasRichContext) {
-        setCachedPromptResult(MODEL_NAME, typeof prompt === 'string' ? prompt : JSON.stringify(prompt), fullText, undefined, locale);
-      }
-      return fullText;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('[streamCloudPrompt] Error on attempt', attempt + 1 + '/' + (MAX_RETRIES + 1) + ':', errorMessage);
-
-      if (isRetryableError(error) && attempt < MAX_RETRIES) {
-        const delay = RETRY_DELAYS[attempt] || 8000;
-        console.log('[streamCloudPrompt] Retryable error, waiting', delay / 1000, 's before retry...');
-        await sleep(delay);
-        continue;
-      }
-
-      // Non-retryable or exhausted retries — show actual error for debugging
-      if (isRetryableError(error)) {
-        const errDetail = errorMessage.slice(0, 200);
-        const rateLimitMsg = `⚠️ AI error (attempt ${attempt + 1}/${MAX_RETRIES + 1}): ${errDetail}`;
-        console.error('[streamCloudPrompt] Final error:', errDetail);
-        for (const ch of rateLimitMsg) onToken(ch);
-        return rateLimitMsg;
-      }
-
-      const errorFallback = `⚠️ Error: ${errorMessage.slice(0, 150)}. Try again.`;
-      console.error('[streamCloudPrompt] Non-retryable error:', errorMessage);
-      for (const ch of errorFallback) onToken(ch);
-      return errorFallback;
+    if (!hasRichContext) {
+      setCachedPromptResult(MODEL_NAME, typeof prompt === 'string' ? prompt : JSON.stringify(prompt), fullText, undefined, locale);
     }
+    return fullText;
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    console.error('[streamCloudPrompt] Error:', errorMessage);
+
+    const errorFallback = `⚠️ ${errorMessage.slice(0, 180)}. Try again.`;
+    for (const ch of errorFallback) onToken(ch);
+    return errorFallback;
   }
-
-  const finalFallback = "⚡ Something went wrong. Please try again.";
-  for (const ch of finalFallback) onToken(ch);
-  return finalFallback;
 }
 
 /**
