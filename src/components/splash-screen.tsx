@@ -263,8 +263,14 @@ export function SplashScreen({ isLoading = true }: SplashScreenProps) {
 
   // ═══════════════════════════════════════════════════════════
   // BODY SCROLL LOCK — Prevents white circle on iOS overscroll
+  // Locks on mount, unlocks when isExiting becomes true (NOT on unmount,
+  // because parent keeps this component alive with opacity:0)
   // ═══════════════════════════════════════════════════════════
   useEffect(() => {
+    // When exiting, the previous effect's cleanup already restored scroll.
+    // Do NOT re-lock here.
+    if (isExiting) return;
+
     const html = document.documentElement;
     const body = document.body;
     // Save original values
@@ -298,7 +304,7 @@ export function SplashScreen({ isLoading = true }: SplashScreenProps) {
       document.removeEventListener('touchmove', preventScroll);
       document.removeEventListener('wheel', preventScroll);
     };
-  }, []);
+  }, [isExiting]);
   
   // ═══════════════════════════════════════════════════════════
   // CLIENT-ONLY INITIALIZATION (useLayoutEffect for sync)
