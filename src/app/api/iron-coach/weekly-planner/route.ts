@@ -707,7 +707,7 @@ function getGoalConfiguration(goal: string, fitnessLevel: string, preferredDays?
   };
 }
 
-// AI PROMPT BUILDER
+// AI PROMPT BUILDER — full user data, AI decides workout frequency
 
 function buildPrecisionWeeklyPlanPrompt(
   data: UserComprehensiveData, 
@@ -716,41 +716,76 @@ function buildPrecisionWeeklyPlanPrompt(
 ): { systemPrompt: string; userPrompt: string } {
   
   const goal = data.profile.primary_goal?.toLowerCase() || 'general_fitness';
+  const p = data.profile;
   
-  // Goal-specific configurations
-  const goalConfig = getGoalConfiguration(goal, data.profile.fitness_level, data.targets.workout_days_per_week);
+  // Calculate actual workout frequency from user's behavior
+  const actualDaysPerWeek = data.workoutPatterns.total_workouts_30d > 0
+    ? Math.round((data.workoutPatterns.total_workouts_30d / 4) * 10) / 10
+    : 0;
+  const recentDaysPerWeek = data.workoutPatterns.total_workouts_7d;
   
-  const systemPrompt = `You are Iron Coach AI. Generate a 7-day weekly fitness+nutrition plan as JSON only.
+  const systemPrompt = `You are Iron Coach AI — elite fitness & nutrition planner. Generate a 7-day personalized JSON plan.
 
-USER: ${data.profile.name}, ${data.profile.age || '?'}yo ${data.profile.sex || '?'}, ${data.profile.current_weight_kg || '?'}kg, ${data.profile.height_cm || '?'}cm
-GOAL: ${data.profile.primary_goal} | FITNESS: ${data.profile.fitness_level}
-TARGETS: ${data.targets.daily_calories}cal/day | ${data.targets.daily_protein}g P | ${data.targets.daily_carbs}g C | ${data.targets.daily_fat}g F | TDEE ${data.targets.tdee}
-ALLERGIES: ${data.profile.allergies.length ? data.profile.allergies.join(', ') : 'none'} | RESTRICTIONS: ${data.profile.dietary_restrictions.length ? data.profile.dietary_restrictions.join(', ') : 'none'}
+═══ USER PROFILE ═══
+Name: ${p.name} | Age: ${p.age || '?'} | Sex: ${p.sex || '?'}
+Weight: ${p.current_weight_kg || '?'}kg → Target: ${p.target_weight_kg || '?'}kg
+Height: ${p.height_cm || '?'}cm | Body Fat: ${data.bodyMetrics.latest_body_fat || '?'}% | Muscle: ${data.bodyMetrics.latest_muscle_mass || '?'}kg
+Goal: ${p.primary_goal} | Fitness Level: ${p.fitness_level} | Activity: ${p.activity_level}
+Allergies: [${p.allergies.join(', ') || 'none'}] | Restrictions: [${p.dietary_restrictions.join(', ') || 'none'}]
 
-CONFIG: ${goalConfig.workoutDays} workout days/week | ${goalConfig.exercisesPerSession} exercises/session | ${goalConfig.setsPerExercise} sets | ${goalConfig.workoutDuration}min | ${goalConfig.intensity} | Split: ${goalConfig.trainingSplit}
-${goalConfig.goalRules}
+═══ METABOLIC TARGETS ═══
+BMR: ${data.targets.bmr} | TDEE: ${data.targets.tdee}
+Daily: ${data.targets.daily_calories}cal | ${data.targets.daily_protein}g protein | ${data.targets.daily_carbs}g carbs | ${data.targets.daily_fat}g fat | Water: ${Math.round((data.targets.water_ml || 2500) / 1000)}L
 
-DATA: Weight ${data.bodyMetrics.weight_trend} (${data.bodyMetrics.weight_change_7d}kg/7d) | BF ${data.bodyMetrics.latest_body_fat || '?'}% | MM ${data.bodyMetrics.latest_muscle_mass || '?'}kg
-WORKOUTS: ${data.workoutPatterns.total_workouts_7d} this week, avg ${data.workoutPatterns.avg_duration_minutes}min | Types: [${data.workoutPatterns.favorite_workout_types.join(', ')}] | Best days: [${data.workoutPatterns.best_performing_days.join(', ')}]
-NUTRITION 7d avg: ${data.nutritionPatterns.avg_daily_calories_7d}cal | ${data.nutritionPatterns.avg_daily_protein_7d}g P (${data.nutritionPatterns.protein_adherence_percent}% adherence) | Macros: ${data.nutritionPatterns.macro_distribution.protein_percent}%P/${data.nutritionPatterns.macro_distribution.carbs_percent}%C/${data.nutritionPatterns.macro_distribution.fat_percent}%F
-FOODS: [${data.nutritionPatterns.most_common_foods.slice(0, 5).join(', ')}]
-SLEEP: ${data.sleepPatterns.avg_duration_hours}h avg | SUPPLEMENTS: [${data.supplementUsage.active_supplements.join(', ')}]
-STREAK: ${data.momentum.current_streak}d
+═══ ACTUAL WORKOUT BEHAVIOR ═══
+Workouts last 30d: ${data.workoutPatterns.total_workouts_30d} total (~${actualDaysPerWeek}/week)
+Workouts last 7d: ${recentDaysPerWeek}
+Avg duration: ${data.workoutPatterns.avg_duration_minutes}min | Avg calories burned: ${data.workoutPatterns.avg_calories_burned}
+Favorite types: [${data.workoutPatterns.favorite_workout_types.join(', ')}]
+Best training days: [${data.workoutPatterns.best_performing_days.join(', ')}]
+Muscles trained (7d): [${data.workoutPatterns.muscles_trained_last_7d.join(', ')}]
+Recovery days last week: ${data.workoutPatterns.recovery_days_last_7d}
+Recent workouts: ${data.workoutPatterns.recent_workouts.slice(0, 5).map(w => `${w.date?.slice(5)} ${w.type} ${w.duration}min`).join(' | ')}
 
-RULES:
-- NEVER same muscle 2 days in a row. EXACTLY ${goalConfig.exercisesPerSession} exercises per session.
-- Protein 30-50g/meal. Use user's common foods. Higher protein on training days.
-- Include warm-up + cool-down. Respect all allergies/restrictions.
-- Output ONLY valid JSON. No markdown, no explanation. Coach messages should be harsh/motivating.`;
+═══ ACTUAL NUTRITION BEHAVIOR ═══
+7d avg: ${data.nutritionPatterns.avg_daily_calories_7d}cal | ${data.nutritionPatterns.avg_daily_protein_7d}g P | ${data.nutritionPatterns.avg_daily_carbs_7d}g C | ${data.nutritionPatterns.avg_daily_fat_7d}g F
+Protein adherence: ${data.nutritionPatterns.protein_adherence_percent}% of target | Calorie adherence: ${data.nutritionPatterns.calorie_adherence_percent}%
+Macro split: ${data.nutritionPatterns.macro_distribution.protein_percent}%P / ${data.nutritionPatterns.macro_distribution.carbs_percent}%C / ${data.nutritionPatterns.macro_distribution.fat_percent}%F
+Common foods: [${data.nutritionPatterns.most_common_foods.slice(0, 8).join(', ')}]
+Recent meals: ${data.nutritionPatterns.recent_meals.slice(0, 5).map(m => `${m.date?.slice(5)} ${m.meal_type} ${m.calories}cal ${m.protein}gP`).join(' | ')}
 
-  const userPrompt = `Generate a 7-day plan from ${weekStart} to ${weekEnd}. Return ONLY this JSON structure (no markdown):
-{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"brief strategy","weekly_overview":{"total_workout_days":4,"total_rest_days":3,"weekly_calorie_target":14000,"weekly_protein_target":980,"focus_areas":["fat_loss"],"weekly_strategy":"strategy here"},"daily_plan":[{"date":"YYYY-MM-DD","day_name":"Monday","is_workout_day":true,"workout":{"focus":"Push","duration_minutes":60,"estimated_calories_burned":350,"intensity":"high","exercises":[{"name":"Bench Press","type":"compound","muscle_groups":["chest"],"sets":4,"reps":"8-10","weight_kg":0,"rest_seconds":90,"notes":""}],"warm_up":"5min cardio","cool_down":"5min stretch","coach_notes":"Go hard."},"nutrition":{"target_calories":2000,"target_protein":140,"target_carbs":200,"target_fat":67,"meals":[{"meal_type":"breakfast","time":"07:00","foods":[{"name":"Eggs","quantity":3,"unit":"whole","calories":210,"protein":18,"carbs":1,"fat":15}],"total_calories":500,"total_protein":35}],"hydration_ml":3000},"sleep":{"target_bedtime":"22:30","target_wake_time":"06:30","target_duration_hours":8},"supplements":[{"name":"Whey","dose":"30g","timing":"post-workout"}],"coach_message":"No excuses.","confidence":0.85}],"recommendations":[{"category":"nutrition","priority":"high","recommendation":"text","reasoning":"text"}]}`;
+═══ RECOVERY ═══
+Sleep avg: ${data.sleepPatterns.avg_duration_hours}h | Quality: ${data.sleepPatterns.avg_quality}/100 | Sleep debt: ${data.sleepPatterns.sleep_debt_hours}h
+Supplements: [${data.supplementUsage.active_supplements.join(', ')}] | Consistency: ${data.supplementUsage.consistency_percent}%
+
+═══ WEIGHT PROGRESS ═══
+Trend: ${data.bodyMetrics.weight_trend} | 7d: ${data.bodyMetrics.weight_change_7d}kg | 30d: ${data.bodyMetrics.weight_change_30d}kg
+History: ${data.bodyMetrics.weight_history.map(w => `${w.date}: ${w.weight}kg`).join(' → ')}
+
+═══ ACTIVE GOALS ═══
+${data.activeGoals.map(g => `${g.type}: ${g.target} (${g.deadline || 'no deadline'}) — ${g.progress}% progress`).join(' | ') || 'No active goals set'}
+
+═══ MOMENTUM ═══
+Streak: ${data.momentum.current_streak}d | Longest: ${data.momentum.longest_streak}d | Score: ${data.momentum.momentum_score}/100
+
+═══ INSTRUCTIONS ═══
+1. ANALYZE the user's actual behavior — how often do they ACTUALLY train? Base workout days on reality, not theory. If they train 5x/week, plan 5 days. If 2x, plan 2-3 days (push them slightly).
+2. Pick workout TYPES they already do and enjoy (favorite types). Don't introduce random exercises.
+3. Schedule workouts on their BEST training days (the days they actually show up).
+4. NUTRITION: Use their common foods in meal plans. Adjust portions to hit targets.
+5. SCALE difficulty to their fitness level. Beginner = fewer sets, longer rest, simpler exercises.
+6. Coach messages must reference their ACTUAL data (streak, adherence %, weight trend).
+7. NEVER train same muscle 2 days in a row.
+8. Output ONLY valid JSON. No markdown. No explanation. No code fences.`;
+
+  const userPrompt = `Generate a 7-day plan from ${weekStart} to ${weekEnd}. Return ONLY this JSON (no markdown):
+{"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"brief strategy based on their data","weekly_overview":{"total_workout_days":0,"total_rest_days":0,"weekly_calorie_target":0,"weekly_protein_target":0,"focus_areas":[],"weekly_strategy":""},"daily_plan":[{"date":"YYYY-MM-DD","day_name":"Monday","is_workout_day":true,"workout":{"focus":"","duration_minutes":0,"estimated_calories_burned":0,"intensity":"","exercises":[{"name":"","type":"compound","muscle_groups":[],"sets":0,"reps":"","weight_kg":0,"rest_seconds":0,"notes":""}],"warm_up":"","cool_down":"","coach_notes":""},"nutrition":{"target_calories":0,"target_protein":0,"target_carbs":0,"target_fat":0,"meals":[{"meal_type":"breakfast","time":"07:00","foods":[{"name":"","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0}],"hydration_ml":0},"sleep":{"target_bedtime":"","target_wake_time":"","target_duration_hours":0},"supplements":[{"name":"","dose":"","timing":""}],"coach_message":"","confidence":0.85}],"recommendations":[{"category":"","priority":"","recommendation":"","reasoning":""}]}`;
 
   return { systemPrompt, userPrompt };
 }
 
 // ═══════════════════════════════════════════════════════════════
-// AI PLAN GENERATION (with retry + robust JSON parsing)
+// AI PLAN GENERATION — tries all models, waits between attempts
 // ═══════════════════════════════════════════════════════════════
 
 function sleep(ms: number): Promise<void> {
@@ -758,10 +793,19 @@ function sleep(ms: number): Promise<void> {
 }
 
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<any> {
-  // Force llama-3.1-8b-instant — it's far more available than 70b
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  // Use default fallback chain: llama-3.3-70b-versatile → llama-3.1-8b-instant
+  // Same as Iron Coach chat — no forced model
+  const attempts = [
+    { delay: 0, label: 'attempt 1 (immediate)' },
+    { delay: 5000, label: 'attempt 2 (5s delay)' },
+    { delay: 10000, label: 'attempt 3 (10s delay)' },
+  ];
+
+  for (const attempt of attempts) {
+    if (attempt.delay > 0) await sleep(attempt.delay);
+    
     try {
-      const responseText = await generateText(userPrompt, systemPrompt, 3000, 'llama-3.1-8b-instant');
+      const responseText = await generateText(userPrompt, systemPrompt, 4096);
 
       // Clean response
       let cleaned = responseText
@@ -769,17 +813,19 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
         .replace(/```\s*/g, '')
         .trim();
 
-      // Extract JSON block
       const firstBrace = cleaned.indexOf('{');
       const lastBrace = cleaned.lastIndexOf('}');
       if (firstBrace !== -1 && lastBrace > firstBrace) {
         cleaned = cleaned.slice(firstBrace, lastBrace + 1);
       }
 
-      // Try parse
       try {
         const parsed = JSON.parse(cleaned);
-        if (parsed.daily_plan?.length > 0) return parsed;
+        if (parsed.daily_plan?.length === 7) return parsed;
+        if (parsed.daily_plan?.length > 0) {
+          console.warn(`[weekly-planner] Got ${parsed.daily_plan.length}/7 days, accepting`);
+          return parsed;
+        }
       } catch {
         // Try repair
         try {
@@ -791,23 +837,18 @@ async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Pro
           const parsed = JSON.parse(repaired);
           if (parsed.daily_plan?.length > 0) return parsed;
         } catch {
-          console.warn(`[weekly-planner] JSON parse failed attempt ${attempt}`);
+          console.warn(`[weekly-planner] JSON parse failed (${attempt.label})`);
         }
       }
-
-      // Wait before retry
-      if (attempt < 2) await sleep(2000);
     } catch (err) {
-      console.warn(`[weekly-planner] AI error attempt ${attempt}:`, err instanceof Error ? err.message : err);
-      if (attempt < 2) await sleep(3000);
+      console.warn(`[weekly-planner] AI error (${attempt.label}):`, err instanceof Error ? err.message : err);
     }
   }
-  return null; // AI completely failed — caller should use deterministic fallback
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════════
-// DETERMINISTIC PLAN BUILDER (zero AI dependency)
-// Builds a science-based plan from user data when AI is unavailable
+// DETERMINISTIC FALLBACK — last resort, uses ACTUAL user behavior
 // ═══════════════════════════════════════════════════════════════
 
 const WORKOUT_TEMPLATES: Record<string, Array<{ focus: string; exercises: Array<{ name: string; type: string; sets: number; reps: string }> }>> = {
@@ -868,7 +909,36 @@ const MEAL_TEMPLATES = [
 function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, weekEnd: string): any {
   const goal = data.profile.primary_goal?.toLowerCase() || 'general_fitness';
   const isBeginner = data.profile.fitness_level === 'beginner';
-  const workoutDays = data.targets.workout_days_per_week || (isBeginner ? 3 : 4);
+  const isAdvanced = data.profile.fitness_level === 'advanced' || data.profile.fitness_level === 'intermediate';
+
+  // Calculate workout days from ACTUAL user behavior, not theory
+  let workoutDays: number;
+  const weeklyFreq = data.workoutPatterns.total_workouts_30d > 0
+    ? data.workoutPatterns.total_workouts_30d / 4
+    : 0;
+  const recentFreq = data.workoutPatterns.total_workouts_7d;
+
+  if (recentFreq >= 3) {
+    // Active user — match their current frequency or push slightly
+    workoutDays = Math.min(6, Math.max(recentFreq, Math.round(weeklyFreq)));
+  } else if (weeklyFreq >= 2) {
+    // Moderate — use their 30d average rounded up
+    workoutDays = Math.ceil(weeklyFreq);
+  } else if (weeklyFreq >= 1) {
+    // Getting started — 3 days to build habit
+    workoutDays = 3;
+  } else {
+    // No data — use activity level
+    workoutDays = data.profile.activity_level === 'very_active' ? 5
+      : data.profile.activity_level === 'active' ? 4
+      : data.profile.activity_level === 'moderate' ? 3 : 2;
+  }
+
+  // Goal adjustments
+  if (goal.includes('fat_loss') && workoutDays < 4) workoutDays = Math.min(workoutDays + 1, 5);
+  if (goal.includes('endurance')) workoutDays = Math.max(workoutDays, 5);
+  if (isBeginner && workoutDays > 4) workoutDays = 4;
+
   const restDays = 7 - workoutDays;
 
   // Pick training split
@@ -886,6 +956,40 @@ function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, 
     // Insert cardio on a rest day
     for (let i = 0; i < split.length; i++) {
       if (split[i] === 'rest' && i < 5) { split[i] = 'hiit'; break; }
+    }
+  }
+
+  // Schedule workouts on user's BEST training days
+  const bestDays = data.workoutPatterns.best_performing_days.map(d => d.toLowerCase());
+  if (bestDays.length > 0) {
+    // Count workouts currently scheduled on best days
+    const dayMap: Record<string, number> = { monday: 0, tuesday: 1, wednesday: 2, thursday: 3, friday: 4, saturday: 5, sunday: 6 };
+    const workoutIndices = split.map((s, i) => s !== 'rest' ? i : -1).filter(i => i >= 0);
+    
+    // If most workouts are NOT on best days, try to reschedule
+    let onBestDays = workoutIndices.filter(i => bestDays.includes(DAY_NAMES[i].toLowerCase())).length;
+    if (onBestDays < Math.floor(workoutDays / 2) && workoutIndices.length === workoutDays) {
+      // Simple reschedule: put workouts on best days first
+      const newSplit = Array(7).fill('rest');
+      let assigned = 0;
+      // First pass: assign to best days
+      for (const dayName of bestDays) {
+        const idx = dayMap[dayName];
+        if (idx !== undefined && assigned < workoutDays) {
+          newSplit[idx] = split[workoutIndices[assigned]] || 'full_body';
+          assigned++;
+        }
+      }
+      // Second pass: fill remaining
+      if (assigned < workoutDays) {
+        for (let i = 0; i < 7 && assigned < workoutDays; i++) {
+          if (newSplit[i] === 'rest') {
+            newSplit[i] = split[workoutIndices[assigned]] || 'full_body';
+            assigned++;
+          }
+        }
+      }
+      split = newSplit;
     }
   }
 
