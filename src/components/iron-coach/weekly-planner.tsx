@@ -553,8 +553,13 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
   }, [currentWeekStart]);
 
   const handleRegenerate = useCallback(() => {
+    console.log('[WeeklyPlanner] handleRegenerate clicked, remaining:', regenerationsRemaining, 'isRegenerating:', isRegenerating);
+    if (isRegenerating || regenerationsRemaining <= 0) {
+      console.log('[WeeklyPlanner] Regenerate blocked — isRegenerating:', isRegenerating, 'remaining:', regenerationsRemaining);
+      return;
+    }
     loadPlan(true);
-  }, [loadPlan, currentWeekStart]);
+  }, [loadPlan, regenerationsRemaining, isRegenerating]);
 
   // Load plan when week changes
   useEffect(() => {
