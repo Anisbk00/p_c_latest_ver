@@ -4,6 +4,7 @@ import { getSupabase } from '@/lib/supabase/supabase-data';
 // import { createCloudEmbedding } from './cloud';
 import { getTopAIMemory } from './ai-store';
 import { buildHybridCoachSystemPrompt, buildHybridCoachUserPrompt } from './prompt-template';
+import { calculatePersonalizedTargets } from '@/lib/personalized-targets';
 import type { IronCoachContextSnapshot } from './types';
 
 // Type for weekly plan data
@@ -103,29 +104,34 @@ function calculateAge(birthdate: string | null | undefined): number | null {
 }
 
 /**
- * Calculate protein target based on bodyweight and goal
- * Standard recommendations:
- * - General fitness: 1.6g/kg
- * - Fat loss: 2.0-2.2g/kg (higher to preserve muscle)
- * - Muscle gain: 1.8-2.0g/kg
- * 
- * Returns null if weight is unknown (will be marked as "unknown" in prompt)
+ * Calculate protein target using the same engine as the weekly planner.
+ * Uses calculatePersonalizedTargets for consistency.
+ * Returns null if weight is unknown.
  */
-function calculateProteinTarget(weightKg: number | null | undefined, goal?: string | null): number | null {
+function calculateProteinTarget(
+  weightKg: number | null | undefined,
+  heightCm: number | null | undefined,
+  birthDate: string | null | undefined,
+  biologicalSex: string | null | undefined,
+  activityLevel: string | null | undefined,
+  primaryGoal: string | null | undefined,
+): number | null {
   if (!weightKg || weightKg <= 0) return null;
   
-  const goalLower = goal?.toLowerCase() || '';
-  let multiplier = 1.6; // default
-  
-  if (goalLower.includes('fat_loss') || goalLower.includes('fat loss')) {
-    multiplier = 2.0;
-  } else if (goalLower.includes('muscle') || goalLower.includes('gain')) {
-    multiplier = 1.8;
-  } else if (goalLower.includes('strength')) {
-    multiplier = 1.8;
+  try {
+    const targets = calculatePersonalizedTargets({
+      weightKg,
+      heightCm: heightCm || null,
+      birthDate: birthDate || null,
+      biologicalSex: biologicalSex || null,
+      activityLevel: activityLevel || 'moderate',
+      primaryGoal: primaryGoal || 'maintenance',
+    });
+    return targets.protein || null;
+  } catch {
+    // Fallback: 2.0g/kg minimum for any fitness goal
+    return Math.round(weightKg * 2.0);
   }
-  
-  return Math.round(weightKg * multiplier);
 }
 
 export async function buildIronCoachContext(userId: string, question: string): Promise<IronCoachContextSnapshot> {
@@ -478,9 +484,17 @@ export async function buildIronCoachContext(userId: string, question: string): P
     }
   }
   
-  // Calculate protein target based on user's actual weight, or use null if unknown
+  // Calculate protein target using the same engine as the weekly planner
+  // This ensures consistency between chat advice and weekly plan numbers
   const userWeightKg = profile?.weight_kg || latestWeight?.value || null;
-  const calculatedProteinTarget = calculateProteinTarget(userWeightKg, latestGoal?.goal_type);
+  const calculatedProteinTarget = calculateProteinTarget(
+    userWeightKg,
+    profile?.height_cm || extendedProfile?.height_cm || null,
+    profile?.birthdate || extendedProfile?.birth_date || null,
+    profile?.sex || extendedProfile?.biological_sex || null,
+    extendedProfile?.activity_level || profile?.activity_level || 'moderate',
+    extendedProfile?.primary_goal || latestGoal?.goal_type || 'maintenance',
+  );
   
   // Use calculated target if available, otherwise we cannot calculate adherence accurately
   // Protein adherence will be shown as "unknown" if we don't have the target

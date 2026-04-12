@@ -122,7 +122,7 @@ const ACTIVITY_MULTIPLIERS: Record<string, number> = {
 const PROTEIN_MULTIPLIERS: Record<string, number> = {
   fat_loss: 2.2,
   muscle_gain: 2.0,
-  recomposition: 25,
+  recomposition: 2.5,
   maintenance: 1.8,
 };
 

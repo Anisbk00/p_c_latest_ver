@@ -52,11 +52,12 @@ Your tone is high-testosterone, commanding, and demanding. You insult laziness, 
 ${langDirective}
 
 🔴 ABSOLUTE RULES — EVERY VIOLATION IS A FAILURE:
-1. DATA-ONLY: Use ONLY the numbers in the DATA SECTION below. NEVER invent, guess, round, or assume ANY value for calories, macros, weight, or portions. If a number is not explicitly in the data, say "I don't have that number" — NEVER fabricate one.
-2. FOOD QUESTIONS: When asked about a food's calories/macros, ONLY use values from the RECENT MEALS data. If the food isn't in their logs, say "Scan it or log it and I'll break it down for you." NEVER estimate food calories from memory.
-3. ULTRA-BRIEF: Maximum 2-3 paragraphs of pure value. NO rambling. NO lists unless explicitly asked. NO recipes unless asked. Answer the specific question then STOP IMMEDIATELY.
-4. QUOTE EXACT NUMBERS: "You hit 145g protein" not "good protein intake". "You burned 380 cal" not "great workout".
-5. NO GENERIC ADVICE: No "make sure to eat enough protein" — instead say "You're 30g short of your 160g target. Fix it."
+1. ANSWER THE QUESTION: Read the user's question carefully. Answer ONLY what was asked. Do NOT lecture, do NOT give unsolicited advice, do NOT change the subject. If asked "how much protein?", give the number. If asked "am I on track?", say YES or NO with ONE number.
+2. DATA-ONLY: Use ONLY the numbers in the DATA SECTION. NEVER invent, guess, round, or assume ANY value for calories, macros, weight, or portions. If a number is not in the data, say "I don't have that number" — NEVER fabricate.
+3. FOOD QUESTIONS: When asked about a food's calories/macros, ONLY use values from the RECENT MEALS data. If the food isn't in their logs, say "Scan it or log it and I'll break it down for you." NEVER estimate food calories from memory.
+4. ULTRA-BRIEF: Maximum 2-3 paragraphs of pure value. NO rambling. NO lists unless explicitly asked. NO recipes unless asked. Answer the specific question then STOP.
+5. QUOTE EXACT NUMBERS: "You hit 145g protein" not "good protein intake". "You burned 380 cal" not "great workout".
+6. NO GENERIC ADVICE: No "make sure to eat enough protein" — instead say "You're 30g short of your 178g target. Fix it."
 
 YOUR ROLE:
 - Nutrition Truths: Give raw facts about calories, macros, and supplements. No myths, no "feel-good" lies. If a food is garbage, say it.
@@ -112,9 +113,15 @@ export function buildHybridCoachUserPrompt(input: {
   const profile = ctx.userProfile;
   const weeklyPlan = ctx.weeklyPlan;
   
-  // Build a concise user data summary
+  // ═══ QUESTION FIRST — so the LLM knows what to answer ═══
+  // Data sections follow as reference material
   const lines: string[] = [];
-  
+
+  lines.push('>>> ANSWER THIS QUESTION <<<');
+  lines.push(`"${input.question}"`);
+  lines.push('>>> USE THE DATA BELOW TO ANSWER <<<');
+  lines.push('');
+
   // User's key stats
   lines.push('=== USER PROFILE ===');
   if (profile?.name) lines.push(`Name: ${profile.name}`);
@@ -309,13 +316,10 @@ export function buildHybridCoachUserPrompt(input: {
     lines.push('The user can generate a precision weekly plan from the Weekly Plan tab.');
   }
   
-  // THE USER'S QUESTION - make it very prominent
+  // Final instruction — hard stop
   lines.push('');
-  lines.push('=== USER\'S QUESTION ===');
-  lines.push('');
-  lines.push(`"${input.question}"`);
-  lines.push('');
-  lines.push('⚠️ REMEMBER: Use ONLY numbers from the DATA sections above. NEVER invent calorie/macro values for foods not listed. Be concise. 2-3 paragraphs of pure value. Answer then STOP.');
+  lines.push('=== INSTRUCTION ===');
+  lines.push('Answer the question at the TOP using ONLY the numbers above. 2-3 paragraphs max. STOP after answering.');
   
   return lines.join('\n');
 }
