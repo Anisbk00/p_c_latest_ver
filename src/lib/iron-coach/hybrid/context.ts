@@ -586,11 +586,18 @@ export async function buildIronCoachContext(userId: string, question: string): P
     recommendations: planData?.recommendations || undefined,
   };
 
+  // ═══ RESOLVE USER NAME — NEVER fall back to "User" ═══
+  // Try multiple sources to find the real name
+  const resolvedName = profile?.name?.trim()
+    || (extendedProfile as any)?.display_name?.trim()
+    || (extendedProfile as any)?.full_name?.trim()
+    || null; // null means "no name" — the AI will use bro/fam/king
+
   // Build comprehensive user profile for AI context
   // IMPORTANT: null values mean "unknown" - AI should NOT assume defaults
   const userProfile = {
     // Basic info
-    name: profile?.name || 'User',
+    name: resolvedName, // null if no name set — AI uses bro/fam/king
     age: calculateAge(profile?.birthdate),
     sex: profile?.sex || null,
     
@@ -716,7 +723,7 @@ export async function buildIronCoachContext(userId: string, question: string): P
 }
 
 export function buildContextPrompt(context: IronCoachContextSnapshot, question: string, locale = 'en', adaptiveBlock?: string): { system: string; user: string } {
-  const systemPrompt = buildHybridCoachSystemPrompt(locale);
+  const systemPrompt = buildHybridCoachSystemPrompt(locale, 'aggressive');
   const userPrompt = buildHybridCoachUserPrompt({
     question,
     context,
