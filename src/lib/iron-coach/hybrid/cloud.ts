@@ -180,9 +180,10 @@ export async function streamCloudPrompt(options: CloudStreamOptions & { locale?:
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error('[streamCloudPrompt] Error:', errorMessage);
 
-    const errorFallback = `⚠️ ${errorMessage.slice(0, 180)}. Try again.`;
-    for (const ch of errorFallback) onToken(ch);
-    return errorFallback;
+    // NEVER show raw API errors to users — only a friendly message
+    const userFallback = "💪 I'm slammed right now. Give me a sec and try again!";
+    for (const ch of userFallback) onToken(ch);
+    return userFallback;
   }
 }
 
