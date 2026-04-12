@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseUser } from '@/lib/supabase/supabase-data';
 import { calculatePersonalizedTargets } from '@/lib/personalized-targets';
 
-// NOTE: No maxDuration override — Vercel Hobby plan hard-caps at 10s regardless.
-// We use a fast AI call path to stay within budget.
+// maxDuration: Vercel Hobby=10s (hard cap, can't override). Pro=60s (auto).
+// No artificial client-side timeout — let the function use its full budget.
 
 /**
  * PRECISION WEEKLY PLANNER API
@@ -1032,13 +1032,11 @@ function generateFallbackPlan(userData: UserComprehensiveData, weekStartStr: str
 /**
  * Fast Groq API call — bypasses the shared groq-service to stay within Vercel Hobby 10s limit.
  * Supports model fallback chain: if one model returns 429 (rate limit), tries the next.
- * Each call has a per-attempt timeout. Total budget must stay under Vercel Hobby's 10s cap.
+ * No artificial timeout — lets Vercel's function limit (10s Hobby / 60s Pro) be
+ * the natural boundary so the AI can take the time it needs for quality output.
  */
-// Primary model first (smartest, best at JSON), then fast fallbacks
-const GROQ_MODELS = [
-  'llama-3.3-70b-versatile',  // Best quality JSON — try first
-  'llama-3.1-8b-instant',    // Fast fallback — less reliable for complex JSON
-];
+const PLANNER_MODEL = 'llama-3.3-70b-versatile';
+const FALLBACK_MODELS = ['llama-3.1-8b-instant'];
 
 async function generateTextFast(
   systemPrompt: string,
@@ -1048,15 +1046,11 @@ async function generateTextFast(
   const GROQ_API_KEY = process.env.GROQ_API_KEY;
   if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
 
-  for (let i = 0; i < GROQ_MODELS.length; i++) {
-    const model = GROQ_MODELS[i];
-    // First attempt gets 9s (Vercel 10s limit minus 1s buffer), second gets 5s
-    const attemptTimeout = i === 0 ? 9000 : 5000;
+  const modelsToTry = [PLANNER_MODEL, ...FALLBACK_MODELS];
 
-    console.log(`[weekly-planner] attempt ${i + 1}/${GROQ_MODELS.length}: calling Groq API (${model})...`);
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), attemptTimeout);
+  for (let i = 0; i < modelsToTry.length; i++) {
+    const model = modelsToTry[i];
+    console.log(`[weekly-planner] attempt ${i + 1}/${modelsToTry.length}: calling Groq API (${model})...`);
 
     try {
       const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
@@ -1072,9 +1066,9 @@ async function generateTextFast(
             { role: 'user', content: userPrompt },
           ],
           temperature: 0.3,
-          max_tokens: 3000,
+          max_tokens: 4000,
         }),
-        signal: controller.signal,
+        // No AbortController — let Vercel's function limit handle timeout
       });
 
       if (!response.ok) {
@@ -1091,12 +1085,12 @@ async function generateTextFast(
         });
 
         // On 429, try next model immediately (don't waste time waiting)
-        if (isRateLimit && i < GROQ_MODELS.length - 1) {
+        if (isRateLimit && i < modelsToTry.length - 1) {
           console.log(`[weekly-planner] attempt ${i + 1}: rate limited, trying next model...`);
           continue;
         }
         // On non-429 error, also try next model
-        if (i < GROQ_MODELS.length - 1) continue;
+        if (i < modelsToTry.length - 1) continue;
 
         throw new Error(`All models failed. Last: ${model} — ${response.status}`);
       }
@@ -1111,7 +1105,7 @@ async function generateTextFast(
           error: 'Empty response from Groq',
           timestamp: new Date().toISOString(),
         });
-        if (i < GROQ_MODELS.length - 1) continue;
+        if (i < modelsToTry.length - 1) continue;
         throw new Error('Empty response from all models');
       }
 
@@ -1119,15 +1113,16 @@ async function generateTextFast(
       return content;
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        console.error(`[weekly-planner] attempt ${i + 1}: timeout after ${attemptTimeout}ms for ${model}`);
+        // Vercel function timeout — no fallback, just report
+        console.error(`[weekly-planner] attempt ${i + 1}: Vercel function timeout for ${model}`);
         errors.push({
           attempt: `attempt ${i + 1}`,
           stage: 'api_call',
           model,
-          error: `Timeout after ${attemptTimeout}ms`,
+          error: 'Vercel function timeout',
           timestamp: new Date().toISOString(),
         });
-        if (i < GROQ_MODELS.length - 1) continue;
+        if (i < modelsToTry.length - 1) continue;
         throw new Error('All models timed out');
       }
       // Re-throw if it's our aggregate error
@@ -1140,10 +1135,10 @@ async function generateTextFast(
         error: err instanceof Error ? err.message : String(err),
         timestamp: new Date().toISOString(),
       });
-      if (i < GROQ_MODELS.length - 1) continue;
+      if (i < modelsToTry.length - 1) continue;
       throw err;
     } finally {
-      clearTimeout(timeout);
+      // no timeout to clear
     }
   }
 
