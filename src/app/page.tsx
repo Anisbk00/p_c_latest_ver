@@ -1293,7 +1293,7 @@ function ProgressCompanionHome() {
       
       {/* ═══ iOS TAB BAR ═══ */}
       <nav 
-        className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t border-border/30 z-40"
+        className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t border-border/30 z-40 pb-[env(safe-area-inset-bottom,0px)]"
         role="navigation"
         aria-label="Main navigation"
       >

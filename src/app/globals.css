@@ -519,17 +519,20 @@
 }
 
 .safe-area-bottom-spacer {
-  height: max(env(safe-area-inset-bottom, 0px), env(safe-area-inset-bottom, 4px));
+  height: max(env(safe-area-inset-bottom, 0px), 8px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 @supports (padding-bottom: env(safe-area-inset-bottom)) {
   .safe-area-bottom-spacer {
     height: env(safe-area-inset-bottom, 0px);
+    padding-bottom: 0;
   }
 }
 
 .safe-area-bottom-keyboard {
-  height: 0;
+  height: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 .horizontal-scroll-touch {
