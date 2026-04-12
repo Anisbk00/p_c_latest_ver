@@ -749,6 +749,269 @@ RULES:
   return { systemPrompt, userPrompt };
 }
 
+// ═══════════════════════════════════════════════════════════════
+// AI PLAN GENERATION (with retry + robust JSON parsing)
+// ═══════════════════════════════════════════════════════════════
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<any> {
+  // Force llama-3.1-8b-instant — it's far more available than 70b
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const responseText = await generateText(userPrompt, systemPrompt, 3000, 'llama-3.1-8b-instant');
+
+      // Clean response
+      let cleaned = responseText
+        .replace(/```json\s*/gi, '')
+        .replace(/```\s*/g, '')
+        .trim();
+
+      // Extract JSON block
+      const firstBrace = cleaned.indexOf('{');
+      const lastBrace = cleaned.lastIndexOf('}');
+      if (firstBrace !== -1 && lastBrace > firstBrace) {
+        cleaned = cleaned.slice(firstBrace, lastBrace + 1);
+      }
+
+      // Try parse
+      try {
+        const parsed = JSON.parse(cleaned);
+        if (parsed.daily_plan?.length > 0) return parsed;
+      } catch {
+        // Try repair
+        try {
+          const repaired = cleaned
+            .replace(/,\s*([}\]])/g, '$1')
+            .replace(/'/g, '"')
+            .replace(/\n/g, '')
+            .replace(/\s{2,}/g, ' ');
+          const parsed = JSON.parse(repaired);
+          if (parsed.daily_plan?.length > 0) return parsed;
+        } catch {
+          console.warn(`[weekly-planner] JSON parse failed attempt ${attempt}`);
+        }
+      }
+
+      // Wait before retry
+      if (attempt < 2) await sleep(2000);
+    } catch (err) {
+      console.warn(`[weekly-planner] AI error attempt ${attempt}:`, err instanceof Error ? err.message : err);
+      if (attempt < 2) await sleep(3000);
+    }
+  }
+  return null; // AI completely failed — caller should use deterministic fallback
+}
+
+// ═══════════════════════════════════════════════════════════════
+// DETERMINISTIC PLAN BUILDER (zero AI dependency)
+// Builds a science-based plan from user data when AI is unavailable
+// ═══════════════════════════════════════════════════════════════
+
+const WORKOUT_TEMPLATES: Record<string, Array<{ focus: string; exercises: Array<{ name: string; type: string; sets: number; reps: string }> }>> = {
+  push: [{ focus: 'Push (Chest/Shoulders/Triceps)', exercises: [
+    { name: 'Bench Press', type: 'compound', sets: 4, reps: '8-10' },
+    { name: 'Overhead Press', type: 'compound', sets: 3, reps: '8-10' },
+    { name: 'Dumbbell Flyes', type: 'isolation', sets: 3, reps: '12-15' },
+    { name: 'Tricep Dips', type: 'compound', sets: 3, reps: '10-12' },
+  ]}],
+  pull: [{ focus: 'Pull (Back/Biceps)', exercises: [
+    { name: 'Pull-ups', type: 'compound', sets: 4, reps: '6-10' },
+    { name: 'Barbell Row', type: 'compound', sets: 4, reps: '8-10' },
+    { name: 'Face Pulls', type: 'isolation', sets: 3, reps: '15' },
+    { name: 'Bicep Curls', type: 'isolation', sets: 3, reps: '12' },
+  ]}],
+  legs: [{ focus: 'Legs (Quads/Hams/Glutes)', exercises: [
+    { name: 'Barbell Squat', type: 'compound', sets: 4, reps: '8-10' },
+    { name: 'Romanian Deadlift', type: 'compound', sets: 4, reps: '8-10' },
+    { name: 'Leg Press', type: 'compound', sets: 3, reps: '10-12' },
+    { name: 'Calf Raises', type: 'isolation', sets: 3, reps: '15' },
+  ]}],
+  upper: [{ focus: 'Upper Body', exercises: [
+    { name: 'Bench Press', type: 'compound', sets: 3, reps: '8-10' },
+    { name: 'Barbell Row', type: 'compound', sets: 3, reps: '8-10' },
+    { name: 'Overhead Press', type: 'compound', sets: 3, reps: '10' },
+    { name: 'Pull-ups', type: 'compound', sets: 3, reps: '8' },
+  ]}],
+  lower: [{ focus: 'Lower Body', exercises: [
+    { name: 'Barbell Squat', type: 'compound', sets: 3, reps: '8-10' },
+    { name: 'Romanian Deadlift', type: 'compound', sets: 3, reps: '8-10' },
+    { name: 'Lunges', type: 'compound', sets: 3, reps: '10 each' },
+    { name: 'Leg Curls', type: 'isolation', sets: 3, reps: '12' },
+  ]}],
+  full_body: [{ focus: 'Full Body', exercises: [
+    { name: 'Squat', type: 'compound', sets: 3, reps: '8-10' },
+    { name: 'Bench Press', type: 'compound', sets: 3, reps: '8-10' },
+    { name: 'Barbell Row', type: 'compound', sets: 3, reps: '8-10' },
+    { name: 'Overhead Press', type: 'compound', sets: 3, reps: '10' },
+  ]}],
+  hiit: [{ focus: 'HIIT Cardio', exercises: [
+    { name: 'Burpees', type: 'cardio', sets: 4, reps: '30s on/15s off' },
+    { name: 'Mountain Climbers', type: 'cardio', sets: 4, reps: '30s on/15s off' },
+    { name: 'Jump Squats', type: 'cardio', sets: 4, reps: '30s on/15s off' },
+    { name: 'High Knees', type: 'cardio', sets: 4, reps: '30s on/15s off' },
+  ]}],
+};
+
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+const MEAL_TEMPLATES = [
+  { meal_type: 'breakfast', time: '07:00' },
+  { meal_type: 'snack', time: '10:00' },
+  { meal_type: 'lunch', time: '12:30' },
+  { meal_type: 'snack', time: '15:30' },
+  { meal_type: 'dinner', time: '19:00' },
+];
+
+function buildDeterministicPlan(data: UserComprehensiveData, weekStart: string, weekEnd: string): any {
+  const goal = data.profile.primary_goal?.toLowerCase() || 'general_fitness';
+  const isBeginner = data.profile.fitness_level === 'beginner';
+  const workoutDays = data.targets.workout_days_per_week || (isBeginner ? 3 : 4);
+  const restDays = 7 - workoutDays;
+
+  // Pick training split
+  let split: string[];
+  if (workoutDays <= 3) {
+    split = ['full_body', 'rest', 'full_body', 'rest', 'full_body', 'rest', 'rest'];
+  } else if (workoutDays <= 4) {
+    split = ['upper', 'rest', 'lower', 'rest', 'upper', 'lower', 'rest'];
+  } else {
+    split = ['push', 'pull', 'legs', 'rest', 'push', 'pull', 'legs'];
+  }
+
+  // Adjust for goal
+  if (goal.includes('fat_loss') || goal.includes('weight')) {
+    // Insert cardio on a rest day
+    for (let i = 0; i < split.length; i++) {
+      if (split[i] === 'rest' && i < 5) { split[i] = 'hiit'; break; }
+    }
+  }
+
+  // Distribute calories: higher on training days, lower on rest
+  const baseCal = data.targets.daily_calories;
+  const baseProtein = data.targets.daily_protein;
+  const baseCarbs = data.targets.daily_carbs;
+  const baseFat = data.targets.daily_fat;
+
+  const dailyPlans = [];
+  const weekDates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    weekDates.push(d.toISOString().split('T')[0]);
+  }
+
+  for (let i = 0; i < 7; i++) {
+    const dayType = split[i];
+    const isWorkout = dayType !== 'rest';
+    const template = isWorkout ? WORKOUT_TEMPLATES[dayType] || WORKOUT_TEMPLATES.full_body : null;
+
+    // Adjust macros for training vs rest
+    const calMult = isWorkout ? 1.1 : 0.9;
+    const dayCal = Math.round(baseCal * calMult);
+    const dayProtein = isWorkout ? Math.round(baseProtein * 1.05) : baseProtein;
+    const dayCarbs = Math.round(baseCarbs * calMult);
+    const dayFat = Math.round(baseFat * (isWorkout ? 1.0 : 0.95));
+
+    // Build meals from user's common foods + fallbacks
+    const userFoods = data.nutritionPatterns.most_common_foods.slice(0, 5);
+    const fallbackFoods = [
+      { name: 'Chicken Breast', calories: 165, protein: 31, carbs: 0, fat: 3.6 },
+      { name: 'Eggs', calories: 78, protein: 6, carbs: 1, fat: 5 },
+      { name: 'Rice', calories: 130, protein: 2.7, carbs: 28, fat: 0.3 },
+      { name: 'Oats', calories: 150, protein: 5, carbs: 27, fat: 2.5 },
+      { name: 'Tuna', calories: 130, protein: 29, carbs: 0, fat: 0.6 },
+    ];
+
+    const meals = MEAL_TEMPLATES.map(mt => {
+      // Pick food: user food or fallback
+      const foodSource = userFoods.length > 0 ? userFoods : fallbackFoods.map(f => f.name);
+      const foodName = foodSource[Math.floor(Math.random() * foodSource.length)] || 'Chicken Breast';
+      const portion = mt.meal_type === 'snack' ? 0.5 : 1;
+      const cal = Math.round((dayCal / 5) * portion);
+      const pro = Math.round((dayProtein / 5) * portion);
+      const carbs = Math.round((dayCarbs / 5) * portion);
+      const fat = Math.round((dayFat / 5) * portion);
+
+      return {
+        meal_type: mt.meal_type,
+        time: mt.time,
+        foods: [{ name: foodName, quantity: portion === 0.5 ? 1 : 1, unit: 'serving', calories: cal, protein: pro, carbs, fat }],
+        total_calories: cal,
+        total_protein: pro,
+      };
+    });
+
+    const workoutBlock = isWorkout ? {
+      focus: template![0].focus,
+      duration_minutes: isBeginner ? 45 : 60,
+      estimated_calories_burned: isBeginner ? 250 : 350,
+      intensity: isBeginner ? 'moderate' : 'high',
+      exercises: template![0].exercises.map(ex => ({
+        name: ex.name, type: ex.type, muscle_groups: [ex.type === 'compound' ? ex.name.split(' ')[0].toLowerCase() : 'general'],
+        sets: ex.sets, reps: ex.reps, weight_kg: 0, rest_seconds: isBeginner ? 90 : 60, notes: '',
+      })),
+      warm_up: '5min light cardio + dynamic stretching',
+      cool_down: '5min stretching',
+      coach_notes: isWorkout && dayType === 'hiit' ? 'Burn that fat. No excuses.' : 'Progressive overload. Every rep counts.',
+    } : null;
+
+    // Coach messages based on actual data
+    const pAdh = data.nutritionPatterns.protein_adherence_percent;
+    let coachMsg = 'Discipline is everything. Execute.';
+    if (pAdh < 50) coachMsg = `You're hitting only ${pAdh}% protein adherence. Fix your diet NOW.`;
+    else if (pAdh < 75) coachMsg = `${pAdh}% protein adherence is weak. Step up.`;
+    else if (data.momentum.current_streak > 7) coachMsg = `${data.momentum.current_streak} day streak! Don't you dare break it.`;
+    else if (isWorkout) coachMsg = 'Time to work. Leave nothing in the tank.';
+
+    dailyPlans.push({
+      date: weekDates[i],
+      day_name: DAY_NAMES[i],
+      is_workout_day: isWorkout,
+      workout: workoutBlock,
+      nutrition: {
+        target_calories: dayCal,
+        target_protein: dayProtein,
+        target_carbs: dayCarbs,
+        target_fat: dayFat,
+        meals,
+        hydration_ml: data.targets.water_ml || 2500,
+      },
+      sleep: { target_bedtime: '22:30', target_wake_time: '06:30', target_duration_hours: 8 },
+      supplements: data.supplementUsage.active_supplements.map(s => ({ name: s, dose: 'as directed', timing: 'daily' })),
+      coach_message: coachMsg,
+      confidence: 0.7,
+    });
+  }
+
+  // Build recommendations from actual data
+  const proteinPct = data.nutritionPatterns.protein_adherence_percent;
+  const recs = [];
+  if (proteinPct < 70) recs.push({ category: 'nutrition', priority: 'high', recommendation: `Hit your ${baseProtein}g daily protein target`, reasoning: `Current adherence is ${proteinPct}%` });
+  if (data.workoutPatterns.total_workouts_7d < 2) recs.push({ category: 'training', priority: 'high', recommendation: `Train at least ${workoutDays}x this week`, reasoning: `Only ${data.workoutPatterns.total_workouts_7d} workouts last week` });
+  if (data.sleepPatterns.avg_duration_hours < 7) recs.push({ category: 'recovery', priority: 'medium', recommendation: 'Sleep at least 7.5 hours', reasoning: `Current avg: ${data.sleepPatterns.avg_duration_hours}h` });
+  if (recs.length === 0) recs.push({ category: 'general', priority: 'low', recommendation: 'Keep the streak alive', reasoning: 'Consistency is key to progress' });
+
+  return {
+    week_start: weekStart,
+    week_end: weekEnd,
+    plan_confidence: 0.7,
+    generation_reasoning: 'Deterministic plan based on user profile data and goals (AI unavailable)',
+    weekly_overview: {
+      total_workout_days: workoutDays,
+      total_rest_days: restDays,
+      weekly_calorie_target: baseCal * 7,
+      weekly_protein_target: baseProtein * 7,
+      focus_areas: [goal],
+      weekly_strategy: `${goal.replace('_', ' ')} — ${split.filter(s => s !== 'rest')[0]?.toUpperCase()} split`,
+    },
+    daily_plan: dailyPlans,
+    recommendations: recs,
+  };
+}
+
 // MAIN API HANDLERS
 
 export async function POST(request: NextRequest) {
@@ -817,89 +1080,26 @@ export async function POST(request: NextRequest) {
       weekEndStr
     );
 
-    // Generate plan with AI (retry once on JSON parse failure)
-    let plan;
-    let lastResponseText = '';
-    const MAX_GENERATION_ATTEMPTS = 2;
+    // ═══ PRODUCTION PLAN GENERATION ═══
+    // 1. Try AI (llama-3.1-8b-instant — more available than 70b)
+    // 2. If AI fails, build a deterministic plan from user data (zero AI dependency)
+    let plan: any = null;
 
-    for (let attempt = 1; attempt <= MAX_GENERATION_ATTEMPTS; attempt++) {
-      try {
-        lastResponseText = await generateText(userPrompt, systemPrompt, 3000);
-
-        // Clean up response — strip markdown fences, leading/trailing text
-        let cleaned = lastResponseText
-          .replace(/```json\s*/gi, '')
-          .replace(/```\s*/g, '')
-          .trim();
-
-        // Remove any text before the first { and after the last }
-        const firstBrace = cleaned.indexOf('{');
-        const lastBrace = cleaned.lastIndexOf('}');
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-          cleaned = cleaned.slice(firstBrace, lastBrace + 1);
-        }
-
-        try {
-          plan = JSON.parse(cleaned);
-          break; // success — exit retry loop
-        } catch (parseErr) {
-          console.error(`[weekly-planner] JSON parse error (attempt ${attempt}/${MAX_GENERATION_ATTEMPTS}):`, parseErr);
-          console.error('[weekly-planner] Response (first 300 chars):', lastResponseText?.slice(0, 300));
-          console.error('[weekly-planner] Cleaned (first 300 chars):', cleaned?.slice(0, 300));
-
-          if (attempt === MAX_GENERATION_ATTEMPTS) {
-            // Final attempt failed — try aggressive repair
-            try {
-              // Fix common issues: trailing commas, single quotes, unquoted keys
-              const repaired = cleaned
-                .replace(/,\s*([}\]])/g, '$1')          // trailing commas
-                .replace(/'/g, '"')                       // single → double quotes
-                .replace(/(\w+)(?=\s*:)/g, '"$1"')      // quote unquoted keys (best effort)
-                .replace(/\n/g, '')                        // remove newlines
-                .replace(/\s{2,}/g, ' ');                 // collapse whitespace
-              plan = JSON.parse(repaired);
-              console.log('[weekly-planner] Repaired JSON successfully');
-              break;
-            } catch (repairErr) {
-              console.error('[weekly-planner] Repair also failed');
-              return NextResponse.json({
-                success: false,
-                error: 'Failed to generate plan. Please try again.',
-                details: 'AI response could not be parsed as valid JSON',
-              }, { status: 503 });
-            }
-          }
-          // Continue to next attempt
-        }
-      } catch (aiError) {
-        console.error(`[weekly-planner] AI error (attempt ${attempt}/${MAX_GENERATION_ATTEMPTS}):`, aiError);
-        const msg = aiError instanceof Error ? aiError.message : 'Unknown error';
-        const isRateLimit = msg.includes('rate limit') || msg.includes('high demand') || msg.includes('busy') || msg.includes('quota') || msg.includes('429');
-        return NextResponse.json({
-          success: false,
-          error: isRateLimit
-            ? `AI is busy. Wait a minute and try again.`
-            : `AI error: ${msg.slice(0, 150)}`,
-          details: msg,
-        }, { status: 503 });
+    // ── STEP 1: AI Generation ──
+    try {
+      const aiPlan = await generatePlanWithAI(systemPrompt, userPrompt);
+      if (aiPlan && aiPlan.daily_plan?.length > 0) {
+        plan = aiPlan;
+        console.log('[weekly-planner] AI plan generated successfully');
       }
+    } catch (aiErr) {
+      console.warn('[weekly-planner] AI generation failed, falling back to deterministic plan:', aiErr instanceof Error ? aiErr.message : aiErr);
     }
 
-    // Validate plan has minimum required structure
-    if (!plan || typeof plan !== 'object') {
-      return NextResponse.json({
-        success: false,
-        error: 'AI returned an invalid plan. Please try again.',
-        details: 'Plan is null or not an object',
-      }, { status: 503 });
-    }
-
-    if (!plan.daily_plan || !Array.isArray(plan.daily_plan) || plan.daily_plan.length === 0) {
-      return NextResponse.json({
-        success: false,
-        error: 'AI returned an empty plan. Please try again.',
-        details: 'No daily_plan array in response',
-      }, { status: 503 });
+    // ── STEP 2: Deterministic Fallback (if AI failed) ──
+    if (!plan) {
+      console.log('[weekly-planner] Building deterministic fallback plan');
+      plan = buildDeterministicPlan(userData, weekStartStr, weekEndStr);
     }
 
     // Try to store plan in database (optional, may fail if table doesn't exist)
