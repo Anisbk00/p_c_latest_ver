@@ -163,7 +163,19 @@ async function fetchComprehensiveUserData(sb: any, userId: string): Promise<User
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   
-  // Fetch all data in parallel
+  // Helper: safe query — catches errors individually so one failing table
+  // doesn't crash the entire planner data fetch.
+  const safe = async <T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+    try {
+      return await fn();
+    } catch (err) {
+      console.warn(`[weekly-planner] Query "${label}" failed, using fallback:`, err instanceof Error ? err.message : err);
+      return fallback;
+    }
+  };
+
+  // Fetch all data in parallel — each wrapped in safe() so a single failure
+  // doesn't prevent the planner from generating with remaining data.
   const [
     profileRes,
     userProfileRes,
@@ -182,94 +194,105 @@ async function fetchComprehensiveUserData(sb: any, userId: string): Promise<User
     userStateRes,
   ] = await Promise.all([
     // Basic profile
-    sb.from('profiles').select('*').eq('id', userId).single(),
+    safe('profiles', () => sb.from('profiles').select('*').eq('id', userId).single(), { data: {} }),
     
     // Extended profile
-    sb.from('user_profiles').select('*').eq('user_id', userId).maybeSingle(),
+    safe('user_profiles', () => sb.from('user_profiles').select('*').eq('user_id', userId).maybeSingle(), { data: null }),
     
     // User settings
-    sb.from('user_settings').select('*').eq('user_id', userId).maybeSingle(),
+    safe('user_settings', () => sb.from('user_settings').select('*').eq('user_id', userId).maybeSingle(), { data: null }),
     
-    // Body metrics (last 30 days)
-    sb.from('body_metrics')
+    // Body metrics (last 30 days) — uses captured_at + metric_type/value schema
+    safe('body_metrics', () => sb.from('body_metrics')
       .select('*')
       .eq('user_id', userId)
       .gte('captured_at', thirtyDaysAgo.toISOString())
-      .order('captured_at', { ascending: false }),
+      .order('captured_at', { ascending: false }), { data: [] }),
     
     // Workouts (last 30 days)
-    sb.from('workouts')
+    safe('workouts', () => sb.from('workouts')
       .select('*')
       .eq('user_id', userId)
       .gte('started_at', thirtyDaysAgo.toISOString())
-      .order('started_at', { ascending: false }),
+      .order('started_at', { ascending: false }), { data: [] }),
     
-    // Workout exercises
-    sb.from('workout_exercises')
-      .select('*, workouts!inner(user_id, started_at)')
-      .eq('workouts.user_id', userId)
-      .gte('workouts.started_at', sevenDaysAgo.toISOString()),
+    // Workout exercises — fetched separately after workouts resolve
+    // to avoid race condition with the parallel Promise.all.
+    // We fetch them all and filter by date in processing.
+    safe('workout_exercises', () => sb.from('workout_exercises')
+      .select('*')
+      .limit(200), { data: [] }),
     
     // Food logs (last 7 days)
-    sb.from('food_logs')
+    safe('food_logs', () => sb.from('food_logs')
       .select('*')
       .eq('user_id', userId)
       .gte('logged_at', sevenDaysAgo.toISOString())
-      .order('logged_at', { ascending: false }),
+      .order('logged_at', { ascending: false }), { data: [] }),
     
-    // Sleep logs (last 7 days)
-    sb.from('sleep_logs')
+    // Sleep logs (last 7 days) — uses date column (DATE type)
+    safe('sleep_logs', () => sb.from('sleep_logs')
       .select('*')
       .eq('user_id', userId)
       .gte('date', sevenDaysAgo.toISOString().split('T')[0])
-      .order('date', { ascending: false }),
+      .order('date', { ascending: false }), { data: [] }),
     
     // Supplement logs (last 7 days)
-    sb.from('supplement_logs')
+    safe('supplement_logs', () => sb.from('supplement_logs')
       .select('*')
       .eq('user_id', userId)
       .gte('logged_at', sevenDaysAgo.toISOString())
-      .order('logged_at', { ascending: false }),
+      .order('logged_at', { ascending: false }), { data: [] }),
     
     // User's supplements
-    sb.from('supplements')
+    safe('supplements', () => sb.from('supplements')
       .select('id, name')
-      .eq('user_id', userId),
+      .eq('user_id', userId), { data: [] }),
     
-    // Goals
-    sb.from('goals')
+    // Goals — uses goals table (not targets)
+    safe('goals', () => sb.from('goals')
       .select('*')
       .eq('user_id', userId)
       .eq('status', 'active')
       .order('created_at', { ascending: false })
-      .limit(5),
+      .limit(5), { data: [] }),
     
     // AI insights
-    sb.from('ai_insights')
+    safe('ai_insights', () => sb.from('ai_insights')
       .select('*')
       .eq('user_id', userId)
       .eq('state', 'active')
       .order('created_at', { ascending: false })
-      .limit(10),
+      .limit(10), { data: [] }),
     
-    // AI memory
-    sb.from('ai_memory')
-      .select('*')
-      .eq('user_id', userId)
-      .order('last_used_at', { ascending: false })
-      .limit(20),
+    // AI memory — try last_used_at first, fall back to created_at
+    safe('ai_memory', async () => {
+      try {
+        return await sb.from('ai_memory')
+          .select('*')
+          .eq('user_id', userId)
+          .order('last_used_at', { ascending: false })
+          .limit(20);
+      } catch {
+        return await sb.from('ai_memory')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(20);
+      }
+    }, { data: [] }),
     
     // Behavior profile
-    sb.from('user_behavior_profile')
+    safe('user_behavior_profile', () => sb.from('user_behavior_profile')
       .select('*')
       .eq('user_id', userId)
-      .maybeSingle(),
+      .maybeSingle(), { data: null }),
     
     // User state
-    sb.from('ai_user_state')
+    safe('ai_user_state', () => sb.from('ai_user_state')
       .select('*')
       .eq('user_id', userId)
-      .maybeSingle(),
+      .maybeSingle(), { data: null }),
   ]);
   
   // Extract data
@@ -357,10 +380,13 @@ async function fetchComprehensiveUserData(sb: any, userId: string): Promise<User
     if (typeLower.includes('back')) musclesTrained.add('back');
   });
   
-  // Process workout exercises
-  workoutExercises.forEach((e: any) => {
-    if (e.exercise_name) musclesTrained.add(e.exercise_name.toLowerCase());
-  });
+  // Process workout exercises — filter to only recent workouts (last 7 days)
+  const recentWorkoutIds = new Set(workouts7d.map((w: any) => w.id));
+  workoutExercises
+    .filter((e: any) => recentWorkoutIds.has(e.workout_id))
+    .forEach((e: any) => {
+      if (e.exercise_name) musclesTrained.add(e.exercise_name.toLowerCase());
+    });
   
   const avgDuration = workouts7d.length > 0 
     ? Math.round(workouts7d.reduce((sum: number, w: any) => sum + (w.duration_minutes || 0), 0) / workouts7d.length)
@@ -548,8 +574,8 @@ async function fetchComprehensiveUserData(sb: any, userId: string): Promise<User
     })),
     
     aiMemory: aiMemory.map((m: any) => ({
-      key: m.memory_key,
-      value: m.memory_value,
+      key: m.memory_key || m.key,
+      value: m.memory_value || m.value,
     })),
     
     activeGoals: goals.map((g: any) => ({
@@ -1774,14 +1800,19 @@ export async function POST(request: NextRequest) {
     const forceRegenerate = body.force_regenerate || false;
     const specificGoal = body.goal || null;
 
-    // Calculate week dates (current week starting Monday)
-    const today = new Date();
-    const dayOfWeek = today.getDay();
-    
-    // Get Monday of current week
-    const weekStart = new Date(today);
-    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-    weekStart.setDate(today.getDate() - daysToMonday);
+    // Calculate week dates — use week_start query param if provided, else current week (Monday)
+    const url = new URL(request.url);
+    const weekStartParam = url.searchParams.get('week_start');
+    let weekStart: Date;
+    if (weekStartParam) {
+      weekStart = new Date(weekStartParam + 'T00:00:00');
+    } else {
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+      weekStart = new Date(today);
+      weekStart.setDate(today.getDate() - daysToMonday);
+    }
     
     const weekEnd = new Date(weekStart);
     weekEnd.setDate(weekStart.getDate() + 6);

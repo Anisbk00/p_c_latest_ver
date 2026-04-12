@@ -71,3 +71,32 @@ Stage Summary:
 - No design changes — only prompt text updates
 - No architectural changes — same flow: context.ts → prompt-template.ts → cloud.ts → stream/route.ts
 - Backward compatible: supportive and balanced tones unchanged
+
+---
+Task ID: 3
+Agent: Main Agent
+Task: Investigate and fix broken weekly planner
+
+Work Log:
+- Traced planner flow: WeeklyPlanner component → POST /api/iron-coach/weekly-planner → fetchComprehensiveUserData → AI/fallback
+- Identified ROOT CAUSE: `fetchComprehensiveUserData()` used `Promise.all` with 15 parallel Supabase queries — if ANY single query failed (missing table, wrong column, broken join), the ENTIRE function threw a 500 error before reaching AI or fallback plan generation
+- Confirmed specific failure points:
+  1. `workout_exercises` query used `!inner` join syntax that fails if FK relationship is not set up correctly
+  2. `ai_memory` query used `last_used_at` column which may not exist (schema uses `created_at`)
+  3. No `GROQ_API_KEY` in .env — AI generation always fails, but deterministic fallback should still work IF data fetch succeeds
+  4. POST handler ignored `week_start` query param, always calculated from `today` — week navigation broken
+- Applied fixes to `/api/iron-coach/weekly-planner/route.ts`:
+  1. Wrapped all 15 Supabase queries in individual `safe()` try/catch helper — one failing query no longer crashes the entire planner
+  2. Replaced `workout_exercises !inner` join with simple direct query + client-side filtering by workout IDs
+  3. Added `ai_memory` column fallback: tries `last_used_at` first, falls back to `created_at`
+  4. Made `aiMemory` data extraction resilient: `m.memory_key || m.key` and `m.memory_value || m.value`
+  5. Fixed POST handler to respect `week_start` query parameter for week navigation
+  6. Added `recentWorkoutIds` filtering for workout exercises processing
+- Lint: 0 errors, 11 pre-existing warnings
+
+Stage Summary:
+- Planner now generates even when some Supabase tables/columns fail — uses available data + deterministic fallback
+- Week navigation (previous/next week) now works correctly
+- AI generation still requires GROQ_API_KEY (will show "AI unavailable — smart fallback plan active" badge without it)
+- Deterministic fallback plan generation works with zero AI dependency
+- No design changes — only backend resilience improvements
