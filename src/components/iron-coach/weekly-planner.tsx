@@ -337,8 +337,8 @@ function MacroBar({ protein, carbs, fat, calories, styles }: {
 function WhyThisPlanSection({ plan, styles }: { plan: WeeklyPlan; styles: ReturnType<typeof getThemeStyles> }) {
   const [isExpanded, setIsExpanded] = useState(false);
   
-  const overview = plan.weekly_overview;
-  const recommendations = plan.recommendations || [];
+  const overview = plan?.weekly_overview || { total_workout_days: 4, total_rest_days: 3, weekly_calorie_target: 0, weekly_protein_target: 0, focus_areas: [], weekly_strategy: '' };
+  const recommendations = plan?.recommendations || [];
   const workoutSummary = plan.weekly_workout_summary;
   const nutritionSummary = plan.weekly_nutrition_summary;
 
@@ -508,7 +508,14 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
         body: JSON.stringify({ force_regenerate: forceRegenerate }),
       });
 
-      const data = await response.json();
+      // Guard: if response is not ok, parse error body safely
+      let data: any;
+      try {
+        data = await response.json();
+      } catch {
+        // Vercel sometimes returns HTML on 503 — treat as generic error
+        throw new Error('Service temporarily unavailable (503)');
+      }
 
       if (!response.ok) {
         // Rate limit hit
@@ -634,6 +641,17 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
     );
   }
 
+  // Final null guard — prevent crash if plan is null (race condition / 503)
+  if (!plan) {
+    return (
+      <div className={cn("flex flex-col items-center justify-center h-full p-8", styles.container)}>
+        <AlertCircle className="w-10 h-10 mb-4 text-amber-500" />
+        <div className={cn("text-lg font-semibold mb-2", styles.text)}>Loading Plan...</div>
+        <div className={cn("text-sm", styles.textMuted)}>Please wait while we generate your plan.</div>
+      </div>
+    );
+  }
+
   const overview = plan.weekly_overview;
 
   return (
@@ -691,11 +709,11 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
             </Badge>
             <span className={cn("flex items-center gap-1 text-xs", styles.textMuted)}>
               <Dumbbell className="w-3 h-3" />
-              {overview.total_workout_days} workouts
+              {overview?.total_workout_days ?? 4} workouts
             </span>
             <span className={cn("flex items-center gap-1 text-xs", styles.textMuted)}>
               <Moon className="w-3 h-3" />
-              {overview.total_rest_days} rest
+              {overview?.total_rest_days ?? 3} rest
             </span>
           </div>
           <button

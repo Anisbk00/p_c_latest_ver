@@ -1,12 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseUser } from '@/lib/supabase/supabase-data';
 import { calculatePersonalizedTargets } from '@/lib/personalized-targets';
-import { generateText } from '@/lib/ai/groq-service';
 
-// Vercel: extend serverless function timeout to 60s (default is 10s on Hobby)
-export const config = { maxDuration: 60 };
-
-// Uses shared groq-service.ts for all AI calls — proven rate limiting & fallback chain
+// NOTE: No maxDuration override — Vercel Hobby plan hard-caps at 10s regardless.
+// We use a fast AI call path to stay within budget.
 
 /**
  * PRECISION WEEKLY PLANNER API
@@ -908,16 +905,61 @@ function repairTruncatedJSON(json: string): string {
 }
 
 /**
- * Generate weekly plan using the shared Groq service.
- * Uses generateText() which has built-in rate limiting, retries, and model fallback.
+ * Fast Groq API call — bypasses the shared groq-service to stay within Vercel Hobby 10s limit.
+ * Uses llama-3.1-8b-instant (fastest model) with a 7s timeout and 4096 max_tokens.
+ * No retry loop — one shot to stay within budget.
+ */
+async function generateTextFast(systemPrompt: string, userPrompt: string): Promise<string> {
+  const GROQ_API_KEY = process.env.GROQ_API_KEY;
+  if (!GROQ_API_KEY) throw new Error('GROQ_API_KEY not set');
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7000); // 7s hard timeout
+
+  try {
+    const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.1-8b-instant',
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt },
+        ],
+        temperature: 0.3,
+        max_tokens: 4096,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const errText = await response.text().catch(() => '');
+      throw new Error(`Groq ${response.status}: ${errText.substring(0, 200)}`);
+    }
+
+    const result = await response.json();
+    const content = result.choices?.[0]?.message?.content;
+    if (!content) throw new Error('Empty response from Groq');
+    return content;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * Generate weekly plan using fast Groq call (llama-3.1-8b-instant, 7s timeout).
+ * Designed to complete within Vercel Hobby plan's 10s function limit.
  */
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
   const errors: AIErrorDetail[] = [];
 
   try {
-    console.log('[weekly-planner] Calling Groq via shared groq-service.ts...');
+    console.log('[weekly-planner] Calling Groq fast path (llama-3.1-8b-instant, 7s timeout)...');
     const fullPrompt = `${userPrompt}\n\nRemember: Return ONLY valid JSON. No markdown code fences. No explanations.`;
-    const responseText = await generateText(fullPrompt, systemPrompt, 16384);
+    const responseText = await generateTextFast(systemPrompt, fullPrompt);
 
     if (!responseText) {
       errors.push({
@@ -1812,9 +1854,9 @@ export async function POST(request: NextRequest) {
     let generationSource: 'ai';
     let aiErrors: AIErrorDetail[] = [];
 
-    // Pre-check: is AI service available? (uses shared groq-service check)
-    const { isAIAvailable } = await import('@/lib/ai/groq-service');
-    if (!isAIAvailable()) {
+    // Pre-check: is AI service available?
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+    if (!GROQ_API_KEY) {
       console.error('[weekly-planner] GROQ_API_KEY not set in environment variables');
       return NextResponse.json({
         success: false,
@@ -1824,7 +1866,7 @@ export async function POST(request: NextRequest) {
       }, { status: 503 });
     }
 
-    console.log('[weekly-planner] Starting AI plan generation via shared groq-service...');
+    console.log('[weekly-planner] Starting AI plan generation (fast path)...');
     const aiResult = await generatePlanWithAI(systemPrompt, userPrompt);
     aiErrors = aiResult.errors;
     
