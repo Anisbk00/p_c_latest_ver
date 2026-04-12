@@ -803,10 +803,11 @@ Streak: ${data.momentum.current_streak}d | Longest: ${data.momentum.longest_stre
 4. NUTRITION: Use their common foods in meal plans. Adjust portions to hit targets. High protein is NON-NEGOTIABLE.
 5. SCALE difficulty to their fitness level. Beginner = fewer sets, longer rest, simpler exercises.
 6. Coach messages must reference their ACTUAL data (streak, adherence %, weight trend). Be harsh if they've been slacking. Celebrate if they've been grinding.
-7. NEVER train same muscle 2 days in a row.
-8. Include warm-up and cool-down for every workout session.
-9. Output ONLY valid JSON. No markdown. No explanation. No code fences.
-10. Include confidence score (0.0-1.0) for each daily plan based on data quality and adherence patterns.`;
+7. EMOJIS: Use emojis everywhere! Coach messages must be packed with emojis — 🔥💪🏋️‍♂️🍗⏰😴🎯🥗💧⚡🧠📈📉⚡💪. Use them naturally, like a hype coach texting you. generation_reasoning, weekly_strategy, recommendations, workout coach_notes, warm_up, cool_down — all text fields should include relevant emojis.
+8. NEVER train same muscle 2 days in a row.
+9. Include warm-up and cool-down for every workout session.
+10. Output ONLY valid JSON. No markdown. No explanation. No code fences.
+11. Include confidence score (0.0-1.0) for each daily plan based on data quality and adherence patterns.`;
 
   const userPrompt = `Generate a 7-day plan from ${weekStart} to ${weekEnd}. Return ONLY this JSON (no markdown):
 {"week_start":"${weekStart}","week_end":"${weekEnd}","plan_confidence":0.85,"generation_reasoning":"brief strategy based on their data","weekly_overview":{"total_workout_days":0,"total_rest_days":0,"weekly_calorie_target":0,"weekly_protein_target":0,"focus_areas":[],"weekly_strategy":""},"daily_plan":[{"date":"YYYY-MM-DD","day_name":"Monday","is_workout_day":true,"workout":{"focus":"","duration_minutes":0,"estimated_calories_burned":0,"intensity":"","exercises":[{"name":"","type":"compound","muscle_groups":[],"sets":0,"reps":"","weight_kg":0,"rest_seconds":0,"notes":""}],"warm_up":"","cool_down":"","coach_notes":""},"nutrition":{"target_calories":0,"target_protein":0,"target_carbs":0,"target_fat":0,"meals":[{"meal_type":"breakfast","time":"07:00","foods":[{"name":"","quantity":1,"unit":"serving","calories":0,"protein":0,"carbs":0,"fat":0}],"total_calories":0,"total_protein":0}],"hydration_ml":0},"sleep":{"target_bedtime":"","target_wake_time":"","target_duration_hours":0},"supplements":[{"name":"","dose":"","timing":""}],"coach_message":"","confidence":0.85}],"recommendations":[{"category":"","priority":"","recommendation":"","reasoning":""}]}`;
