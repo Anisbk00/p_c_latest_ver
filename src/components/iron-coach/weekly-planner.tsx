@@ -525,8 +525,8 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
           setErrorMessage(data.message || 'You can only regenerate 2 times per week.');
           return;
         }
-        // AI unavailable
-        throw new Error(data.message || 'Failed to generate plan');
+        // AI unavailable — never show raw error details to user
+        throw new Error('AI temporarily unavailable');
       }
 
       if (data.success && data.plan) {
@@ -541,9 +541,10 @@ export function WeeklyPlanner({ theme: propTheme }: WeeklyPlannerProps) {
         throw new Error(data.message || 'Failed to generate plan');
       }
     } catch (err) {
+      // Log full error details to console, show generic message to user
       console.error('[WeeklyPlanner] Error:', err);
       setError('ai_unavailable');
-      setErrorMessage(err instanceof Error ? err.message : 'AI unavailable');
+      setErrorMessage('AI temporarily unavailable. Try again in a moment.');
     } finally {
       setIsLoading(false);
       setIsRegenerating(false);

@@ -29,7 +29,7 @@ const VISION_MODEL = 'meta-llama/llama-4-scout-17b-16e-instruct';
 // the others likely still have quota.
 const FALLBACK_TEXT_MODELS = [
   'llama-3.1-8b-instant',    // Llama 3.1 8B — fastest
-  'qwen-qwq-32b',             // Qwen QwQ 32B — good reasoning, separate rate pool
+  'llama-3.3-70b-versatile',  // Llama 3.3 70B — smart, separate rate pool
   'llama3-8b-8192',           // Llama 3 8B — reliable
 ];
 // EMBEDDING_MODEL removed — Groq does not offer embeddings

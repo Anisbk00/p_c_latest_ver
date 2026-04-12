@@ -867,7 +867,7 @@ export function IronCoach({ className }: IronCoachProps) {
         if (!response.ok) {
           const errorText = await response.text();
           console.error('[IronCoach] Response not OK:', response.status, errorText);
-          throw new Error(`Request failed: ${response.status} - ${errorText}`);
+          throw new Error('AI service temporarily unavailable');
         }
         if (!response.body) {
           console.error('[IronCoach] No response body');
@@ -918,7 +918,9 @@ export function IronCoach({ className }: IronCoachProps) {
       }
     } catch (err) {
       const isAbort = err instanceof DOMException && err.name === 'AbortError';
-      updateAssistantMessage(assistantId, isAbort ? 'Cancelled.' : "Connection issue. Try again.", 'cloud_model');
+      // Log full error to console, show generic message to user
+      if (!isAbort) console.error('[IronCoach] sendMessage error:', err);
+      updateAssistantMessage(assistantId, isAbort ? 'Cancelled.' : "💪 Iron Coach is experiencing heavy traffic. Try again in a moment.", 'cloud_model');
     } finally {
       setAbortController(null);
       setIsLoading(false);
