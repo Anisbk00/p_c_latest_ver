@@ -1077,10 +1077,10 @@ function generateFallbackPlan(userData: UserComprehensiveData, weekStartStr: str
  * Supports model fallback chain: if one model returns 429 (rate limit), tries the next.
  * Each call has a per-attempt timeout. Total budget must stay under Vercel Hobby's 10s cap.
  */
+// Primary model first (smartest, best at JSON), then fast fallbacks
 const GROQ_MODELS = [
-  'llama-3.1-8b-instant',   // Fastest, preferred
-  'llama-3.3-70b-versatile',  // Llama 3.3 70B — good JSON quality, separate rate limit pool
-  'llama3-8b-8192',          // Llama 3 8B — reliable fallback
+  'llama-3.3-70b-versatile',  // Best quality JSON — try first
+  'llama-3.1-8b-instant',    // Fast fallback — less reliable for complex JSON
 ];
 
 async function generateTextFast(
@@ -1093,8 +1093,8 @@ async function generateTextFast(
 
   for (let i = 0; i < GROQ_MODELS.length; i++) {
     const model = GROQ_MODELS[i];
-    // Each attempt gets a progressively shorter timeout to stay within 10s total
-    const attemptTimeout = 5000 - i * 500; // 5s, 4.5s, 4s
+    // First attempt gets 9s (Vercel 10s limit minus 1s buffer), second gets 5s
+    const attemptTimeout = i === 0 ? 9000 : 5000;
 
     console.log(`[weekly-planner] attempt ${i + 1}/${GROQ_MODELS.length}: calling Groq API (${model})...`);
 
@@ -1196,7 +1196,7 @@ async function generateTextFast(
 /**
  * Generate weekly plan using fast Groq calls with model fallback chain.
  * Designed to complete within Vercel Hobby plan's 10s function limit.
- * Tries llama-3.1-8b-instant → llama-3.3-70b-versatile → llama3-8b-8192
+ * Tries llama-3.3-70b-versatile (9s) → llama-3.1-8b-instant (5s)
  */
 async function generatePlanWithAI(systemPrompt: string, userPrompt: string): Promise<AIPlanResult> {
   const errors: AIErrorDetail[] = [];
