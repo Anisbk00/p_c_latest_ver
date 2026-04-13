@@ -623,6 +623,29 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const syncInProgress = useRef(false);
   const foodSyncInProgress = useRef(false);
   
+  // CRITICAL FIX: Keep isOnline in sync with actual network state
+  // Without this, isOnline freezes at mount time and data fetching breaks on mobile
+  useEffect(() => {
+    const handleOnline = () => {
+      console.log('[AppProvider] Network back online — refreshing data');
+      setIsOnline(true);
+      // Re-trigger data load when coming back online
+      if (isAuthenticated && user?.id) {
+        fetchFunctionsRef.current.refreshAll?.();
+      }
+    };
+    const handleOffline = () => {
+      console.log('[AppProvider] Network lost');
+      setIsOnline(false);
+    };
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [isAuthenticated, user?.id]);
+  
   // RACE CONDITION FIX: Nutrition update queue and lock
   // Prevents concurrent modifications to nutrition totals which can cause
   // inconsistent state when multiple food entries are added rapidly
