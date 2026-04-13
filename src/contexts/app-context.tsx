@@ -2,6 +2,7 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useSupabaseAuth } from '@/lib/supabase/auth-context';
+import { isNative } from '@/lib/capacitor';
 import {
   initDatabase,
   saveOfflineWorkout,
@@ -624,12 +625,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const foodSyncInProgress = useRef(false);
   
   // CRITICAL FIX: Keep isOnline in sync with actual network state
-  // Without this, isOnline freezes at mount time and data fetching breaks on mobile
+  // On native (Capacitor), use @capacitor/network for reliable detection
+  // On web, use browser online/offline events
   useEffect(() => {
-    const handleOnline = () => {
+    const handleBackOnline = () => {
       console.log('[AppProvider] Network back online — refreshing data');
       setIsOnline(true);
-      // Re-trigger data load when coming back online
       if (isAuthenticated && user?.id) {
         fetchFunctionsRef.current.refreshAll?.();
       }
@@ -638,12 +639,39 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       console.log('[AppProvider] Network lost');
       setIsOnline(false);
     };
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
+
+    if (isNative) {
+      // Use Capacitor Network plugin for native — more reliable than WebView events
+      let listenerHandle: any = null;
+      import('@capacitor/network').then(({ Network }) => {
+        Network.getStatus().then(status => {
+          setIsOnline(status.connected);
+          console.log('[AppProvider] Native network status:', status.connected, status.connectionType);
+        });
+        Network.addListener('networkStatusChange', (status) => {
+          console.log('[AppProvider] Native network changed:', status.connected, status.connectionType);
+          if (status.connected) {
+            handleBackOnline();
+          } else {
+            handleOffline();
+          }
+        }).then(h => { listenerHandle = h; });
+      }).catch(() => {
+        // Fallback to browser events if plugin fails
+        window.addEventListener('online', handleBackOnline);
+        window.addEventListener('offline', handleOffline);
+      });
+      return () => {
+        listenerHandle?.remove?.();
+      };
+    } else {
+      window.addEventListener('online', handleBackOnline);
+      window.addEventListener('offline', handleOffline);
+      return () => {
+        window.removeEventListener('online', handleBackOnline);
+        window.removeEventListener('offline', handleOffline);
+      };
+    }
   }, [isAuthenticated, user?.id]);
   
   // RACE CONDITION FIX: Nutrition update queue and lock

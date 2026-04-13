@@ -1090,17 +1090,14 @@ function ProgressCompanionHome() {
           <main 
             id="main-content"
             className="flex-1 overflow-y-auto pb-24 -webkit-overflow-scrolling-touch gymbro-page-subtle gymbro-page-subtle-strong"
+            style={{ WebkitOverflowScrolling: 'touch', willChange: 'auto' }}
             role="main"
             aria-label="Main content area"
           >
-            <AnimatePresence mode="wait">
-              {activeTab === 'home' && (
-                <motion.div
+            {/* Tab content — CSS visibility for instant switches, no animation jank on mobile */}
+            {activeTab === 'home' && (
+                <div
                   key="home"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.15, ease: 'easeOut' }}
                   className="min-h-full"
                   role="region"
                   aria-label="Home dashboard"
@@ -1195,16 +1192,11 @@ function ProgressCompanionHome() {
                   weightUnit={latestWeight?.unit}
                 />
               </ErrorBoundary>
-            </motion.div>
+            </div>
           )}
           
           {activeTab === 'foods' && (
-            <motion.div
-              key="foods"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
+            <div
               className="h-full overflow-y-auto"
               role="region"
               aria-label="Foods and nutrition tracking"
@@ -1214,16 +1206,11 @@ function ProgressCompanionHome() {
                   <FoodsPage />
                 </Suspense>
               </ErrorBoundary>
-            </motion.div>
+            </div>
           )}
           
           {activeTab === 'workouts' && (
-            <motion.div
-              key="workouts"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
+            <div
               className="h-full overflow-y-auto"
               role="region"
               aria-label="Workouts and activity tracking"
@@ -1233,16 +1220,11 @@ function ProgressCompanionHome() {
                   <WorkoutsPage />
                 </Suspense>
               </ErrorBoundary>
-            </motion.div>
+            </div>
           )}
           
           {activeTab === 'analytics' && (
-            <motion.div
-              key="analytics"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
+            <div
               role="region"
               aria-label="Analytics and insights"
             >
@@ -1251,16 +1233,11 @@ function ProgressCompanionHome() {
                   <AnalyticsPage />
                 </Suspense>
               </ErrorBoundary>
-            </motion.div>
+            </div>
           )}
           
           {activeTab === 'profile' && (
-            <motion.div
-              key="profile"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.15, ease: 'easeOut' }}
+            <div
               className="px-4 py-4"
               role="region"
               aria-label="User profile and settings"
@@ -1270,9 +1247,8 @@ function ProgressCompanionHome() {
                   <ProfilePage onOpenSettings={() => setSettingsOpen(true)} />
                 </Suspense>
               </ErrorBoundary>
-            </motion.div>
+            </div>
           )}
-        </AnimatePresence>
       </main>
       
       {/* Screen Reader Announcements */}
@@ -1293,7 +1269,7 @@ function ProgressCompanionHome() {
       
       {/* ═══ iOS TAB BAR ═══ */}
       <nav 
-        className="fixed bottom-0 left-0 right-0 bg-background/95 backdrop-blur-xl border-t border-border/30 z-40 pb-[env(safe-area-inset-bottom,0px)]"
+        className="fixed bottom-0 left-0 right-0 bg-background border-t border-border/30 z-40 pb-[env(safe-area-inset-bottom,0px)]"
         role="navigation"
         aria-label="Main navigation"
       >
